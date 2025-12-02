@@ -25,7 +25,9 @@ data class MessageEntity(
         val content: String,
         val timestamp: Long = System.currentTimeMillis(),
         val orderIndex: Int, // 保持消息顺序
-        val roleName: String = "" // 角色名字段
+        val roleName: String = "", // 角色名字段
+        val provider: String = "", // 供应商
+        val modelName: String = "" // 模型名称
 ) {
     /** 转换为ChatMessage对象（供UI层使用） */
     fun toChatMessage(): ChatMessage {
@@ -33,7 +35,9 @@ data class MessageEntity(
             sender = sender, 
             content = content, 
             timestamp = timestamp,
-            roleName = roleName
+            roleName = roleName,
+            provider = provider,
+            modelName = modelName
         )
     }
 
@@ -46,7 +50,9 @@ data class MessageEntity(
                     content = message.content,
                     timestamp = message.timestamp,
                     orderIndex = orderIndex,
-                    roleName = message.roleName
+                    roleName = message.roleName,
+                    provider = message.provider,
+                    modelName = message.modelName
             )
         }
     }

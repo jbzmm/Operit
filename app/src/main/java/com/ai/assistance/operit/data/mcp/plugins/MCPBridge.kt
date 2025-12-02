@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Environment
 import android.util.Log
 import com.ai.assistance.operit.core.tools.system.Terminal
+import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.data.model.AITool
+import com.ai.assistance.operit.data.model.ToolParameter
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -32,7 +35,8 @@ class MCPBridge private constructor(private val context: Context) {
     companion object {
         private const val TAG = "MCPBridge"
         private const val DEFAULT_HOST = "127.0.0.1"
-        private const val DEFAULT_PORT = 8752
+        private const val BRIDGE_PORT = 8752  // 远程bridge监听的端口
+        private const val CLIENT_PORT = 8751  // Android客户端连接的端口（SSH转发）
         private const val TERMUX_BRIDGE_PATH = "~/bridge"
         private var appContext: Context? = null
         
@@ -44,6 +48,43 @@ class MCPBridge private constructor(private val context: Context) {
                 INSTANCE ?: MCPBridge(context.applicationContext).also { 
                     INSTANCE = it
                     appContext = context.applicationContext
+                }
+            }
+        }
+        
+        /**
+         * 智能检测可用端口
+         * 优先尝试 8752（本地直连），失败后尝试 8751（SSH转发）
+         */
+        private suspend fun detectPort(): Int = withContext(Dispatchers.IO) {
+            // 优先尝试 8752（远程端口）- 本地环境
+            if (isPortAvailable(DEFAULT_HOST, BRIDGE_PORT)) {
+                Log.d(TAG, "检测到本地环境，使用端口 $BRIDGE_PORT")
+                return@withContext BRIDGE_PORT
+            }
+            
+            // 降级到 8751（SSH转发端口）
+            Log.d(TAG, "本地连接失败，尝试SSH转发端口 $CLIENT_PORT")
+            return@withContext CLIENT_PORT
+        }
+        
+        /**
+         * 检查端口是否可用（快速检测，无日志污染）
+         */
+        private fun isPortAvailable(host: String, port: Int): Boolean {
+            var socket: Socket? = null
+            return try {
+                socket = Socket()
+                socket.reuseAddress = true
+                socket.connect(java.net.InetSocketAddress(host, port), 500) // 500ms快速检测
+                socket.isConnected
+            } catch (e: Exception) {
+                false // 静默失败，不记录日志
+            } finally {
+                try {
+                    socket?.close()
+                } catch (e: Exception) {
+                    // 静默关闭
                 }
             }
         }
@@ -65,36 +106,19 @@ class MCPBridge private constructor(private val context: Context) {
                         publicBridgeDir.mkdirs()
                     }
 
-                    // 复制index.js到公共目录
+                    // 复制打包后的 index.js 到公共目录（已包含所有依赖）
                     val inputStream = context.assets.open("bridge/index.js")
                     val indexJsContent = inputStream.bufferedReader().use { it.readText() }
                     val outputFile = File(publicBridgeDir, "index.js")
                     outputFile.writeText(indexJsContent)
                     inputStream.close()
 
-                    // 复制 spawn-helper.js 到公共目录
+                    // 复制打包后的 spawn-helper.js 到公共目录（已包含所有依赖）
                     val spawnHelperInputStream = context.assets.open("bridge/spawn-helper.js")
                     val spawnHelperJsContent = spawnHelperInputStream.bufferedReader().use { it.readText() }
                     val spawnHelperOutputFile = File(publicBridgeDir, "spawn-helper.js")
                     spawnHelperOutputFile.writeText(spawnHelperJsContent)
                     spawnHelperInputStream.close()
-
-                    // 创建package.json文件
-                    val packageJsonContent =
-                            """
-                        {
-                            "name": "mcp-tcp-bridge",
-                            "version": "1.0.0",
-                            "description": "将STDIO型MCP服务器桥接到TCP端口",
-                            "main": "index.js",
-                            "dependencies": {
-                                "uuid": "^9.0.0",
-                                "mcp-client": "^1.13.1"
-                            }
-                        }
-                    """.trimIndent()
-                    val packageJson = File(publicBridgeDir, "package.json")
-                    packageJson.writeText(packageJsonContent)
 
                     Log.d(TAG, "桥接器文件已复制到公共目录: ${publicBridgeDir.absolutePath}")
 
@@ -113,7 +137,7 @@ class MCPBridge private constructor(private val context: Context) {
 
                     // 使用传入的sessionId或创建新的会话
                     val actualSessionId = sessionId ?: run {
-                        val newSessionId = terminal.createSessionAndWait("mcp-bridge-deploy")
+                        val newSessionId = terminal.createSession("mcp-bridge-deploy")
                         if (newSessionId == null) {
                             Log.e(TAG, "无法创建终端会话或会话初始化超时")
                             return@withContext false
@@ -124,22 +148,39 @@ class MCPBridge private constructor(private val context: Context) {
                     // 使用sdcard路径而不是Android storage路径
                     val sdcardBridgePath = "/sdcard/Download/Operit/bridge"
                     
-                    // 以非阻塞方式创建目录并复制文件
-                    val deployCommand =
-                            """
-                        mkdir -p $TERMUX_BRIDGE_PATH && 
-                        cp -f $sdcardBridgePath/index.js $TERMUX_BRIDGE_PATH/ && 
-                        cp -f $sdcardBridgePath/spawn-helper.js $TERMUX_BRIDGE_PATH/ &&
-                        cp -f $sdcardBridgePath/package.json $TERMUX_BRIDGE_PATH/ && 
-                        cd $TERMUX_BRIDGE_PATH && 
-                        if [ ! -d "node_modules/mcp-client" ] || [ ! -d "node_modules/uuid" ]; then pnpm install; fi
-                    """.trimIndent()
-
-                    // 执行命令
-                    terminal.executeCommand(actualSessionId, deployCommand)
-
-                    // 等待命令执行完成
-                    delay(100) // 给命令执行时间
+                    // 获取 AIToolHandler 实例
+                    val toolHandler = AIToolHandler.getInstance(context)
+                    
+                    // 先创建目标目录
+                    val mkdirCommand = "mkdir -p $TERMUX_BRIDGE_PATH"
+                    terminal.executeCommand(actualSessionId, mkdirCommand)
+                    delay(100) // 等待目录创建
+                    
+                    // 使用 AIToolHandler 复制打包后的文件（跨环境复制：Android -> Linux）
+                    // 打包后的文件已包含所有依赖，不需要 package.json 和 node_modules
+                    val filesToCopy = listOf("index.js", "spawn-helper.js")
+                    
+                    for (fileName in filesToCopy) {
+                        val copyTool = AITool(
+                            name = "copy_file",
+                            parameters = listOf(
+                                ToolParameter("source", "$sdcardBridgePath/$fileName"),
+                                ToolParameter("destination", "$TERMUX_BRIDGE_PATH/$fileName"),
+                                ToolParameter("source_environment", "android"),
+                                ToolParameter("dest_environment", "linux"),
+                                ToolParameter("recursive", "false")
+                            )
+                        )
+                        
+                        val result = toolHandler.executeTool(copyTool)
+                        if (!result.success) {
+                            Log.e(TAG, "复制文件 $fileName 失败: ${result.error}")
+                            return@withContext false
+                        }
+                        Log.d(TAG, "成功复制文件: $fileName")
+                    }
+                    
+                    // 打包后的文件已包含所有依赖，无需安装 node_modules
 
                     Log.d(TAG, "桥接器成功部署到终端")
                     return@withContext true
@@ -153,7 +194,7 @@ class MCPBridge private constructor(private val context: Context) {
         // 在终端中启动桥接器
         suspend fun startBridge(
                 context: Context? = null,
-                port: Int = DEFAULT_PORT,
+                port: Int = BRIDGE_PORT,
                 mcpCommand: String? = null,
                 mcpArgs: List<String>? = null,
                 sessionId: String? = null
@@ -188,7 +229,7 @@ class MCPBridge private constructor(private val context: Context) {
 
                         // 使用传入的sessionId或创建新的会话
                         val actualSessionId = sessionId ?: run {
-                            val newSessionId = terminal.createSessionAndWait("mcp-bridge-daemon")
+                            val newSessionId = terminal.createSession("mcp-bridge-daemon")
                             if (newSessionId == null) {
                                 Log.e(TAG, "无法创建终端会话或会话初始化超时")
                                 return@withContext false
@@ -269,7 +310,7 @@ class MCPBridge private constructor(private val context: Context) {
         suspend fun sendCommand(
                 command: JSONObject,
                 host: String = DEFAULT_HOST,
-                port: Int = DEFAULT_PORT
+                port: Int? = null
         ): JSONObject? =
                 withContext(Dispatchers.IO) {
                     var socket: Socket? = null
@@ -277,6 +318,9 @@ class MCPBridge private constructor(private val context: Context) {
                     var reader: BufferedReader? = null
 
                     try {
+                        // 自动检测端口（如果未指定）
+                        val actualPort = port ?: detectPort()
+                        
                         // Extract command details for better logging
                         val cmdType = command.optString("command", "unknown")
                         val cmdId = command.optString("id", "no-id")
@@ -298,7 +342,7 @@ class MCPBridge private constructor(private val context: Context) {
                         socket.reuseAddress = true
                         socket.soTimeout = 180000 // 180 seconds read timeout (3 minutes)
                         socket.connect(
-                                java.net.InetSocketAddress(host, port),
+                                java.net.InetSocketAddress(host, actualPort),
                                 5000
                         ) // 5 seconds connect timeout
 
@@ -367,29 +411,15 @@ class MCPBridge private constructor(private val context: Context) {
                             return@withContext null
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "发送命令失败: ${command.optString("command")}", e)
+                        // 简化错误日志 - 只记录关键信息
+                        val cmdType = command.optString("command", "unknown")
+                        Log.e(TAG, "发送命令失败[$cmdType]: ${e.message}")
                         return@withContext null
                     } finally {
-                        // Close everything in the correct order with proper error handling
-                        try {
-                            writer?.close()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "关闭Writer异常", e)
-                        }
-
-                        try {
-                            reader?.close()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "关闭Reader异常", e)
-                        }
-
-                        try {
-                            if (socket?.isConnected == true && !socket.isClosed) {
-                                socket.close()
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "关闭Socket异常", e)
-                        }
+                        // 静默清理资源
+                        try { writer?.close() } catch (e: Exception) { }
+                        try { reader?.close() } catch (e: Exception) { }
+                        try { socket?.close() } catch (e: Exception) { }
                     }
                 }
     }
@@ -445,7 +475,9 @@ class MCPBridge private constructor(private val context: Context) {
         type: String,
         endpoint: String,
         connectionType: String?,
-        description: String? = null
+        description: String? = null,
+        bearerToken: String? = null,
+        headers: Map<String, String>? = null
     ): JSONObject? {
         val params =
             JSONObject().apply {
@@ -457,6 +489,14 @@ class MCPBridge private constructor(private val context: Context) {
                 }
                 if (description != null) {
                     put("description", description)
+                }
+                if (bearerToken != null) {
+                    put("bearerToken", bearerToken)
+                }
+                if (headers != null && headers.isNotEmpty()) {
+                    val headersObj = JSONObject()
+                    headers.forEach { (key, value) -> headersObj.put(key, value) }
+                    put("headers", headersObj)
                 }
             }
 

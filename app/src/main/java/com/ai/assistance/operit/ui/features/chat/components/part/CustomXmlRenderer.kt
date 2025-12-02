@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -37,12 +39,33 @@ class CustomXmlRenderer(
 ) : XmlContentRenderer {
     // 定义渲染器能够处理的内置标签集合
     private val builtInTags =
-            setOf("think", "thinking", "tool", "status", "tool_result", "html", "mood")
+            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood")
 
     @Composable
     override fun RenderXmlContent(xmlContent: String, modifier: Modifier, textColor: Color) {
         val trimmedContent = xmlContent.trim()
         val tagName = extractTagName(trimmedContent)
+        
+        // 无障碍朗读描述：只朗读块类型
+        val accessibilityDesc = when (tagName) {
+            "tool" -> stringResource(R.string.tool_call_block)
+            "tool_result" -> stringResource(R.string.tool_result_block)
+            "think", "thinking" -> stringResource(R.string.thinking_process_block)
+            "search" -> stringResource(R.string.search_content_block)
+            "status" -> stringResource(R.string.status_info_block)
+            "html" -> stringResource(R.string.html_content_block)
+            "mood" -> stringResource(R.string.mood_tag_block)
+            else -> stringResource(R.string.tool_call_block)
+        }
+        
+        // 用 Box 包裹所有内容，添加无障碍描述
+        Box(modifier = modifier.semantics { contentDescription = accessibilityDesc }) {
+            RenderXmlContentInternal(trimmedContent, tagName, textColor)
+        }
+    }
+    
+    @Composable
+    private fun RenderXmlContentInternal(trimmedContent: String, tagName: String?, textColor: Color) {
 
         // 根据设置决定是否渲染 think 和 thinking 标签
         if ((tagName == "think" || tagName == "thinking") && !showThinkingProcess) {
@@ -62,32 +85,33 @@ class CustomXmlRenderer(
 
         // 如果无法识别为有效的XML标签，则交由默认渲染器处理
         if (tagName == null) {
-            fallback.RenderXmlContent(xmlContent, modifier, textColor)
+            fallback.RenderXmlContent(trimmedContent, Modifier, textColor)
             return
         }
 
         // 根据新规则处理未闭合的标签
         if (!isXmlFullyClosed(trimmedContent)) {
-            if (tagName in builtInTags && tagName != "tool" && tagName != "think" && tagName != "thinking") {
+            if (tagName in builtInTags && tagName != "tool" && tagName != "think" && tagName != "thinking" && tagName != "search") {
                 // 是内置标签但未闭合，则不显示任何内容，等待其闭合
                 return
             } else if (!(tagName in builtInTags)) {
                 // 是未知标签且未闭合，则交由默认渲染器处理
-                fallback.RenderXmlContent(xmlContent, modifier, textColor)
+                fallback.RenderXmlContent(trimmedContent, Modifier, textColor)
                 return
             }
         }
 
         // 标签已正确闭合，根据标签名分发到对应的渲染函数
         when (tagName) {
-            "think" -> renderThinkContent(trimmedContent, modifier, textColor)
-            "thinking" -> renderThinkContent(trimmedContent, modifier, textColor)
-            "tool" -> renderToolRequest(trimmedContent, modifier, textColor)
-            "tool_result" -> renderToolResult(trimmedContent, modifier, textColor)
-            "status" -> renderStatus(trimmedContent, modifier, textColor)
-            "html" -> renderHtmlContent(trimmedContent, modifier, textColor)
-            "mood" -> renderMoodTag(trimmedContent, modifier, textColor)
-            else -> fallback.RenderXmlContent(xmlContent, modifier, textColor)
+            "think" -> renderThinkContent(trimmedContent, Modifier, textColor)
+            "thinking" -> renderThinkContent(trimmedContent, Modifier, textColor)
+            "search" -> renderSearchContent(trimmedContent, Modifier, textColor)
+            "tool" -> renderToolRequest(trimmedContent, Modifier, textColor)
+            "tool_result" -> renderToolResult(trimmedContent, Modifier, textColor)
+            "status" -> renderStatus(trimmedContent, Modifier, textColor)
+            "html" -> renderHtmlContent(trimmedContent, Modifier, textColor)
+            "mood" -> renderMoodTag(trimmedContent, Modifier, textColor)
+            else -> fallback.RenderXmlContent(trimmedContent, Modifier, textColor)
         }
     }
 
@@ -144,6 +168,79 @@ class CustomXmlRenderer(
         }
 
         return params
+    }
+
+    /** 渲染 <search> 标签内容 (Google Search Grounding 来源) */
+    @Composable
+    private fun renderSearchContent(content: String, modifier: Modifier, textColor: Color) {
+        val startTag = "<search>"
+        val endTag = "</search>"
+        val startIndex = content.indexOf(startTag) + startTag.length
+
+        // 提取搜索来源内容
+        val searchText =
+                if (content.contains(endTag)) {
+                    val endIndex = content.lastIndexOf(endTag)
+                    content.substring(startIndex, endIndex).trim()
+                } else {
+                    // 没有结束标签，直接使用startIndex后的所有内容
+                    content.substring(startIndex).trim()
+                }
+
+        var expanded by remember { mutableStateOf(false) }  // 默认收起
+
+        Column(modifier = modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 4.dp)) {
+            Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        expanded = !expanded
+                    },
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                val rotation by
+                        animateFloatAsState(
+                                targetValue = if (expanded) 90f else 0f,
+                                animationSpec = tween(durationMillis = 300),
+                                label = "arrowRotation"
+                        )
+
+                Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = if (expanded) "收起" else "展开",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
+                )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Text(
+                        text = stringResource(id = R.string.search_sources),  // 需要添加字符串资源
+                        style = MaterialTheme.typography.labelMedium,
+                        color = textColor.copy(alpha = 0.7f)
+                )
+            }
+
+            AnimatedVisibility(
+                    visible = expanded,
+                    enter = androidx.compose.animation.fadeIn(animationSpec = tween(200)),
+                    exit = androidx.compose.animation.fadeOut(animationSpec = tween(200))
+            ) {
+                if (searchText.isNotBlank()) {
+                    Box(
+                            modifier =
+                                    Modifier.fillMaxWidth()
+                                            .padding(top = 4.dp, bottom = 8.dp, start = 24.dp)
+                    ) {
+                        // 使用 Markdown 渲染器来渲染搜索来源（支持链接等格式）
+                        com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable(
+                                text = searchText,
+                                textColor = textColor.copy(alpha = 0.8f),
+                                modifier = Modifier
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /** 渲染 <think> 和 <thinking> 标签内容 */
@@ -254,27 +351,53 @@ class CustomXmlRenderer(
         val paramsText = params.entries.joinToString("\n") { (name, value) -> "$name: $value" }
 
         // 定义短内容和长内容的阈值
-        val contentLengthThreshold = 100
+        val contentLengthThreshold = 200
         val isLongContent = paramText.length > contentLengthThreshold
 
-        if (isLongContent) {
-            // 使用详细工具显示组件
-            DetailedToolDisplay(
+        val isClosed = isXmlFullyClosed(content)
+
+        // 特殊处理 apply_file 工具
+        if (toolName == "apply_file") {
+            if (isClosed) {
+                // 调用完成后，使用紧凑视图
+                CompactToolDisplay(
+                    toolName = toolName,
+                    params = paramText, // 传递完整的原始参数
+                    textColor = textColor,
+                    modifier = modifier,
+                    enableDialog = enableDialogs
+                )
+            } else {
+                // 调用过程中，使用详细视图
+                DetailedToolDisplay(
                     toolName = toolName,
                     params = paramText,
                     textColor = textColor,
                     modifier = modifier,
-                    enableDialog = enableDialogs  // 传递弹窗启用状态
-            )
+                    enableDialog = enableDialogs
+                )
+            }
         } else {
-            // 使用简洁工具显示组件
-            CompactToolDisplay(
-                    toolName = toolName,
-                    params = paramsText,
-                    textColor = textColor,
-                    modifier = modifier,
-                    enableDialog = enableDialogs  // 传递弹窗启用状态
-            )
+            // 对于其他工具，保持原有逻辑
+            if (isLongContent) {
+                // 使用详细工具显示组件
+                DetailedToolDisplay(
+                        toolName = toolName,
+                        params = paramText,
+                        textColor = textColor,
+                        modifier = modifier,
+                        enableDialog = enableDialogs  // 传递弹窗启用状态
+                )
+            } else {
+                // 使用简洁工具显示组件
+                CompactToolDisplay(
+                        toolName = toolName,
+                        params = paramText, // 传递原始XML文本
+                        textColor = textColor,
+                        modifier = modifier,
+                        enableDialog = enableDialogs  // 传递弹窗启用状态
+                )
+            }
         }
     }
 
@@ -299,29 +422,50 @@ class CustomXmlRenderer(
         val contentMatch = contentRegex.find(content)
         val resultContent = contentMatch?.groupValues?.get(1)?.trim() ?: ""
 
-        // 如果是错误状态，尝试提取错误信息
-        val errorContent =
-                if (!isSuccess) {
-                    val errorRegex = "<error>(.*?)</error>".toRegex(RegexOption.DOT_MATCHES_ALL)
-                    val errorMatch = errorRegex.find(resultContent)
-                    errorMatch?.groupValues?.get(1)?.trim() ?: resultContent
-                } else {
-                    resultContent
-                }
+        // 检查结果是否为 file-diff
+        if (toolName == "apply_file" && isSuccess && resultContent.contains("<file-diff")) {
+            val pathRegex = "<file-diff path=\"([^\"]+)\"".toRegex()
+            val detailsRegex = "details=\"([^\"]+)\"".toRegex()
+            val cdataRegex = "<!\\[CDATA\\[(.*?)\\]\\]>".toRegex(RegexOption.DOT_MATCHES_ALL)
 
-        // 使用ToolResultDisplay组件显示结果
-        ToolResultDisplay(
-                toolName = toolName,
-                result = if (isSuccess) resultContent else errorContent,
-                isSuccess = isSuccess,
-                onCopyResult = {
-                    val textToCopy = if (isSuccess) resultContent else errorContent
-                    if (textToCopy.isNotBlank()) {
-                        clipboardManager.setText(AnnotatedString(textToCopy))
+            val path = pathRegex.find(resultContent)?.groupValues?.get(1) ?: ""
+            val details = detailsRegex.find(resultContent)?.groupValues?.get(1) ?: ""
+            val diffContent = cdataRegex.find(resultContent)?.groupValues?.get(1)?.trim() ?: ""
+
+            // unescape XML characters
+            val unescapedDiffContent = diffContent
+                .replace("<", "<")
+                .replace(">", ">")
+                .replace("&", "&")
+
+            FileDiffDisplay(diff = FileDiff(path, unescapedDiffContent, details))
+        } else {
+            // 如果是错误状态，尝试提取错误信息
+            val errorContent =
+                    if (!isSuccess) {
+                        val errorRegex = "<error>(.*?)</error>".toRegex(RegexOption.DOT_MATCHES_ALL)
+                        val errorMatch = errorRegex.find(resultContent)
+                        errorMatch?.groupValues?.get(1)?.trim() ?: resultContent
+                    } else {
+                        // 从结果中移除 file-diff 块（如果存在）
+                        val fileDiffRegex = """<file-diff.*</file-diff>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+                        resultContent.replace(fileDiffRegex, "").trim()
                     }
-                },
-                enableDialog = enableDialogs  // 传递弹窗启用状态
-        )
+
+            // 使用ToolResultDisplay组件显示结果
+            ToolResultDisplay(
+                    toolName = toolName,
+                    result = if (isSuccess) errorContent else errorContent, // now errorContent contains the cleaned result for success case
+                    isSuccess = isSuccess,
+                    onCopyResult = {
+                        val textToCopy = if (isSuccess) errorContent else errorContent
+                        if (textToCopy.isNotBlank()) {
+                            clipboardManager.setText(AnnotatedString(textToCopy))
+                        }
+                    },
+                    enableDialog = enableDialogs  // 传递弹窗启用状态
+            )
+        }
     }
 
     /** 渲染状态信息标签 <status type="..." tool="..." uuid="..." title="..." subtitle="...">...</status> */

@@ -115,12 +115,19 @@
     <string name="mcp">MCP</string>
     <string name="token_config_title">DeepSeek Token配置</string>
     <string name="chat_history_settings">聊天记录管理</string>
+    <string name="character_card_change_title">角色卡已变更</string>
+    <string name="character_card_change_prompt">角色卡已变更，是否前往对话管理界面处理聊天绑定的角色卡？</string>
+    <string name="go_to_chat_management">前往对话管理</string>
+    <string name="maybe_later">暂不处理</string>
     
     <!-- 聊天记录管理界面 -->
     <string name="chat_history_manager">聊天记录管理</string>
     <string name="export_chat_history">导出聊天记录</string>
     <string name="import_chat_history">导入聊天记录</string>
     <string name="clear_chat_history">清除所有聊天记录</string>
+    <string name="bind_character_card">绑定角色卡</string>
+    <string name="unbound_character_card">未绑定</string>
+    <string name="chat_binding_scope_hint">仅影响此对话的绑定，不会修改已有消息</string>
     <string name="confirm_delete">确认删除</string>
     <string name="delete_warning">删除所有聊天记录将无法恢复。建议在执行此操作前先导出备份。</string>
     <string name="export_success">导出成功</string>
@@ -131,6 +138,14 @@
     <string name="current_chats">当前共有 %1$d 条聊天记录</string>
     <string name="backup_location">备份文件保存在「下载/Operit」文件夹中</string>
     <string name="faq_backup">常见问题</string>
+    <string name="history_filter_role_card">按角色卡分类</string>
+    <string name="history_filter_role_card_desc">角色卡-文件夹-对话三级分类</string>
+    <string name="history_filter_folder">按文件夹分类</string>
+    <string name="history_filter_folder_desc">显示为文件夹+对话（全部角色卡）</string>
+    <string name="history_filter_current_card">仅显示当前角色卡</string>
+    <string name="history_filter_current_card_desc">仅显示当前角色卡下的文件夹和对话</string>
+    <string name="history_auto_switch_character">自动切换角色卡</string>
+    <string name="history_auto_switch_character_desc">切换对话时自动匹配绑定的角色卡</string>
     
     <!-- Terminal Screen -->
     <string name="termux_not_installed">Termux 未安装</string>
@@ -181,7 +196,6 @@
     <string name="config_get_token">获取Token</string>
     <string name="config_use_free">薅贡献者的</string>
     <string name="config_custom">自定义</string>
-    <string name="config_tip">自己的token更加稳定，薅贡献者的用多了作者会破产，软件就没有更新了</string>
     <string name="config_free_usage_exceeded">今日免费次数已用完</string>
     
     <!-- 一键配置相关 -->
@@ -352,6 +366,8 @@
     <string name="disable_tools">禁用工具</string>
     <string name="disable_tools_desc">禁用后，AI将无法调用文件系统、HTTP等常规工具。但如果"记忆附着"开关开启，AI仍可访问记忆库进行知识查询和管理</string>
     <string name="tools_disabled">工具已禁用</string>
+    <string name="max_mode_title">Max模式</string>
+    <string name="max_mode_info">Max Mode（超大上下文模式）开启后将使用 %2$sk 上下文窗口，关闭则回到 %1$sk。您可以在设置中自定义这些数值。</string>
     <string name="processing_input">正在处理输入...</string>
     <string name="references">参考资料:</string>
     <string name="tool_weather">天气查询</string>
@@ -382,10 +398,18 @@
     <string name="settings_theme_appearance">主题和外观</string>
     <string name="settings_theme_appearance_desc">个性化应用外观，包括深色/浅色模式和自定义配色方案</string>
     <string name="settings_customize_theme">自定义主题</string>
+    <string name="settings_global_display">全局显示设置</string>
+    <string name="settings_global_display_subtitle">管理消息显示、FPS计数器和通知等全局显示选项</string>
     <string name="settings_data_backup">数据备份与恢复</string>
     <string name="settings_data_backup_desc">导入、导出或删除聊天记录和问题库数据，方便备份和恢复重要信息</string>
     <string name="settings_manage_backup">管理备份</string>
+    <string name="settings_chat_history_management">聊天记录管理</string>
+    <string name="settings_chat_history_management_subtitle">查看统计并批量整理、导入导出聊天记录</string>
     
+    <string name="reset_successful">重置成功</string>
+    <string name="reset_default_character">重置默认角色卡</string>
+    <string name="reset_default_character_confirm">确定要重置默认角色卡吗？这将恢复默认的名称、设定和提示词，并重置头像和主题。</string>
+
     <string name="settings_section_ai_model">AI模型配置</string>
     <string name="settings_model_parameters">模型与参数配置</string>
     <string name="settings_model_parameters_desc">配置API设置、模型名称与参数，支持多配置管理</string>
@@ -856,6 +880,7 @@
     
     <!-- 聊天历史选择器 -->
     <string name="chat_history">对话历史</string>
+    <string name="search_chat_history_hint">搜索</string>
     <string name="new_chat">新建对话</string>
     <string name="new_conversation">新对话</string>
     
@@ -1007,15 +1032,22 @@
     <string name="auto_read_message">自动朗读</string>
     <string name="auto_read_desc">启用后，AI回复会自动朗读</string>
     <string name="auto_read_active">自动朗读已启用</string>
+    <string name="disable_stream_output">禁用流式输出</string>
+    <string name="disable_stream_output_desc">禁用后，AI回复将一次性完整显示，而不是逐字流式显示</string>
     <string name="reply_message">回复</string>
     <string name="stop_reading">停止朗读</string>
     <string name="edit_and_resend">编辑并重发</string>
     <string name="select_copy">选择并复制</string>
+    <string name="create_branch">创建分支</string>
+    <string name="branch">分支</string>
+    <string name="parent_chat">父对话: %1$s</string>
 
     <string name="modify_memory">修改记忆</string>
     <string name="delete_from_here">删除到此</string>
     <string name="multi_select">多选</string>
     <string name="exit_multi_select">退出多选</string>
+    <string name="select_all_messages">全选</string>
+    <string name="clear_selection">取消</string>
     <string name="delete_selected">删除选中</string>
     <string name="share_selected">分享</string>
     <string name="selected_count">已选择 %d 条</string>
@@ -1345,6 +1377,41 @@
     <string name="tool_shell_executor_desc">执行Shell命令并查看输出结果，支持常用命令预设</string>
     <string name="tool_log_viewer">日志查看器</string>
     <string name="tool_log_viewer_desc">实时捕获并查看系统和应用日志，支持过滤和搜索</string>
+    <string name="tool_process_limit_remover">解除幻象进程限制</string>
+    <string name="tool_process_limit_remover_desc">管理Android 12+的幻象进程数量限制，允许更多后台子进程</string>
+    
+    <!-- Process Limit Remover Screen -->
+    <string name="process_limit_title">解除幻象进程限制</string>
+    <string name="process_limit_subtitle">管理Android 12+的幻象进程数量限制</string>
+    <string name="process_limit_info_title">关于幻象进程限制</string>
+    <string name="process_limit_what_is_title">什么是幻象进程限制？</string>
+    <string name="process_limit_what_is_desc">Android 12+ 引入了幻象进程（Phantom Processes）机制，用于限制后台子进程的数量，防止应用通过创建大量子进程消耗系统资源。</string>
+    <string name="process_limit_benefits_title">解除限制的作用</string>
+    <string name="process_limit_benefits_desc">• 允许应用创建更多后台子进程\n• 提高后台任务的执行能力\n• 避免子进程被系统意外终止\n• 适用于需要多进程处理的应用</string>
+    <string name="process_limit_warnings_title">注意事项</string>
+    <string name="process_limit_warnings_desc">• 仅支持 Android 12 及以上版本\n• 可能增加电量消耗和内存占用\n• 需要 ADB Shell 权限或 Root 权限\n• 重启设备后设置将失效，需重新执行</string>
+    <string name="process_limit_action_remove">解除限制</string>
+    <string name="process_limit_action_remove_desc">解除Android系统的幻象进程数量限制</string>
+    <string name="process_limit_action_restore">恢复限制</string>
+    <string name="process_limit_action_restore_desc">恢复Android系统的默认幻象进程限制</string>
+    <string name="process_limit_status_checking">检查中…</string>
+    <string name="process_limit_status_removed">已解除限制（最大值：%s）</string>
+    <string name="process_limit_status_limited">已限制（当前限制：%s 个进程）</string>
+    <string name="process_limit_status_default">默认限制（未设置自定义值）</string>
+    <string name="process_limit_status_unknown">未知状态</string>
+    <string name="process_limit_status_unsupported">当前设备不支持（需要 Android 12+）</string>
+    <string name="process_limit_current_status">当前状态</string>
+    <string name="process_limit_choose_action">选择操作</string>
+    <string name="process_limit_execute">执行</string>
+    <string name="process_limit_executing">执行中…</string>
+    <string name="process_limit_success_title">执行成功</string>
+    <string name="process_limit_error_title">执行失败</string>
+    <string name="process_limit_execution_history">执行历史</string>
+    <string name="process_limit_no_history">暂无执行历史</string>
+    <string name="process_limit_output">输出</string>
+    <string name="process_limit_error_output">错误输出</string>
+    <string name="process_limit_exit_code">退出码：%d</string>
+    <string name="process_limit_command">命令</string>
     <string name="toolbox_description">便捷实用的工具集合，提升您的工作效率</string>
     
     <!-- MCP Config Screen -->
@@ -2123,10 +2190,18 @@
     <string name="delete_group_only">仅删除分组</string>
     <string name="chats_move_to_ungrouped">对话将移至"未分组"</string>
     <string name="edit_title">编辑标题</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+    <string name="drag_item">拖动项目 %1$s</string>
     <string name="new_title">新标题</string>
     <string name="new_group">新建分组</string>
     <string name="group_name">分组名称</string>
     <string name="create_new_group">新建分组</string>
+    <string name="target_group_optional">目标分组（可选）</string>
+    <string name="enter_group_name_hint">分组名称（留空不修改）</string>
+    <string name="batch_assign_description">批量将所选对话绑定到指定角色卡或分组。可以仅修改分组而不切换角色卡，也可以同时修改两者。</string>
+    <string name="batch_assign_title">历史记录批量归类</string>
+    <string name="batch_assign_subtitle">选择多个聊天记录并批量调整角色卡绑定或分组</string>
     <string name="long_press_to_manage">长按管理</string>
     <string name="edit_title_desc">编辑标题</string>
     <string name="reorder">Reorder</string>
@@ -2174,6 +2249,8 @@
     <string name="chat_settings_bar_right_margin_desc">调整聊天设置按钮距离屏幕右边缘的距离，单位为dp</string>
     <string name="chat_settings_button_end_padding">聊天设置按钮右边距</string>
     <string name="chat_settings_button_end_padding_desc">调整聊天设置按钮距离屏幕右边缘的距离，单位为dp</string>
+    <string name="chat_area_horizontal_padding">聊天区域水平内边距</string>
+    <string name="chat_area_horizontal_padding_desc">调整聊天消息区域距离屏幕左右边缘的距离，单位为dp</string>
     <string name="current_value">当前值</string>
     <string name="closer_to_edge">靠近边缘</string>
     <string name="farther_from_edge">远离边缘</string>
@@ -2194,13 +2271,22 @@
     <string name="settings_usage_summary">使用统计</string>
     <string name="settings_total_tokens">总Token数</string>
     <string name="settings_total_cost">总费用</string>
+    <string name="settings_total_requests">总请求次数</string>
     <string name="settings_model_details">模型详情</string>
-    <string name="settings_click_to_edit_pricing">点击编辑定价</string>
+    <string name="settings_click_to_edit_pricing">点击编辑定价和计费方式</string>
     <string name="settings_edit_model_pricing">编辑模型定价 - %1$s</string>
     <string name="settings_pricing_description">设置每百万Token的人民币价格</string>
     <string name="settings_input_price_per_million">输入价格（每百万Token）</string>
     <string name="settings_output_price_per_million">输出价格（每百万Token）</string>
     <string name="settings_cached_input_price_per_million">缓存输入价格（每百万Token）</string>
+    <string name="settings_request_count">请求次数</string>
+    <string name="settings_request_count_label">请求次数: %1$d</string>
+    <string name="settings_billing_mode">计费方式</string>
+    <string name="settings_billing_mode_token">按Token计费</string>
+    <string name="settings_billing_mode_count">按次计费</string>
+    <string name="settings_price_per_request">单次请求价格（元）</string>
+    <string name="settings_per_request_cost">每次 ¥%1$.4f</string>
+    <string name="settings_switch_billing_mode">切换计费方式</string>
     <string name="settings_save">保存</string>
     <string name="settings_cancel">取消</string>
     <string name="settings_reset_confirmation">重置确认</string>
@@ -2420,6 +2506,9 @@
     <string name="model_config_name_placeholder">例如: GPT-4配置、Claude配置...</string>
     <string name="create_action">创建</string>
     <string name="new_config_created">新配置已创建</string>
+    <string name="rename_model_config">重命名模型配置</string>
+    <string name="rename_model_config_desc">修改模型配置的名称</string>
+    <string name="config_renamed">配置已重命名</string>
     
     <!-- ModelApiSettingsSection strings -->
     <string name="api_settings">API设置</string>
@@ -2444,6 +2533,11 @@
     <string name="default_config_model_restriction">使用默认配置时，只能使用deepseek-chat模型</string>
     <string name="enable_direct_image_processing">启用直接图片处理</string>
     <string name="enable_direct_image_processing_desc">启用后，图片将直接发送给AI处理，而不是让AI通过OCR工具读取</string>
+    <string name="enable_google_search">启用 Google Search</string>
+    <string name="enable_google_search_desc">启用后，Gemini 将使用 Google 搜索来增强回答（可能产生额外费用）</string>
+    <string name="enable_tool_call">启用 Tool Call 接口调用工具</string>
+    <string name="enable_tool_call_desc">启用后，将使用模型原生的Tool Call接口调用工具，而不是XML格式（需要模型支持）</string>
+    <string name="search_sources">搜索来源</string>
     <string name="api_settings_saved">API设置已保存</string>
     <string name="save_api_settings">保存API设置</string>
     <string name="available_models_list">可用模型列表</string>
@@ -2467,6 +2561,7 @@
     <string name="provider_baichuan">百川大模型</string>
     <string name="provider_moonshot">月之暗面大模型</string>
     <string name="provider_deepseek">Deepseek大模型</string>
+    <string name="provider_mistral">Mistral AI (Codestral)</string>
     <string name="provider_siliconflow">硅基流动</string>
     <string name="provider_openrouter">OpenRouter (多模型聚合)</string>
     <string name="provider_infiniai">无问芯穹</string>
@@ -2499,11 +2594,13 @@
     <string name="creativity_parameters">创造性参数</string>
     <string name="repetition_control_parameters">重复控制参数</string>
     <string name="reset">重置</string>
-    <string name="reset_parameters">重置参数</string>
-    <string name="save_parameters">保存参数</string>
+    <string name="reset_parameters">重置</string>
+    <string name="save_parameters">保存</string>
     <string name="api_name_format">API名称: %s</string>
     <string name="collapse">收起</string>
     <string name="expand">展开</string>
+    <string name="collapsed">已收起</string>
+    <string name="expanded">已展开</string>
     <string name="must_be_integer">必须是整数</string>
     <string name="value">值</string>
     <string name="range_format">范围: %1$s - %2$s</string>
@@ -2533,7 +2630,7 @@
     <string name="must_be_boolean">必须为\'true\'或\'false\'</string>
     
     <string name="add_custom_parameter_failed">添加自定义参数失败: %s</string>
-    <string name="add_custom_parameter">添加自定义参数</string>
+    <string name="add_custom_parameter">添加</string>
     <string name="custom_parameters_section">自定义参数</string>
     <string name="edit_custom_parameter">编辑自定义参数</string>
     <string name="custom_parameter_updated">自定义参数已更新</string>
@@ -2584,8 +2681,10 @@
     <string name="screen_title_model_prompts_settings">模型提示词设置</string>
     <string name="screen_title_functional_config">功能模型配置</string>
     <string name="screen_title_theme_settings">主题设置</string>
+    <string name="screen_title_global_display_settings">全局显示设置</string>
     <string name="screen_title_layout_adjustment">布局调整</string>
     <string name="screen_title_chat_history_settings">聊天记录管理</string>
+    <string name="screen_title_chat_backup_settings">数据备份与恢复</string>
     <string name="screen_title_language_settings">语言设置</string>
     <string name="screen_title_file_manager">文件管理器</string>
     <string name="screen_title_terminal">命令终端</string>
@@ -2599,6 +2698,7 @@
     <string name="screen_title_tool_tester">工具测试中心</string>
     <string name="screen_title_text_to_speech">文本转语音</string>
     <string name="screen_title_speech_to_text">语音识别</string>
+    <string name="screen_title_process_limit_remover">解除幻象进程限制</string>
     <string name="screen_title_default_assistant_guide">默认助手设置</string>
     <string name="screen_title_mcp_market">MCP 市场</string>
     <string name="screen_title_mcp_publish">发布 MCP 插件</string>
@@ -2907,6 +3007,8 @@
     <!-- 手动更新记忆 -->
     <string name="manual_memory_update">手动更新记忆</string>
     <string name="manual_memory_update_desc">当AI在任务完成后忘记总结时，手动触发记忆保存，将本次对话的有价值内容存入长期记忆库。</string>
+    <string name="manual_conversation_summary">手动总结对话</string>
+    <string name="manual_conversation_summary_desc">立即触发一次对话总结，帮助压缩上下文并保留双方重点内容，适用于长对话或发送前清理历史。</string>
 
     <!-- Context and Summary Settings Screen -->
     <string name="screen_title_context_summary_settings">上下文和总结设置</string>
@@ -3032,8 +3134,15 @@
     <string name="default_assistant_guide_step2_desc">设置如何快速唤起 Operit 助手</string>
     <string name="default_assistant_guide_step2_detail1">• 长按Home键：最常用的方式，在大部分设备上都可用</string>
     <string name="default_assistant_guide_step2_detail2">• 从屏幕底部向上滑动：部分支持全面屏手势的设备</string>
+    <string name="default_assistant_guide_step2_detail_android12">Android 12+: 设置 → 应用 → 默认应用 → 数字助理应用 → 默认数字助理应用</string>
     <string name="default_assistant_guide_step2_detail3">• 语音唤醒："Hey Google"或设备指定的唤醒词（需设备支持）</string>
     <string name="default_assistant_guide_step2_note">注意：不同品牌手机的手势设置可能有所不同，请在系统设置中查看可用选项</string>
+    
+    <!-- 步骤4: 测试语音助手 -->
+    <string name="default_assistant_guide_step4_title">测试语音助手</string>
+    <string name="default_assistant_guide_step4_desc">设置完成后，测试是否能正常启动</string>
+    <string name="default_assistant_guide_step4_detail1">• 长按Home键（主屏幕按钮）应该会调起 Operit 语音助手</string>
+    <string name="default_assistant_guide_step4_detail2">• 如果设备支持语音唤醒，说"Hey Google"或设备指定的唤醒词也可能触发 Operit</string>
     
     <!-- 步骤3: 测试助手功能 -->
     <string name="default_assistant_guide_step3_title">测试助手功能</string>
@@ -3050,4 +3159,274 @@
     <string name="voice_interaction_service_name">Operit AI 助手</string>
     <string name="voice_interaction_service_summary">智能语音助手服务</string>
 
+    <!-- Tool Permission Settings -->
+    <string name="tool_permissions_title">工具权限</string>
+    <string name="tool_permissions_description">默认情况下，所有工具都需要您"询问"。您可以在下面添加例外。</string>
+    <string name="global_permission_switch">全局权限开关</string>
+    <string name="global_permission_switch_description">此设置作为主控制，可以覆盖单个工具权限。</string>
+    <string name="permission_level_allow">允许</string>
+    <string name="permission_level_allow_description">这些工具将自动运行。</string>
+    <string name="permission_level_cautious">谨慎</string>
+    <string name="permission_level_cautious_description">这些工具只会在危险操作时询问。</string>
+    <string name="permission_level_forbid">禁止</string>
+    <string name="permission_level_forbid_description">这些工具永远不会运行。</string>
+    <string name="permission_level_ask">询问</string>
+    <string name="permission_level_ask_description">所有工具的默认行为。</string>
+    <string name="add_tool">添加工具</string>
+    <string name="no_tools_in_group">此组中未添加任何工具。</string>
+    <string name="remove_tool">移除</string>
+    <string name="select_tools">选择工具</string>
+    <string name="search_tools">搜索</string>
+    <string name="done">完成</string>
+    <string name="forbid">禁止</string>
+
+    <!-- 屏幕方向改变对话框 -->
+    <string name="dialog_title_orientation_change">屏幕方向变化</string>
+    <string name="dialog_message_orientation_change">检测到屏幕方向发生变化，是否重新加载页面？</string>
+    <string name="dialog_button_confirm">重新加载</string>
+    <string name="dialog_button_dismiss">取消</string>
+    
+    <!-- Chat binding announcement -->
+    <string name="chat_binding_announcement_title">对话已绑定角色卡</string>
+    <string name="chat_binding_announcement_body">本次更新后，所有对话都会绑定一个角色卡。\n\n此前的聊天记录已自动归类到「默认角色卡」，你可以前往「设置 &gt; 聊天管理」批量调整、重命名或重新分组。</string>
+    <string name="chat_binding_announcement_primary_button">前往</string>
+    <string name="chat_binding_announcement_acknowledge">我知道了</string>
+    <string name="chat_binding_announcement_acknowledge_countdown">我知道了（%1$ds后可点击）</string>
+
+    <string name="settings_context_card_title">设置说明:</string>
+    <string name="settings_context_card_content">· 上下文长度: 建议设为您日常使用的最大值。\n· 最大上下文长度: 建议设为模型API支持的最大值。\n软件会在上下文达到阈值时自动压缩，以防超限。请注意，上下文并非越大越好，需用户与软件协同配合。</string>
+
+    <!-- 聊天组件硬编码字符串 -->
+    <string name="reply">回复</string>
+    <string name="image">图片</string>
+    <string name="image_expired">图片 (已过期)</string>
+    <string name="copy_content">复制内容</string>
+    <string name="user_reply_instruction">用户正在回复你之前的这条消息：</string>
+    <string name="workspace_status">工作区状态</string>
+    <string name="workspace">工作区</string>
+    <string name="history_dialog_summary">历史对话摘要</string>
+    <string name="confirm_delete_summary">确认删除摘要</string>
+    <string name="confirm_delete_summary_message">你确定要删除这条摘要吗？此操作无法撤销。</string>
+    <string name="tool_execution_result">工具执行结果</string>
+    <string name="success">成功</string>
+    <string name="failed">失败</string>
+    <string name="execution_success">执行成功</string>
+    <string name="execution_failed">执行失败</string>
+    <string name="copy_result">复制结果</string>
+    <string name="tool_call_parameters">调用参数</string>
+    <string name="tool_call">工具调用</string>
+    <string name="lines_count">行</string>
+    <string name="edit_message">编辑消息</string>
+    <string name="visual">可视化</string>
+    <string name="plain_text">纯文本</string>
+    <string name="plain_text_content">纯文本内容</string>
+    <string name="input_text_content">输入文本内容...</string>
+    <string name="text_label">文本</string>
+    <string name="attributes_optional">属性 (可选)</string>
+    <string name="content_label">内容</string>
+    <string name="tag_example">例如: code, image, bold</string>
+    <string name="attributes_example">例如: id="example" class="test"</string>
+    <string name="new_tag">新建标签</string>
+    <string name="create_new_xml_tag">创建一个新的XML标签</string>
+    <string name="modify_xml_tag_content">修改XML标签内容</string>
+    <string name="select_memory_folder">选择记忆文件夹</string>
+    <string name="select_memory_folder_description">选择一个或多个文件夹，AI将能够在其中检索相关记忆</string>
+    <string name="load_folder_failed">加载文件夹失败: %1$s</string>
+    <string name="no_memory_folder">暂无记忆文件夹\n请先在记忆管理中创建文件夹</string>
+    <string name="confirm_with_count">确定 (%1$d)</string>
+    <string name="uncategorized">未分类</string>
+    <string name="link_preview">链接预览</string>
+    <string name="link_address">链接地址:</string>
+    <string name="no_app_found">没有找到可以打开此链接的应用</string>
+    <string name="open_link_failed">打开链接失败: %1$s</string>
+    <string name="visit">访问</string>
+    <string name="confirm_link_safety">请确认链接安全后再访问</string>
+    <string name="select_export_platform">选择导出平台</string>
+    <string name="configure_android_app">配置Android应用</string>
+    <string name="configure_windows_app">配置Windows应用</string>
+    <string name="package_name_label">包名</string>
+    <string name="app_name_label">应用名称</string>
+    <string name="app_icon">应用图标:</string>
+    <string name="click_select_icon">点击选择图标</string>
+    <string name="exporting">导出中</string>
+    <string name="export_failed">导出失败</string>
+    <string name="file_saved_to">文件已保存到:</string>
+    <string name="token_limit_warning">Token 超限警告</string>
+    <string name="token_limit_warning_message">消息已超出Token上限，继续发送可能会导致上下文丢失或AI无法理解。是否继续？</string>
+    <string name="continue_send">继续发送</string>
+    <string name="microphone_permission_denied_toast">麦克风权限被拒绝</string>
+    <string name="executing_tool">正在执行工具: %1$s</string>
+    <string name="processing_tool_result">正在处理工具结果: %1$s</string>
+    <string name="input_question_hint">请输入您的问题...</string>
+    <string name="input_question_with_workspace">输入问题，使用@来引用文件</string>
+    <string name="add_attachment">添加附件</string>
+    <string name="user_uploaded_image">用户上传的图片</string>
+    <string name="decode_image_failed">解码图片失败: %1$s</string>
+    <string name="parse_message_failed">解析消息内容失败</string>
+    <string name="unknown_tool">未知工具</string>
+    <string name="cancel_reply">取消回复</string>
+    <string name="content_fragment">内容片段</string>
+    <string name="add_text">添加文本</string>
+    <string name="add_tag">添加标签</string>
+    <string name="save_and_resend">保存并重发</string>
+    <string name="update_memory">更新记忆</string>
+    <string name="chat_message">聊天消息</string>
+    <string name="share_failed_log">分享失败</string>
+    <string name="generate_image_failed">生成图片失败: %1$s</string>
+    <string name="start_export">开始导出...</string>
+    <string name="file_operation_error">文件操作错误: %1$s</string>
+    <string name="voice_input">语音输入</string>
+    <string name="insert_attachment">插入附件</string>
+    <string name="remove_attachment">删除附件</string>
+    <string name="token_limit_exceeded_message">已超出最大Token限制 (%1$d / %2$d)</string>
+    
+    <!-- Font Settings -->
+    <string name="font_file_saved">字体文件已保存 (.%1$s)</string>
+    <string name="font_file_save_failed">字体文件保存失败</string>
+    <string name="unsupported_font_format">不支持的文件格式，请选择 .ttf, .otf 或 .ttc 字体文件</string>
+    <string name="current_character">当前角色: %1$s</string>
+    <string name="theme_auto_bind_character_card">主题设置将自动绑定到此角色卡</string>
+    <string name="enable_custom_font">启用自定义字体</string>
+    <string name="use_system_or_custom_font">使用系统字体或自定义字体文件</string>
+    <string name="font_type_label">字体类型</string>
+    <string name="system_font">系统字体</string>
+    <string name="custom_font_file">自定义文件</string>
+    <string name="select_system_font">选择系统字体</string>
+    <string name="custom_font_file_title">自定义字体文件</string>
+    <string name="font_file_support_desc">支持 .ttf、.otf 和 .ttc 字体文件</string>
+    <string name="select_font_file">选择字体文件</string>
+    <string name="clear_font">清除字体</string>
+    <string name="current_font_file_path">当前字体文件:\n%1$s</string>
+    <string name="font_size_scale_label">字体大小缩放 (%1$s)</string>
+    
+    <!-- Chat History Batch -->
+    <string name="no_available_character_cards_toast">暂无可用角色卡，请先创建一个角色卡</string>
+    <string name="please_select_chats_first">请先选择聊天记录</string>
+    <string name="chats_unbound_from_card">已移除 %1$d 条对话的角色卡绑定</string>
+    <string name="chats_assigned_to_character">已将 %1$d 条对话归类到「%2$s」</string>
+    <string name="chats_group_updated">已将 %1$d 条对话的分组设置为「%2$s」</string>
+    <string name="batch_update_failed">批量更新失败：%1$s</string>
+    <string name="loading_data_please_wait">正在加载数据，请稍候…</string>
+    <string name="no_chat_stats_to_assign">未找到需要归类的聊天统计</string>
+    <string name="please_select_a_character_card">请选择一个角色卡</string>
+    <string name="assigned_to_character_card">已归类到角色卡「%1$s」</string>
+    <string name="assign_failed_error">归类失败：%1$s</string>
+    <string name="chat_history_overview">聊天记录概览</string>
+    <string name="counting_chat_data">正在统计聊天数据…</string>
+    <string name="no_chat_data_available">暂无聊天数据可供统计。</string>
+    <string name="chats_and_messages_count">%1$d 个对话 · %2$d 条消息</string>
+    <string name="click_to_assign_to_card">点击归类到现有角色卡</string>
+    <string name="search_by_title_group_card">按标题、分组或角色卡搜索</string>
+    <string name="filter_chat_history">筛选聊天记录</string>
+    <string name="no_chat_records_for_batch">暂无聊天记录，无法进行批量操作。</string>
+    <string name="no_matching_chats_adjust_filter">没有匹配的聊天记录，请调整筛选条件。</string>
+    
+    <!-- Assign Dialog -->
+    <string name="assign_to_character_card_title">归类到角色卡</string>
+    <string name="unbound_chats_select_card">共有 %1$d 条聊天记录未绑定角色卡。请选择要归类到的目标角色卡：</string>
+    <string name="no_cards_create_first">暂无可用角色卡，请先创建一个角色卡。</string>
+    <string name="assign_action">归类</string>
+    <string name="select_all_current_list">全选</string>
+    <string name="target_character_card_optional">目标角色卡（可选）</string>
+    <string name="select_card_or_unbind">请选择一个角色卡或取消绑定</string>
+    <string name="remove_character_card_binding">移除角色卡绑定</string>
+    <string name="no_available_character_cards_dropdown">暂无可用角色卡</string>
+    <string name="cancel_selection">取消选择</string>
+    <string name="character_card_label">角色卡：%1$s</string>
+    <string name="chat_records_label">聊天记录</string>
+    <string name="group_label">分组：%1$s</string>
+    <string name="unnamed_conversation">未命名对话</string>
+    
+    <!-- Character Selector -->
+    <string name="select_character">选择角色</string>
+    <string name="character_count">%1$d 个角色</string>
+    
+    <!-- Attachment Selector -->
+    <string name="attachment_photo">照片</string>
+    <string name="attachment_camera">拍照</string>
+    <string name="attachment_memory">记忆</string>
+    <string name="attachment_audio">音频</string>
+    <string name="attachment_file">文件</string>
+    <string name="attachment_screen_content">屏幕内容</string>
+    <string name="attachment_notifications">当前通知</string>
+    <string name="attachment_location">当前位置</string>
+    <string name="attachments_count">附件 (%1$d)</string>
+    
+    <!-- Workspace -->
+    <string name="select_file_to_reference">选择要引用的文件</string>
+    <string name="workspace_directory_invalid">工作区目录不存在或无效</string>
+    <string name="chat_not_bound_to_workspace">当前对话未绑定工作区</string>
+    <string name="file_browser">文件浏览器</string>
+    <string name="unbind_workspace_title">解绑工作区</string>
+    <string name="unbind">解绑</string>
+    <string name="unbind_workspace_confirm">确定要解绑当前聊天的工作区吗？解绑后将无法访问工作区文件和上下文信息。</string>
+    <string name="save_changes_question">保存更改？</string>
+    <string name="file_modified_save_prompt">文件 \'%1$s\' 已修改，是否保存更改？</string>
+    <string name="dont_save">不保存</string>
+    <string name="format_code">格式化代码</string>
+    <string name="create_default_workspace">创建默认</string>
+    <string name="create_new_workspace_in_app">在应用内创建新工作区</string>
+    <string name="select_existing_workspace">选择现有</string>
+    <string name="select_folder_from_device">从设备中选择一个文件夹</string>
+    
+    <!-- Global Display Settings -->
+    <string name="global_display_settings_description">这些设置控制全局显示行为，独立于角色卡和主题配置。</string>
+    <string name="message_display_settings">消息显示设置</string>
+    <string name="show_model_provider">显示模型供应商</string>
+    <string name="show_model_provider_description">在AI消息中显示模型供应商名称</string>
+    <string name="show_model_name">显示模型名称</string>
+    <string name="show_model_name_description">在AI消息中显示使用的模型名称</string>
+    <string name="show_role_name">显示角色卡名</string>
+    <string name="show_role_name_description">在AI消息中显示当前角色卡名称</string>
+    <string name="show_user_name">显示用户名字</string>
+    <string name="show_user_name_description">在用户消息中显示用户名字</string>
+    <string name="global_user_name">全局用户名字</string>
+    <string name="system_display_settings">系统显示设置</string>
+    <string name="show_fps_counter_description">在屏幕上显示帧率性能指标</string>
+    <string name="enable_reply_notification">启用回复通知</string>
+    <string name="enable_reply_notification_description">当AI回复时发送系统通知</string>
+    <string name="keep_screen_on">屏幕常亮</string>
+    <string name="keep_screen_on_description">保持屏幕常亮，防止在对话时自动锁屏</string>
+    <string name="reset_all_display_settings">重置所有显示设置</string>
+    
+    <!-- Chat History Management -->
+    <string name="default_profile_name">默认配置</string>
+    <string name="removed_character_card_binding">已移除 %1$d 条对话的角色卡绑定</string>
+    <string name="assigned_chats_to_character_card">已将 %1$d 条对话归类到「%2$s」</string>
+    <string name="assigned_chats_to_group">已将 %1$d 条对话分组到「%2$s」</string>
+    <string name="deleted_unbound_workspaces">已删除 %1$d 个无绑定工作区</string>
+    <string name="delete_failed">删除失败: %1$s</string>
+    <string name="character_card_statistics">角色卡统计</string>
+    <string name="character_card_statistics_subtitle">查看每个角色卡下的对话与消息数量</string>
+    <string name="character_fallback">角</string>
+    <string name="selected_chats_count">已选择 %1$d / %2$d 条</string>
+    <string name="apply_changes">应用更改</string>
+    <string name="apply_group">应用分组</string>
+    <string name="apply_character_card">应用角色卡</string>
+    <string name="unbound_workspaces_title">无绑定工作区</string>
+    <string name="unbound_workspaces_subtitle">管理未被任何对话使用的工作区文件夹</string>
+    <string name="no_unbound_workspaces">暂无无绑定的工作区文件夹</string>
+    <string name="selected_workspaces_count">已选择 %1$d / %2$d 个</string>
+    <string name="clear_all">清空</string>
+    <string name="delete_selected_workspaces">删除选中的工作区 (%1$d)</string>
+    <string name="delete_workspaces_confirmation">确定要删除选中的 %1$d 个工作区吗？\n\n删除后将无法恢复所有文件和数据。</string>
+    <string name="not_used_by_any_chat">未被任何对话使用</string>
+    
+    <!-- 无障碍朗读 - Markdown 块类型 -->
+    <string name="code_block">代码块</string>
+    <string name="table_block">表格</string>
+    <string name="plan_execution_graph">计划执行图</string>
+    <string name="image_block">图片</string>
+    <string name="image_load_failed">图片加载失败</string>
+    <string name="save_image">保存图片</string>
+    <string name="image_saved">图片已保存到相册</string>
+    <string name="save_failed">保存失败</string>
+    <string name="xml_block">xml块</string>
+    <string name="tool_call_block">工具调用</string>
+    <string name="tool_result_block">工具结果</string>
+    <string name="thinking_process_block">思考过程</string>
+    <string name="search_content_block">搜索内容</string>
+    <string name="status_info_block">状态信息</string>
+    <string name="html_content_block">HTML内容</string>
+    <string name="mood_tag_block">情绪标签</string>
 </resources>

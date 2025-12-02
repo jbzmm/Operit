@@ -22,7 +22,6 @@ import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.model.ToolInvocation
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.ApiPreferences
-import com.ai.assistance.operit.ui.permissions.ToolCategory
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
 import com.ai.assistance.operit.util.stream.plugins.StreamXmlPlugin
@@ -48,6 +47,9 @@ import kotlinx.coroutines.awaitAll
 import com.ai.assistance.operit.data.repository.CustomEmojiRepository
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.core.config.SystemToolPrompts
+import com.ai.assistance.operit.data.model.ToolPrompt
+import com.ai.assistance.operit.util.LocaleUtils
 
 /**
  * Enhanced AI service that provides advanced conversational capabilities by integrating various
@@ -192,8 +194,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             // 委托给FileBindingService处理
             return instance.fileBindingService.processFileBinding(
                     originalContent,
-                    aiGeneratedCode,
-                    instance.multiServiceManager
+                    aiGeneratedCode
             )
         }
 
@@ -306,6 +307,26 @@ class EnhancedAIService private constructor(private val context: Context) {
     }
 
     /**
+     * 获取指定功能类型的provider和model信息
+     * @param functionType 功能类型
+     * @return Pair<provider, modelName>，例如 Pair("DEEPSEEK", "deepseek-chat")
+     */
+    suspend fun getProviderAndModelForFunction(functionType: FunctionType): Pair<String, String> {
+        val service = getAIServiceForFunction(functionType)
+        val providerModel = service.providerModel
+        // providerModel格式为"PROVIDER:modelName"，使用第一个冒号分割
+        val colonIndex = providerModel.indexOf(":")
+        return if (colonIndex > 0) {
+            val provider = providerModel.substring(0, colonIndex)
+            val modelName = providerModel.substring(colonIndex + 1)
+            Pair(provider, modelName)
+        } else {
+            // 如果没有冒号，整个字符串作为provider，modelName为空
+            Pair(providerModel, "")
+        }
+    }
+
+    /**
      * 刷新指定功能类型的 AIService 实例 当配置发生更改时调用
      * @param functionType 功能类型
      */
@@ -337,10 +358,12 @@ class EnhancedAIService private constructor(private val context: Context) {
         maxTokens: Int,
         tokenUsageThreshold: Double,
         onNonFatalError: suspend (error: String) -> Unit = {},
+        onTokenLimitExceeded: (suspend () -> Unit)? = null,
         customSystemPromptTemplate: String? = null,
         isSubTask: Boolean = false,
         characterName: String? = null,
-        avatarUri: String? = null
+        avatarUri: String? = null,
+        stream: Boolean = true
     ): Stream<String> {
         Log.d(
                 TAG,
@@ -362,9 +385,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     // Process the input message for any conversation markup (e.g., for AI planning)
                     val startTime = System.currentTimeMillis()
                     val processedInput = InputProcessor.processUserInput(message)
-
-                    // 将当前用户输入添加到内部历史记录中，以便进行后续处理
-                    context.conversationHistory.add(Pair("user", processedInput))
+                
 
                     // Update state to show we're processing
                     if (!isSubTask) {
@@ -383,7 +404,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     thinkingGuidance,
                                     customSystemPromptTemplate,
                                     enableMemoryQuery,
-                                    isSubTask
+                                    isSubTask,
+                                    functionType
                             )
                     
                     // 关键修复：用准备好的历史记录（包含了系统提示）去同步更新内部的 conversationHistory 状态
@@ -406,14 +428,19 @@ class EnhancedAIService private constructor(private val context: Context) {
                     // 清空之前的单次请求token计数
                     _perRequestTokenCounts.value = null
 
+                    // 获取工具列表（如果启用Tool Call）
+                    val availableTools = getAvailableToolsForFunction(functionType)
+                    
                     // 使用新的Stream API
-                    Log.d(TAG, "调用AI服务，处理时间: ${System.currentTimeMillis() - startTime}ms")
-                    val stream =
+                    Log.d(TAG, "调用AI服务，处理时间: ${System.currentTimeMillis() - startTime}ms, 流式输出: $stream")
+                    val responseStream =
                             serviceForFunction.sendMessage(
                                     message = processedInput,
                                     chatHistory = preparedHistory,
                                     modelParameters = modelParameters,
                                     enableThinking = enableThinking,
+                                    stream = stream,
+                                    availableTools = availableTools,
                                     onTokensUpdated = { input, cachedInput, output ->
                                         _perRequestTokenCounts.value = Pair(input, output)
                                     },
@@ -433,7 +460,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     var lastLogTime = System.currentTimeMillis()
                     val streamStartTime = System.currentTimeMillis()
 
-                    stream.collect { content ->
+                    responseStream.collect { content ->
                         // 第一次收到响应，更新状态
                         if (isFirstChunk) {
                             if (!isSubTask) {
@@ -467,6 +494,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                         emit(content)
                     }
 
+                    // 流收集完成后，添加用户消息到对话历史
+                    // 只有在成功收到响应后，才将用户消息添加到历史记录中
+                    context.conversationHistory.add(Pair("user", processedInput))
+
                     // Update accumulated token counts and persist them
                     val inputTokens = serviceForFunction.inputTokenCount
                     val cachedInputTokens = serviceForFunction.cachedInputTokenCount
@@ -474,6 +505,9 @@ class EnhancedAIService private constructor(private val context: Context) {
                     accumulatedInputTokenCount += inputTokens
                     accumulatedOutputTokenCount += outputTokens
                     apiPreferences.updateTokensForProviderModel(serviceForFunction.providerModel, inputTokens, outputTokens, cachedInputTokens)
+                    
+                    // Update request count
+                    apiPreferences.incrementRequestCountForProviderModel(serviceForFunction.providerModel)
 
                     Log.d(
                             TAG,
@@ -516,7 +550,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             } finally {
                 // 确保流处理完成后调用
                 val collector = this
-                withContext(Dispatchers.IO) { processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri) }
+                withContext(Dispatchers.IO) { processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream) }
             }
         }
     }
@@ -621,11 +655,13 @@ class EnhancedAIService private constructor(private val context: Context) {
             enableThinking: Boolean = false,
             enableMemoryQuery: Boolean = true,
             onNonFatalError: suspend (error: String) -> Unit,
+            onTokenLimitExceeded: (suspend () -> Unit)? = null,
             maxTokens: Int,
             tokenUsageThreshold: Double,
             isSubTask: Boolean,
             characterName: String? = null,
-            avatarUri: String? = null
+            avatarUri: String? = null,
+            stream: Boolean = true
     ) {
         try {
             val startTime = System.currentTimeMillis()
@@ -662,8 +698,12 @@ class EnhancedAIService private constructor(private val context: Context) {
                 context.roundManager.updateContent(enhancedContent)
             }
 
-            // Handle task completion marker
-            if (ConversationMarkupManager.containsTaskCompletion(enhancedContent)) {
+            // 预先提取工具调用信息和完成标记，避免重复解析
+            val extractedToolInvocations = ToolExecutionManager.extractToolInvocations(enhancedContent)
+            val hasTaskCompletion = ConversationMarkupManager.containsTaskCompletion(enhancedContent)
+
+            // 如果只有任务完成标记且没有工具调用，立即处理完成逻辑
+            if (hasTaskCompletion && extractedToolInvocations.isEmpty()) {
                 handleTaskCompletion(context, enhancedContent, enableMemoryQuery, isSubTask, characterName, avatarUri)
                 return
             }
@@ -687,10 +727,21 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
 
             // Main flow: Detect and process tool invocations
-            // Try to detect tool invocations
-            val toolInvocations = toolHandler.extractToolInvocations(enhancedContent)
+            if (extractedToolInvocations.isNotEmpty()) {
+                if (hasTaskCompletion) {
+                    val warning =
+                            ConversationMarkupManager.createToolsSkippedByCompletionWarning(
+                                    extractedToolInvocations.map { it.tool.name }
+                            )
+                    context.roundManager.appendContent(warning)
+                    collector.emit(warning)
+                    try {
+                        context.conversationHistory.add(Pair("tool", warning))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "添加任务完成跳过工具警告到历史记录失败", e)
+                    }
+                }
 
-            if (toolInvocations.isNotEmpty()) {
                 // Handle wait for user need marker
                 if (ConversationMarkupManager.containsWaitForUserNeed(enhancedContent)) {
                     val userNeedContent =
@@ -710,21 +761,23 @@ class EnhancedAIService private constructor(private val context: Context) {
 
                 Log.d(
                         TAG,
-                        "检测到 ${toolInvocations.size} 个工具调用，处理时间: ${System.currentTimeMillis() - startTime}ms"
+                        "检测到 ${extractedToolInvocations.size} 个工具调用，处理时间: ${System.currentTimeMillis() - startTime}ms"
                 )
                 handleToolInvocation(
-                        toolInvocations,
+                        extractedToolInvocations,
                         context,
                         functionType,
                         collector,
                         enableThinking,
                         enableMemoryQuery,
                         onNonFatalError,
+                        onTokenLimitExceeded,
                         maxTokens,
                         tokenUsageThreshold,
                         isSubTask,
                         characterName,
-                        avatarUri
+                        avatarUri,
+                        stream = stream
                 )
                 return
             }
@@ -821,79 +874,37 @@ class EnhancedAIService private constructor(private val context: Context) {
         enableThinking: Boolean = false,
         enableMemoryQuery: Boolean = true,
         onNonFatalError: suspend (error: String) -> Unit,
+        onTokenLimitExceeded: (suspend () -> Unit)? = null,
         maxTokens: Int,
         tokenUsageThreshold: Double,
         isSubTask: Boolean,
         characterName: String? = null,
-        avatarUri: String? = null
+        avatarUri: String? = null,
+        stream: Boolean = true
     ) {
         val startTime = System.currentTimeMillis()
 
         if (!isSubTask) {
             withContext(Dispatchers.Main) {
                 val toolNames = toolInvocations.joinToString(", ") { it.tool.name }
-                val firstCategory = toolHandler.getToolExecutor(toolInvocations.first().tool.name)?.getCategory() ?: ToolCategory.SYSTEM_OPERATION
-                _inputProcessingState.value = InputProcessingState.ExecutingTool(toolNames, firstCategory)
+                _inputProcessingState.value = InputProcessingState.ExecutingTool(toolNames)
             }
         }
 
         val processToolJob = toolProcessingScope.launch {
-            // 1. 权限检查
-            val permittedInvocations = mutableListOf<ToolInvocation>()
-            val permissionDeniedResults = mutableListOf<ToolResult>()
-            for (invocation in toolInvocations) {
-                val (hasPermission, errorResult) = ToolExecutionManager.checkToolPermission(toolHandler, invocation)
-                if (hasPermission) {
-                    permittedInvocations.add(invocation)
-                } else {
-                    permissionDeniedResults.add(errorResult!!)
-                    val errorStatusContent = ConversationMarkupManager.createErrorStatus("权限拒绝", "操作 '${invocation.tool.name}' 未授权")
-                    context.roundManager.appendContent(errorStatusContent)
-                    collector.emit(errorStatusContent)
-                    val toolResultStatusContent = ConversationMarkupManager.formatToolResultForMessage(errorResult)
-                    context.roundManager.appendContent(toolResultStatusContent)
-                    collector.emit(toolResultStatusContent)
-                }
-            }
-
-            // 2. 按并行/串行对工具进行分组
-            val parallelizableToolNames = setOf(
-                "list_files", "read_file", "read_file_part", "read_file_full", "file_exists",
-                "find_files", "file_info", "grep_code", "query_memory", "calculate", "ffmpeg_info"
+            val allToolResults = ToolExecutionManager.executeInvocations(
+                invocations = toolInvocations,
+                toolHandler = toolHandler,
+                packageManager = packageManager,
+                collector = collector
             )
-            val (parallelInvocations, serialInvocations) = permittedInvocations.partition { parallelizableToolNames.contains(it.tool.name) }
 
-            // 3. 执行工具并收集聚合结果
-            val executionResults = ConcurrentHashMap<ToolInvocation, ToolResult>()
-
-            // 启动并行工具
-            val parallelJobs = parallelInvocations.map { invocation ->
-                async {
-                    val result = executeAndEmitTool(invocation, context, collector)
-                    executionResults[invocation] = result
-                }
-            }
-
-            // 顺序执行串行工具
-            for (invocation in serialInvocations) {
-                val result = executeAndEmitTool(invocation, context, collector)
-                executionResults[invocation] = result
-            }
-
-            // 等待所有并行任务完成
-            parallelJobs.awaitAll()
-
-            // 4. 按原始顺序重新排序结果
-            val orderedAggregated = permittedInvocations.mapNotNull { executionResults[it] }
-
-            // 5. 组合所有结果并进行最终处理
-            val allToolResults = permissionDeniedResults + orderedAggregated
             if (allToolResults.isNotEmpty()) {
                 Log.d(TAG, "所有工具结果收集完毕，准备最终处理。")
                 processToolResults(
                     allToolResults, context, functionType, collector, enableThinking,
-                    enableMemoryQuery, onNonFatalError, maxTokens, tokenUsageThreshold, isSubTask,
-                    characterName, avatarUri
+                    enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
+                    characterName, avatarUri, stream
                 )
             }
         }
@@ -910,70 +921,6 @@ class EnhancedAIService private constructor(private val context: Context) {
         Log.d(TAG, "工具调用处理耗时: ${System.currentTimeMillis() - startTime}ms")
     }
 
-    /**
-     * 封装单个工具的执行、实时输出和结果聚合的辅助函数
-     */
-    private suspend fun executeAndEmitTool(
-        invocation: ToolInvocation,
-        context: MessageExecutionContext,
-        collector: StreamCollector<String>
-    ): ToolResult {
-        val executor = toolHandler.getToolExecutor(invocation.tool.name)
-        if (executor == null) {
-            val toolName = invocation.tool.name
-            val errorMessage = buildToolNotAvailableErrorMessage(toolName)
-            val notAvailableContent = ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
-            context.roundManager.appendContent(notAvailableContent)
-            collector.emit(notAvailableContent)
-            return ToolResult(toolName = toolName, success = false, result = StringResultData(""), error = errorMessage)
-        }
-
-        val collectedResults = mutableListOf<ToolResult>()
-        ToolExecutionManager.executeToolSafely(invocation, executor).collect { result ->
-            collectedResults.add(result)
-            // 实时输出每个结果
-            val toolResultStatusContent = ConversationMarkupManager.formatToolResultForMessage(result)
-            context.roundManager.appendContent(toolResultStatusContent)
-            collector.emit(toolResultStatusContent)
-        }
-
-        // 为此调用聚合最终结果
-        if (collectedResults.isEmpty()) {
-            return ToolResult(toolName = invocation.tool.name, success = false, result = StringResultData(""), error = "工具执行后未返回任何结果。")
-        }
-
-        val lastResult = collectedResults.last()
-        val combinedResultString = collectedResults.joinToString("\n") { res ->
-            (if (res.success) res.result.toString() else "步骤错误: ${res.error ?: "未知错误"}").trim()
-        }.trim()
-
-        return ToolResult(
-            toolName = invocation.tool.name,
-            success = lastResult.success,
-            result = StringResultData(combinedResultString),
-            error = lastResult.error
-        )
-    }
-
-    /**
-     * 构建工具不可用的错误信息，统一逻辑避免重复
-     */
-    private fun buildToolNotAvailableErrorMessage(toolName: String): String {
-        return when {
-            toolName.contains('.') && !toolName.contains(':') -> {
-                val parts = toolName.split('.', limit = 2)
-                "工具调用语法错误: 对于工具包中的工具，应使用 'packName:toolName' 格式，而不是 '${toolName}'。您可能想调用 '${parts.getOrNull(0)}:${parts.getOrNull(1)}'。"
-            }
-            toolName.contains(':') -> {
-                val parts = toolName.split(':', limit = 2)
-                val packName = parts[0]
-                val isAvailable = packageManager.getAvailablePackages().containsKey(packName)
-                if (isAvailable) "工具包 '$packName' 已导入但未在当前会话中激活。请先使用 'use_package' 命令来激活它。"
-                else "工具包 '$packName' 不存在。"
-            }
-            else -> "工具 '${toolName}' 不可用或不存在。如果这是一个工具包中的工具，请使用 'packName:toolName' 格式调用。"
-        }
-    }
 
     /** Process tool execution result - simplified version without callbacks */
     private suspend fun processToolResults(
@@ -984,11 +931,13 @@ class EnhancedAIService private constructor(private val context: Context) {
             enableThinking: Boolean = false,
             enableMemoryQuery: Boolean = true,
             onNonFatalError: suspend (error: String) -> Unit,
+            onTokenLimitExceeded: (suspend () -> Unit)? = null,
             maxTokens: Int,
             tokenUsageThreshold: Double,
             isSubTask: Boolean,
             characterName: String? = null,
-            avatarUri: String? = null
+            avatarUri: String? = null,
+            stream: Boolean = true
     ) {
         val startTime = System.currentTimeMillis()
         val toolNames = results.joinToString(", ") { it.toolName }
@@ -1043,43 +992,40 @@ class EnhancedAIService private constructor(private val context: Context) {
 
         // After a tool call, check if token usage exceeds the threshold
         if (maxTokens > 0) {
-            // 精确计算下一次调用（空消息，只依赖历史）将产生的token
             val currentTokens = serviceForFunction.calculateInputTokens("", currentChatHistory)
             val usageRatio = currentTokens.toDouble() / maxTokens.toDouble()
 
             if (usageRatio >= tokenUsageThreshold) {
-                Log.w(TAG, "Token usage ($usageRatio) exceeds threshold ($tokenUsageThreshold) after tool call. Terminating turn.")
-
-                val warningMessage = ConversationMarkupManager.createWarningStatus("已达到单次对话Token限制。请继续对话以触发历史压缩")
-                collector.emit(warningMessage)
-                context.roundManager.appendContent(warningMessage)
-                context.conversationHistory.add(Pair("assistant", warningMessage))
-
+                Log.w(TAG, "Token usage ($usageRatio) exceeds threshold ($tokenUsageThreshold) after tool call. Triggering summary.")
+                onTokenLimitExceeded?.invoke()
                 context.isConversationActive.set(false)
                 if (!isSubTask) {
-                withContext(Dispatchers.Main) {
-                    _inputProcessingState.value = InputProcessingState.Completed
+                    stopAiService(characterName, avatarUri)
                 }
-                stopAiService(characterName, avatarUri)
-                }
-                return // Stop further processing
+                // 关键修复：在触发总结后，直接返回，因为后续流程将由回调处理
+                return
             }
         }
 
         // 清空之前的单次请求token计数
         _perRequestTokenCounts.value = null
 
+        // 获取工具列表（如果启用Tool Call）
+        val availableTools = getAvailableToolsForFunction(functionType)
+        
         // 使用新的Stream API处理工具执行结果
         withContext(Dispatchers.IO) {
             try {
                 // 发送消息并获取响应流
                 val aiStartTime = System.currentTimeMillis()
-                val stream =
+                val responseStream =
                         serviceForFunction.sendMessage(
                                 message = toolResultMessage,
                                 chatHistory = currentChatHistory,
                                 modelParameters = modelParameters,
                                 enableThinking = enableThinking,
+                                stream = stream,
+                                availableTools = availableTools,
                                 onTokensUpdated = { input, cachedInput, output ->
                                     _perRequestTokenCounts.value = Pair(input, output)
                                 },
@@ -1099,7 +1045,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 var totalChars = 0
                 var lastLogTime = System.currentTimeMillis()
 
-                stream.collect { content ->
+                responseStream.collect { content ->
                     // 更新streamBuffer
                     context.streamBuffer.append(content)
 
@@ -1127,6 +1073,9 @@ class EnhancedAIService private constructor(private val context: Context) {
                 accumulatedInputTokenCount += inputTokens
                 accumulatedOutputTokenCount += outputTokens
                 apiPreferences.updateTokensForProviderModel(serviceForFunction.providerModel, inputTokens, outputTokens, cachedInputTokens)
+                
+                // Update request count
+                apiPreferences.incrementRequestCountForProviderModel(serviceForFunction.providerModel)
 
                 Log.d(
                         TAG,
@@ -1137,7 +1086,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 Log.d(TAG, "工具结果AI处理完成，收到 $totalChars 字符，耗时: ${processingTime}ms")
 
                 // 流处理完成，处理完成逻辑
-                processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri)
+                processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream)
             } catch (e: Exception) {
                 Log.e(TAG, "处理工具执行结果时出错", e)
                 withContext(Dispatchers.Main) {
@@ -1227,11 +1176,16 @@ class EnhancedAIService private constructor(private val context: Context) {
             thinkingGuidance: Boolean,
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean,
-            isSubTask: Boolean = false
+            isSubTask: Boolean = false,
+            functionType: FunctionType = FunctionType.CHAT
     ): List<Pair<String, String>> {
         // Check if image recognition service is configured
         // For subtasks, always disable image recognition (only support OCR)
         val hasImageRecognition = if (isSubTask) false else multiServiceManager.hasImageRecognitionConfigured()
+        
+        // 检查是否启用Tool Call API
+        val config = multiServiceManager.getModelConfigForFunction(functionType)
+        val useToolCallApi = config.enableToolCall
         
         return conversationService.prepareConversationHistory(
                 chatHistory,
@@ -1242,7 +1196,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                 thinkingGuidance,
                 customSystemPromptTemplate,
                 enableMemoryQuery,
-                hasImageRecognition
+                hasImageRecognition,
+                useToolCallApi
         )
     }
 
@@ -1282,6 +1237,43 @@ class EnhancedAIService private constructor(private val context: Context) {
         toolProcessingScope.coroutineContext.cancelChildren()
     }
 
+    /**
+     * 获取可用工具列表（用于Tool Call API）
+     * 如果模型配置启用了Tool Call，返回工具列表；否则返回null
+     */
+    private suspend fun getAvailableToolsForFunction(functionType: FunctionType): List<ToolPrompt>? {
+        return try {
+            // 获取对应功能类型的模型配置
+            val config = multiServiceManager.getModelConfigForFunction(functionType)
+            
+            // 检查是否启用Tool Call
+            if (!config.enableToolCall) {
+                return null
+            }
+            
+            // 获取所有工具分类
+            val isEnglish = LocaleUtils.getCurrentLanguage(context) == "en"
+            val categories = if (isEnglish) {
+                SystemToolPrompts.getAllCategoriesEn(
+                    hasImageRecognition = config.enableDirectImageProcessing
+                )
+            } else {
+                SystemToolPrompts.getAllCategoriesCn(
+                    hasImageRecognition = config.enableDirectImageProcessing
+                )
+            }
+            
+            // 提取所有工具
+            val allTools = categories.flatMap { it.tools }
+            
+            Log.d(TAG, "Tool Call已启用，提供 ${allTools.size} 个工具")
+            allTools
+        } catch (e: Exception) {
+            Log.e(TAG, "获取工具列表失败", e)
+            null
+        }
+    }
+
     // --- Service Lifecycle Management ---
 
     /** 启动前台服务以保持应用活跃 */
@@ -1319,11 +1311,9 @@ class EnhancedAIService private constructor(private val context: Context) {
                     Log.d(TAG, "传递通知数据 - 角色: $characterName, 内容长度: ${lastReplyContent?.length}, 头像: $avatarUri")
                     
                     // 先发送更新的Intent，然后再停止服务
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(stopIntent)
-                    } else {
-                        context.startService(stopIntent)
-                    }
+                    // 注意：这里使用 startService 而不是 startForegroundService
+                    // 因为服务已经在前台运行，只需要更新数据，不需要重新调用 startForeground()
+                    context.startService(stopIntent)
                     
                     // 稍微延迟后停止服务，确保数据已被接收
                     delay(100)
@@ -1354,8 +1344,7 @@ class EnhancedAIService private constructor(private val context: Context) {
     ): Pair<String, String> {
         return fileBindingService.processFileBinding(
                 originalContent,
-                aiGeneratedCode,
-                multiServiceManager
+                aiGeneratedCode
         )
     }
 

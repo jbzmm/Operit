@@ -18,6 +18,7 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.core.tools.defaultTool.PathValidator
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -40,29 +41,17 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
 
     companion object {
         private const val TAG = "DebuggerFileSystemTools"
-        
-        // 使用父类 StandardFileSystemTools 中定义的文件大小限制常量
-        // MAX_FILE_SIZE_BYTES 和 PART_SIZE 可直接通过 StandardFileSystemTools.MAX_FILE_SIZE_BYTES 访问
+        private const val OPERIT_PACKAGE = "com.ai.assistance.operit"
     }
-
-    /** Adds line numbers to a string of content. */
-    private fun addLineNumbers(content: String): String {
-        val lines = content.lines()
-        if (lines.isEmpty()) return ""
-        val maxDigits = lines.size.toString().length
-        return lines.mapIndexed { index, line ->
-            "${(index + 1).toString().padStart(maxDigits, ' ')}| $line"
-        }.joinToString("\n")
-    }
-
-    /** Adds line numbers to a string of content, starting from a specific line number. */
-    private fun addLineNumbers(content: String, startLine: Int, totalLines: Int): String {
-        val lines = content.lines()
-        if (lines.isEmpty()) return ""
-        val maxDigits = if (totalLines > 0) totalLines.toString().length else lines.size.toString().length
-        return lines.mapIndexed { index, line ->
-            "${(startLine + index).toString().padStart(maxDigits, ' ')}| $line"
-        }.joinToString("\n")
+    
+    /**
+     * 判断路径是否为Operit应用的内部存储路径
+     * 仅针对 /data/data/com.ai.assistance.operit 开头的路径返回true
+     */
+    protected fun isOperitInternalPath(path: String): Boolean {
+        val normalizedPath = path.trim()
+        return normalizedPath.startsWith("/data/data/$OPERIT_PACKAGE") ||
+               normalizedPath.startsWith("/data/user/0/$OPERIT_PACKAGE")
     }
 
     /** List files in a directory */
@@ -73,6 +62,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
 
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super（AccessibilityFileSystemTools）的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.listFiles(tool)
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -375,6 +370,14 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.readFileFull(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        val textOnly = tool.parameters.find { it.name == "text_only" }?.value?.toBoolean() ?: false
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.readFileFull(tool)
+        }
+
         if (path.isBlank()) {
             return ToolResult(
                     toolName = tool.name,
@@ -413,27 +416,29 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                  // Optional: Could add fallback logic here if superclass fails for some reason
             }
 
-            // Check if file is text-like by reading first few bytes
-            // First, get a sample of the file
-            val sampleResult = AndroidShellExecutor.executeShellCommand("head -c 512 '$path'")
-            if (!sampleResult.success) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to sample file: ${sampleResult.stderr}"
-                )
-            }
+            // Check if file is text-like by reading first few bytes (if text_only is enabled)
+            if (textOnly) {
+                // First, get a sample of the file
+                val sampleResult = AndroidShellExecutor.executeShellCommand("head -c 512 '$path'")
+                if (!sampleResult.success) {
+                    return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Failed to sample file: ${sampleResult.stderr}"
+                    )
+                }
 
-            // Analyze the sample bytes
-            val sampleBytes = sampleResult.stdout.toByteArray()
-            if (!FileUtils.isTextLike(sampleBytes)) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "File does not appear to be a text file. Use specialized tools for binary files."
-                )
+                // Analyze the sample bytes
+                val sampleBytes = sampleResult.stdout.toByteArray()
+                if (!FileUtils.isTextLike(sampleBytes)) {
+                    return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Skipped non-text file: $path"
+                    )
+                }
             }
 
             // For text-like files, use shell `cat` to read full content
@@ -483,6 +488,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.readFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.readFile(tool)
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -497,7 +508,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             val fileExt = path.substringAfterLast('.', "").lowercase()
 
             // For special types, full read then truncate text is the only way.
-            if (fileExt in listOf("doc", "docx", "pdf", "jpg", "jpeg", "png", "gif", "bmp")) {
+            if (isSpecialFileType(fileExt)) {
                 val fullResult = readFileFull(tool)
                 if (!fullResult.success) return fullResult
 
@@ -581,15 +592,21 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
     }
 
-    /** 分段读取文件内容 */
+    /** 按行号范围读取文件内容（行号从1开始，包括开始行和结束行） */
     override suspend fun readFilePart(tool: AITool): ToolResult {
         val environment = tool.parameters.find { it.name == "environment" }?.value
         if (environment == "linux") {
             return super.readFilePart(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
-        val partIndex = tool.parameters.find { it.name == "partIndex" }?.value?.toIntOrNull() ?: 0
-        val partSize = apiPreferences.getPartSize()
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.readFilePart(tool)
+        }
+        val startLineParam = tool.parameters.find { it.name == "start_line" }?.value?.toIntOrNull() ?: 1
+        val endLineParam = tool.parameters.find { it.name == "end_line" }?.value?.toIntOrNull()
 
         if (path.isBlank()) {
             return ToolResult(
@@ -601,6 +618,14 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
 
         return try {
+            // 0. 特殊文件类型检查
+            // 如果是Word/PDF/图片等特殊文件，使用父类（StandardFileSystemTools）的逻辑处理
+            // 因为Shell命令(cat/sed)无法正确解析这些二进制格式
+            val fileExt = path.substringAfterLast('.', "").lowercase()
+            if (isSpecialFileType(fileExt)) {
+                 return super.readFilePart(tool)
+            }
+
             // 1. Check if file exists
             val existsResult =
                     AndroidShellExecutor.executeShellCommand(
@@ -628,12 +653,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
 
             val totalLines = wcResult.stdout.trim().split(" ")[0].toIntOrNull() ?: 0
 
-            // 3. Calculate part info
-            val totalParts = (totalLines + partSize - 1) / partSize
-            val validPartIndex = partIndex.coerceIn(0, if (totalParts > 0) totalParts - 1 else 0)
-
-            val startLine = validPartIndex * partSize + 1 // sed is 1-indexed
-            val endLine = minOf(startLine + partSize - 1, totalLines)
+            // 3. 计算实际的行号范围（行号从1开始）
+            val startLine = maxOf(1, startLineParam).coerceIn(1, maxOf(1, totalLines))
+            val endLine = (endLineParam ?: (startLine + 99)).coerceIn(startLine, maxOf(1, totalLines))
 
             if (totalLines == 0 || startLine > endLine) {
                 return ToolResult(
@@ -643,9 +665,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                 FilePartContentData(
                                         path = path,
                                         content = "",
-                                        partIndex = validPartIndex,
-                                        totalParts = totalParts,
-                                        startLine = startLine - 1,
+                                        partIndex = 0, // 保留兼容性，但不再使用
+                                        totalParts = 1, // 保留兼容性，但不再使用
+                                        startLine = startLine - 1, // 转为0-based
                                         endLine = endLine,
                                         totalLines = totalLines
                                 ),
@@ -676,8 +698,8 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                             FilePartContentData(
                                     path = path,
                                     content = contentWithLineNumbers.trimEnd(),
-                                    partIndex = validPartIndex,
-                                    totalParts = totalParts,
+                                    partIndex = 0, // 保留兼容性，但不再使用
+                                    totalParts = 1, // 保留兼容性，但不再使用
                                     startLine = startLine - 1, // To 0-indexed for response
                                     endLine = endLine,
                                     totalLines = totalLines
@@ -695,6 +717,75 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
     }
 
+    /**
+     * 重写特殊文件读取逻辑
+     * 对于受保护的路径（如 /Android/data），先通过Shell命令复制到缓存目录，
+     * 再调用父类的解析逻辑。
+     */
+    override suspend fun handleSpecialFileRead(
+        tool: AITool,
+        path: String,
+        fileExt: String
+    ): ToolResult? {
+        val file = File(path)
+        
+        // 如果文件可读，直接使用父类逻辑（更高效）
+        if (file.exists() && file.canRead()) {
+            return super.handleSpecialFileRead(tool, path, fileExt)
+        }
+
+        Log.d(TAG, "File not directly readable (permission restricted), trying Shell copy for: $path")
+        
+        // 创建临时文件用于中转
+        val tempFile = File(context.cacheDir, "shell_copy_${System.currentTimeMillis()}.$fileExt")
+        
+        return try {
+            // 使用cat命令复制文件内容
+            // 注意：使用cat而不是cp，因为cp可能保留权限属性导致仍然无法读取
+            val copyResult = AndroidShellExecutor.executeShellCommand("cat '$path' > '${tempFile.absolutePath}'")
+            
+            if (!copyResult.success) {
+                Log.w(TAG, "Shell copy failed: ${copyResult.stderr}")
+                // 复制失败，回退到父类逻辑（虽然很可能也失败，但能返回一致的错误信息）
+                return super.handleSpecialFileRead(tool, path, fileExt)
+            }
+            
+            // 检查临时文件是否有效
+            if (!tempFile.exists() || tempFile.length() == 0L) {
+                Log.w(TAG, "Temp file is empty or does not exist after copy")
+                return super.handleSpecialFileRead(tool, path, fileExt)
+            }
+
+            // 使用临时文件路径调用父类处理逻辑
+            val tempToolResult = super.handleSpecialFileRead(tool, tempFile.absolutePath, fileExt)
+            
+            // 如果处理成功，修正返回结果中的 path 为原始路径
+            if (tempToolResult != null && tempToolResult.success) {
+                val resultData = tempToolResult.result
+                if (resultData is FileContentData) {
+                    return tempToolResult.copy(
+                        result = resultData.copy(path = path)
+                    )
+                }
+            }
+            
+            tempToolResult
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in shell copy strategy", e)
+            super.handleSpecialFileRead(tool, path, fileExt)
+        } finally {
+            // 清理临时文件
+            try {
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clean up temp file", e)
+            }
+        }
+    }
+
     /** Write content to a file */
     override suspend fun writeFile(tool: AITool): ToolResult {
         val environment = tool.parameters.find { it.name == "environment" }?.value
@@ -702,8 +793,14 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.writeFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         val content = tool.parameters.find { it.name == "content" }?.value ?: ""
         val append = tool.parameters.find { it.name == "append" }?.value?.toBoolean() ?: false
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.writeFile(tool)
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -870,6 +967,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.deleteFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.deleteFile(tool)
+        }
         val recursive = tool.parameters.find { it.name == "recursive" }?.value?.toBoolean() ?: false
 
         if (path.isBlank()) {
@@ -887,22 +990,6 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             )
         }
 
-        // Don't allow deleting system directories
-        val restrictedPaths = listOf("/system", "/proc", "/dev")
-        if (restrictedPaths.any { path.startsWith(it) }) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                            FileOperationData(
-                                    operation = "delete",
-                                    path = path,
-                                    successful = false,
-                                    details = "Deleting system directories is not allowed"
-                            ),
-                    error = "Deleting system directories is not allowed"
-            )
-        }
 
         return try {
             val deleteCommand = if (recursive) "rm -rf '$path'" else "rm -f '$path'"
@@ -959,6 +1046,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.fileExists(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.fileExists(tool)
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -1038,7 +1131,15 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.moveFile(tool)
         }
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
+        PathValidator.validateAndroidPath(sourcePath, tool.name)?.let { return it }
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
+        PathValidator.validateAndroidPath(destPath, tool.name)?.let { return it }
+        
+        // 如果源文件或目标文件在Operit内部存储，使用super的高权限方法
+        if (isOperitInternalPath(sourcePath) || isOperitInternalPath(destPath)) {
+            return super.moveFile(tool)
+        }
+        PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
 
         if (sourcePath.isBlank() || destPath.isBlank()) {
             return ToolResult(
@@ -1055,22 +1156,6 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             )
         }
 
-        // Don't allow moving system directories
-        val restrictedPaths = listOf("/system", "/data", "/proc", "/dev")
-        if (restrictedPaths.any { sourcePath.startsWith(it) }) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                            FileOperationData(
-                                    operation = "move",
-                                    path = sourcePath,
-                                    successful = false,
-                                    details = "Moving system directories is not allowed"
-                            ),
-                    error = "Moving system directories is not allowed"
-            )
-        }
 
         return try {
             val result = AndroidShellExecutor.executeShellCommand("mv '$sourcePath' '$destPath'")
@@ -1121,15 +1206,30 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
 
     /** Copy a file or directory */
     override suspend fun copyFile(tool: AITool): ToolResult {
+        // 检查是否是 Linux 环境或跨环境操作
         val environment = tool.parameters.find { it.name == "environment" }?.value
-        if (environment == "linux") {
+        val sourceEnvironment = tool.parameters.find { it.name == "source_environment" }?.value
+        val destEnvironment = tool.parameters.find { it.name == "dest_environment" }?.value
+        
+        // 确定源和目标环境
+        val srcEnv = sourceEnvironment ?: environment ?: "android"
+        val dstEnv = destEnvironment ?: environment ?: "android"
+        
+        // 如果是 Linux 环境或跨环境操作，委托给父类处理
+        if (srcEnv.lowercase() == "linux" || dstEnv.lowercase() == "linux") {
             return super.copyFile(tool)
         }
+        
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
-        val recursive =
-                tool.parameters.find { it.name == "recursive" }?.value?.toBoolean()
-                        ?: true // 默认为true以支持目录复制
+        val recursive = tool.parameters.find { it.name == "recursive" }?.value?.toBoolean() ?: true
+        PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
+        PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
+        
+        // 如果源文件或目标文件在Operit内部存储，使用super的高权限方法
+        if (isOperitInternalPath(sourcePath) || isOperitInternalPath(destPath)) {
+            return super.copyFile(tool)
+        }
 
         if (sourcePath.isBlank() || destPath.isBlank()) {
             return ToolResult(
@@ -1277,6 +1377,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.makeDirectory(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.makeDirectory(tool)
+        }
         val createParents =
                 tool.parameters.find { it.name == "create_parents" }?.value?.toBoolean() ?: false
 
@@ -1394,6 +1500,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.findFiles(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         val pattern = tool.parameters.find { it.name == "pattern" }?.value ?: ""
 
         if (path.isBlank() || pattern.isBlank()) {
@@ -1483,6 +1590,12 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.fileInfo(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        
+        // 如果是Operit内部存储路径，使用super的高权限方法
+        if (isOperitInternalPath(path)) {
+            return super.fileInfo(tool)
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -1641,6 +1754,11 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
         val zipPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
+        PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
+        PathValidator.validateAndroidPath(zipPath, tool.name, "destination")?.let { return it }
+
+        val actualSourcePath = sourcePath // No PathMapper in debugger tools
+        val actualZipPath = zipPath
 
         if (sourcePath.isBlank() || zipPath.isBlank()) {
             return ToolResult(
@@ -1853,6 +1971,11 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
         val zipPath = tool.parameters.find { it.name == "source" }?.value ?: ""
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
+        PathValidator.validateAndroidPath(zipPath, tool.name, "source")?.let { return it }
+        PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
+
+        val actualZipPath = zipPath
+        val actualDestPath = destPath
 
         if (zipPath.isBlank() || destPath.isBlank()) {
             return ToolResult(
@@ -2003,6 +2126,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.openFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -2102,7 +2226,8 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.shareFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
-        val title = tool.parameters.find { it.name == "title" }?.value ?: "分享文件"
+        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        val title = tool.parameters.find { it.name == "title" }?.value ?: "Share File"
 
         if (path.isBlank()) {
             return ToolResult(
@@ -2204,6 +2329,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         }
         val url = tool.parameters.find { it.name == "url" }?.value ?: ""
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
+        PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
 
         if (url.isBlank() || destPath.isBlank()) {
             return ToolResult(

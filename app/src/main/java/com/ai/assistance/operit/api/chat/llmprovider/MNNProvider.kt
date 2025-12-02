@@ -8,6 +8,7 @@ import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ParameterValueType
+import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.stream
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,8 @@ class MNNProvider(
     private val modelName: String,  // 模型文件夹名称（如 "Qwen2-1.5B-Instruct-MNN"）
     private val forwardType: Int,
     private val threadCount: Int,
-    private val providerType: ApiProviderType = ApiProviderType.MNN
+    private val providerType: ApiProviderType = ApiProviderType.MNN,
+    private val enableToolCall: Boolean = false // 是否启用Tool Call接口（本地推理暂未实现）
 ) : AIService {
 
     companion object {
@@ -216,6 +218,8 @@ class MNNProvider(
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>>,
         enableThinking: Boolean,
+        stream: Boolean,
+        availableTools: List<ToolPrompt>?,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
         onNonFatalError: suspend (error: String) -> Unit
     ): Stream<String> = stream {
@@ -244,6 +248,12 @@ class MNNProvider(
 
             // 应用模型参数（采样参数）
             applyModelParameters(session, modelParameters)
+
+            // 如果消息为空，不添加到历史记录
+            if (message.isBlank()) {
+                Log.d(TAG, "消息为空，跳过处理")
+                return@stream
+            }
 
             // 构建历史记录（添加当前消息）
             val fullHistory = chatHistory.toMutableList().apply {

@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 data class GitHubAccessTokenResponse(
     val access_token: String,
     val token_type: String,
-    val scope: String
+    val scope: String? = null
 )
 
 @Serializable
@@ -179,34 +179,38 @@ class GitHubApiService(private val context: Context) {
      */
     suspend fun getAccessToken(code: String): Result<GitHubAccessTokenResponse> = withContext(Dispatchers.IO) {
         try {
-            val requestBody = """
-                {
-                    "client_id": "${GitHubAuthPreferences.GITHUB_CLIENT_ID}",
-                    "client_secret": "${GitHubAuthPreferences.GITHUB_CLIENT_SECRET}",
-                    "code": "$code"
-                }
-            """.trimIndent()
+            // GitHub OAuth API 要求使用 application/x-www-form-urlencoded 格式
+            val formBody = FormBody.Builder()
+                .add("client_id", GitHubAuthPreferences.GITHUB_CLIENT_ID)
+                .add("client_secret", GitHubAuthPreferences.GITHUB_CLIENT_SECRET)
+                .add("code", code)
+                .build()
             
             val request = Request.Builder()
                 .url("$GITHUB_OAUTH_BASE/access_token")
-                .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .post(formBody)
                 .addHeader("Accept", "application/json")
                 .build()
             
             val response = client.newCall(request).execute()
+            val responseBody = response.body?.string()
             
-            if (response.isSuccessful) {
-                val responseBody = response.body?.string()
-                if (responseBody != null) {
+            if (response.isSuccessful && responseBody != null) {
+                try {
+                    android.util.Log.d("GitHubApiService", "Token response: $responseBody")
                     val tokenResponse = json.decodeFromString<GitHubAccessTokenResponse>(responseBody)
                     Result.success(tokenResponse)
-                } else {
-                    Result.failure(Exception("Empty response body"))
+                } catch (e: Exception) {
+                    android.util.Log.e("GitHubApiService", "Failed to parse token response: $responseBody", e)
+                    Result.failure(Exception("Failed to parse token response: ${e.message}. Response: $responseBody"))
                 }
             } else {
-                Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+                val errorMsg = "HTTP ${response.code}: ${response.message}. Response: $responseBody"
+                android.util.Log.e("GitHubApiService", errorMsg)
+                Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
+            android.util.Log.e("GitHubApiService", "Exception in getAccessToken", e)
             Result.failure(e)
         }
     }

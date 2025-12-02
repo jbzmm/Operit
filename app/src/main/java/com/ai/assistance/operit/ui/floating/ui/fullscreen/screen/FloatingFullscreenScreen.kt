@@ -52,19 +52,19 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     val viewModel = rememberFloatingFullscreenModeViewModel(context, floatContext, coroutineScope)
     
     // 偏好设置
-    val preferencesManager = UserPreferencesManager(context)
+    val preferencesManager = UserPreferencesManager.getInstance(context)
     val aiAvatarUri by preferencesManager.customAiAvatarUri.collectAsState(initial = null)
     
     val speechServicesPrefs = SpeechServicesPreferences(context)
     val ttsCleanerRegexs by speechServicesPrefs.ttsCleanerRegexsFlow.collectAsState(initial = emptyList())
     
-    val volumeLevel by viewModel.speechService.volumeLevelFlow.collectAsState()
+    val volumeLevel by viewModel.volumeLevelFlow.collectAsState()
     
     val speed = 1.2f
     
     // 监听语音识别结果
-    LaunchedEffect(viewModel.speechService) {
-        viewModel.speechService.recognitionResultFlow.collectLatest { result ->
+    LaunchedEffect(Unit) {
+        viewModel.recognitionResultFlow.collectLatest { result ->
             viewModel.handleRecognitionResult(result.text, result.isFinal)
         }
     }
@@ -76,80 +76,10 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     
     // 监听最新的AI消息
     LaunchedEffect(floatContext.messages.lastOrNull()?.timestamp) {
-        val lastMessage = floatContext.messages.lastOrNull()
-        if (lastMessage == null) return@LaunchedEffect
-        
-        // 首次加载时只更新UI，不朗读
-        if (viewModel.isInitialLoad.value) {
-            viewModel.isInitialLoad.value = false
-            return@LaunchedEffect
-        }
-        
-        // 停止当前可能在播放的语音
-        viewModel.voiceService.stop()
-        
-        when (lastMessage.sender) {
-            "think" -> {
-                viewModel.aiMessage = "思考中..."
-            }
-            "ai" -> {
-                coroutineScope.launch {
-                    var didSpeak = false
-                    viewModel.aiMessage = ""
-                    lastMessage.contentStream?.let { stream ->
-                        val processedStream = XmlTextProcessor.processStreamToText(stream)
-                        
-                        val sentenceEndChars = listOf('.', '。', '!', '！', '?', '？', '\n')
-                        val sentenceBuffer = StringBuilder()
-                        var isFirstSentence = true
-                        
-                        processedStream.collect { char ->
-                            viewModel.aiMessage += char
-                            sentenceBuffer.append(char)
-                            
-                            if (char in sentenceEndChars || sentenceBuffer.length >= 50) {
-                                val sentenceToSpeak = sentenceBuffer.toString().trim()
-                                if (sentenceToSpeak.isNotBlank()) {
-                                    didSpeak = true
-                                    viewModel.safeSpeak(
-                                        viewModel.cleanTextForTts(sentenceToSpeak, ttsCleanerRegexs),
-                                        isFirstSentence,
-                                        speed,
-                                        1.0f
-                                    )
-                                    isFirstSentence = false
-                                }
-                                sentenceBuffer.clear()
-                            }
-                        }
-                        
-                        // 处理最后剩余的文本
-                        val finalSentence = sentenceBuffer.toString().trim()
-                        if (finalSentence.isNotBlank()) {
-                            didSpeak = true
-                            viewModel.safeSpeak(
-                                viewModel.cleanTextForTts(finalSentence, ttsCleanerRegexs),
-                                isFirstSentence,
-                                speed,
-                                1.0f
-                            )
-                        }
-                    } ?: run {
-                        // 如果没有流，则显示静态内容
-                        viewModel.aiMessage = lastMessage.content
-                        if (viewModel.aiMessage.isNotBlank()) {
-                            didSpeak = true
-                            viewModel.safeSpeak(
-                                viewModel.cleanTextForTts(viewModel.aiMessage, ttsCleanerRegexs),
-                                false,
-                                speed,
-                                1.0f
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        viewModel.processAndSpeakAiMessage(
+            floatContext.messages.lastOrNull(),
+            ttsCleanerRegexs
+        )
     }
     
     // 清理资源
@@ -200,7 +130,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 isWaveActive = viewModel.isWaveActive,
                 isRecording = viewModel.isRecording,
                 volumeLevelFlow = if (viewModel.isWaveActive && viewModel.isRecording) 
-                    viewModel.speechService.volumeLevelFlow else null,
+                    viewModel.volumeLevelFlow else null,
                 aiAvatarUri = aiAvatarUri,
                 avatarShape = CircleShape,
                 onToggleActive = {
@@ -223,32 +153,28 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 label = "MessageTransition",
                 modifier = Modifier.fillMaxSize()
             ) { targetIsWaveActive ->
-                if (targetIsWaveActive) {
-                    // 波浪模式：文本在底部
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        MessageDisplay(
-                            userMessage = viewModel.userMessage,
-                            aiMessage = viewModel.aiMessage,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .padding(horizontal = 32.dp)
-                                .padding(bottom = 64.dp)
-                        )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val modifier = if (targetIsWaveActive) {
+                        // 波浪模式：文本在底部
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp)
+                            .padding(bottom = 64.dp)
+                    } else {
+                        // 正常模式：文本在波浪下方
+                        Modifier
+                            .align(Alignment.Center)
+                            .offset(y = 80.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp)
                     }
-                } else {
-                    // 正常模式：文本在波浪下方
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        MessageDisplay(
-                            userMessage = viewModel.userMessage,
-                            aiMessage = viewModel.aiMessage,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .offset(y = 80.dp)
-                                .fillMaxWidth()
-                                .padding(horizontal = 32.dp)
-                        )
-                    }
+
+                    MessageDisplay(
+                        userMessage = viewModel.userMessage,
+                        aiMessage = viewModel.aiMessage,
+                        modifier = modifier
+                    )
                 }
             }
         }

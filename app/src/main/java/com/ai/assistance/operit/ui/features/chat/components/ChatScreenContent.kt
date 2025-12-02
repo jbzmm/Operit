@@ -34,14 +34,19 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.CharacterCard
 
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
+import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatHistoryDisplayMode
+import com.ai.assistance.operit.ui.common.rememberLocal
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.OutlinedTextField
@@ -103,8 +108,6 @@ fun ChatScreenContent(
         onVerticalDragChange: (Float) -> Unit,
         dragThreshold: Float,
         scrollState: ScrollState,
-        showScrollButton: Boolean,
-        onShowScrollButtonChange: (Boolean) -> Unit,
         autoScrollToBottom: Boolean,
         onAutoScrollToBottomChange: (Boolean) -> Unit,
         coroutineScope: CoroutineScope,
@@ -116,7 +119,8 @@ fun ChatScreenContent(
         chatHeaderOverlayMode: Boolean,
         chatStyle: ChatStyle, // Add chatStyle parameter
         historyListState: LazyListState,
-        onSwitchCharacter: (String) -> Unit
+        onSwitchCharacter: (String) -> Unit,
+        chatAreaHorizontalPadding: Float = 16f // 聊天区域水平内边距
 ) {
     val density = LocalDensity.current
     var headerHeight by remember { mutableStateOf(0.dp) }
@@ -125,10 +129,31 @@ fun ChatScreenContent(
     // 多选模式状态
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedMessageIndices by remember { mutableStateOf(setOf<Int>()) }
+    val selectableMessageIndices = remember(chatHistory) {
+        chatHistory.mapIndexedNotNull { index, message ->
+            if (message.sender == "user" || message.sender == "ai") index else null
+        }.toSet()
+    }
     var isGeneratingImage by remember { mutableStateOf(false) }
 
     // 获取WebView状态
     val showWebView = actualViewModel.showWebView.collectAsState().value
+    
+    // 使用 rememberLocal 持久化历史记录显示设置
+    var historyDisplayMode by rememberLocal(
+        "chat_history_display_mode", 
+        ChatHistoryDisplayMode.BY_FOLDER
+    )
+    var autoSwitchCharacterCard by rememberLocal(
+        "chat_history_auto_switch_character_card", 
+        false
+    )
+    
+    // 同步 autoSwitchCharacterCard 到 ViewModel（ViewModel 内部逻辑需要这个值）
+    LaunchedEffect(autoSwitchCharacterCard) {
+        actualViewModel.setAutoSwitchCharacterCard(autoSwitchCharacterCard)
+    }
+    
     val currentChat = chatHistories.find { it.id == currentChatId }
 
     // 导出相关状态
@@ -149,6 +174,39 @@ fun ChatScreenContent(
     // 监听朗读状态
     val isPlaying by actualViewModel.isPlaying.collectAsState()
     val isAutoReadEnabled by actualViewModel.isAutoReadEnabled.collectAsState()
+    val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val activeCharacterCard by characterCardManager.activeCharacterCardFlow.collectAsState(initial = null)
+    val displayedChatHistories =
+            remember(chatHistories, activeCharacterCard, historyDisplayMode) {
+                when (historyDisplayMode) {
+                    ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY -> {
+                        val activeCard = activeCharacterCard ?: return@remember emptyList()
+                        chatHistories.filter { history ->
+                            val historyCard = history.characterCardName
+                            if (activeCard.isDefault) {
+                                historyCard == null || historyCard == activeCard.name
+                            } else {
+                                historyCard == activeCard.name
+                            }
+                        }
+                    }
+
+                    else -> {
+                        chatHistories
+                    }
+                }
+            }
+
+    LaunchedEffect(activeCharacterCard, displayedChatHistories, currentChatId) {
+        val activeCard = activeCharacterCard ?: return@LaunchedEffect
+        if (displayedChatHistories.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val hasCurrentChatInFilter = displayedChatHistories.any { it.id == currentChatId }
+        if (currentChatId.isBlank() || !hasCurrentChatInFilter) {
+            actualViewModel.switchChat(displayedChatHistories.first().id)
+        }
+    }
 
     val onSelectMessageToEditCallback = remember(editingMessageIndex, editingMessageContent, editingMessageType) {
         { index: Int, message: ChatMessage, senderType: String ->
@@ -182,6 +240,7 @@ fun ChatScreenContent(
                         onSpeakMessage = { content -> actualViewModel.speakMessage(content) }, // 添加朗读回调
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) }, // 添加自动朗读回调
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) }, // 添加回复回调
+                        onCreateBranch = { timestamp -> actualViewModel.createBranch(timestamp) }, // 添加创建分支回调
                         topPadding = headerHeight,
                         chatStyle = chatStyle, // Pass chat style
                         isMultiSelectMode = isMultiSelectMode,
@@ -201,7 +260,8 @@ fun ChatScreenContent(
                             } else {
                                 selectedMessageIndices + index
                             }
-                        }
+                        },
+                        horizontalPadding = chatAreaHorizontalPadding.dp
                 )
                 ChatScreenHeader(
                         modifier =
@@ -250,10 +310,12 @@ fun ChatScreenContent(
                         onDeleteMessagesFrom = { index -> actualViewModel.deleteMessagesFrom(index) },
                         onSpeakMessage = { content -> actualViewModel.speakMessage(content) }, // 添加朗读回调
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) }, // 添加回复回调
+                        onCreateBranch = { timestamp -> actualViewModel.createBranch(timestamp) }, // 添加创建分支回调
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) }, // 添加自动朗读回调
                         chatStyle = chatStyle, // Pass chat style
                         isMultiSelectMode = isMultiSelectMode,
                         selectedMessageIndices = selectedMessageIndices,
+                        horizontalPadding = chatAreaHorizontalPadding.dp,
                         onToggleMultiSelectMode = { initialIndex ->
                             isMultiSelectMode = !isMultiSelectMode
                             if (!isMultiSelectMode) {
@@ -288,7 +350,7 @@ fun ChatScreenContent(
                 shape = RoundedCornerShape(12.dp),
                 tonalElevation = 2.dp,
                 shadowElevation = 4.dp,
-                color = Color.White.copy(alpha = 0.97f)
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
             ) {
                 Row(
                     modifier = Modifier
@@ -334,6 +396,32 @@ fun ChatScreenContent(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val allSelectableSelected =
+                            selectableMessageIndices.isNotEmpty() &&
+                                    selectableMessageIndices.all { selectedMessageIndices.contains(it) }
+
+                        TextButton(
+                            onClick = {
+                                selectedMessageIndices =
+                                        if (allSelectableSelected) {
+                                            emptySet()
+                                        } else {
+                                            selectableMessageIndices
+                                        }
+                            },
+                            enabled = selectableMessageIndices.isNotEmpty(),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SelectAll,
+                                contentDescription = stringResource(
+                                        if (allSelectableSelected) R.string.clear_selection else R.string.select_all_messages
+                                ),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
                         // 分享按钮
                         FilledIconButton(
                             onClick = {
@@ -496,45 +584,33 @@ fun ChatScreenContent(
                 exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)),
                 modifier = Modifier.align(Alignment.TopStart)
         ) {
+            val chatHistorySearchQuery by actualViewModel.chatHistorySearchQuery.collectAsState()
             ChatHistorySelectorPanel(
                     actualViewModel = actualViewModel,
-                    chatHistories = chatHistories,
+                    chatHistories = displayedChatHistories,
                     currentChatId = currentChatId,
                     showChatHistorySelector = showChatHistorySelector,
-                    historyListState = historyListState
+                    historyListState = historyListState,
+                    searchQuery = chatHistorySearchQuery,
+                    onSearchQueryChange = actualViewModel::onChatHistorySearchQueryChange,
+                    activeCharacterCard = activeCharacterCard,
+                    historyDisplayMode = historyDisplayMode,
+                    onDisplayModeChange = { historyDisplayMode = it },
+                    autoSwitchCharacterCard = autoSwitchCharacterCard,
+                    onAutoSwitchCharacterCardChange = { autoSwitchCharacterCard = it }
             )
         }
 
         // 滚动到底部按钮
-        AnimatedVisibility(
-            visible = showScrollButton,
+        ScrollToBottomButton(
+            scrollState = scrollState,
+            coroutineScope = coroutineScope,
+            autoScrollToBottom = autoScrollToBottom,
+            onAutoScrollToBottomChange = onAutoScrollToBottomChange,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            IconButton(
-                onClick = {
-                    coroutineScope.launch {
-                        scrollState.animateScrollTo(scrollState.maxValue)
-                    }
-                    onAutoScrollToBottomChange(true) // 重新启用自动滚动
-                    onShowScrollButtonChange(false) // 点击后隐藏按钮
-                },
-                modifier = Modifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
-                        shape = RoundedCornerShape(50)
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Scroll to bottom",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+                .padding(bottom = 16.dp)
+        )
 
 
         // 导出平台选择对话框
@@ -701,7 +777,14 @@ fun ChatHistorySelectorPanel(
         chatHistories: List<ChatHistory>,
         currentChatId: String,
         showChatHistorySelector: Boolean,
-        historyListState: LazyListState
+        historyListState: LazyListState,
+        searchQuery: String,
+        onSearchQueryChange: (String) -> Unit,
+        activeCharacterCard: CharacterCard?,
+        historyDisplayMode: ChatHistoryDisplayMode,
+        onDisplayModeChange: (ChatHistoryDisplayMode) -> Unit,
+        autoSwitchCharacterCard: Boolean,
+        onAutoSwitchCharacterCardChange: (Boolean) -> Unit
 ) {
     // 历史选择器面板（不再包含遮罩层，遮罩层已在外部处理）
     Box(
@@ -716,69 +799,62 @@ fun ChatHistorySelectorPanel(
                                     shape = RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)
                             )
     ) {
-        // 直接使用ChatHistorySelector
-        ChatHistorySelector(
-                modifier = Modifier.fillMaxSize().padding(top = 8.dp),
-                onNewChat = {
-                    actualViewModel.createNewChat()
-                    // 创建新对话后自动收起侧边框
-                    actualViewModel.showChatHistorySelector(false)
-                },
-                onSelectChat = { chatId ->
-                    actualViewModel.switchChat(chatId)
-                    // 切换聊天后也自动收起侧边框
-                    actualViewModel.showChatHistorySelector(false)
-                },
-                onDeleteChat = { chatId -> actualViewModel.deleteChatHistory(chatId) },
-                onUpdateChatTitle = { chatId, newTitle ->
-                    actualViewModel.updateChatTitle(chatId, newTitle)
-                },
-                onCreateGroup = { groupName -> actualViewModel.createGroup(groupName) },
-                onUpdateChatOrderAndGroup = { reorderedHistories, movedItem, targetGroup ->
-                    actualViewModel.updateChatOrderAndGroup(
-                            reorderedHistories,
-                            movedItem,
-                            targetGroup
-                    )
-                },
-                onUpdateGroupName = { oldName, newName ->
-                    actualViewModel.updateGroupName(oldName, newName)
-                },
-                onDeleteGroup = { groupName, deleteChats ->
-                    actualViewModel.deleteGroup(groupName, deleteChats)
-                },
-                chatHistories = chatHistories,
-                currentId = currentChatId,
-                lazyListState = historyListState
-        )
-
-        // 在右侧添加浮动返回按钮
-        OutlinedButton(
-                onClick = { actualViewModel.toggleChatHistorySelector() },
-                modifier =
-                        Modifier.align(Alignment.TopEnd)
-                                .padding(top = 16.dp, end = 8.dp)
-                                .height(28.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                colors =
-                        ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary
-                        ),
-                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp),
-                shape = RoundedCornerShape(4.dp)
-        ) {
-            Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+        if (activeCharacterCard == null) {
+            Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
             ) {
-                Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                )
-                Text("返回", style = MaterialTheme.typography.bodySmall)
+                CircularProgressIndicator()
             }
+        } else {
+            // 直接使用ChatHistorySelector
+            ChatHistorySelector(
+                    modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+                    onNewChat = { characterCardName ->
+                        actualViewModel.createNewChat(characterCardName)
+                        // 创建新对话后自动收起侧边框
+                        actualViewModel.showChatHistorySelector(false)
+                    },
+                    onSelectChat = { chatId ->
+                        actualViewModel.switchChat(chatId)
+                        // 切换聊天后也自动收起侧边框
+                        actualViewModel.showChatHistorySelector(false)
+                    },
+                    onDeleteChat = { chatId -> actualViewModel.deleteChatHistory(chatId) },
+                    onUpdateChatTitle = { chatId, newTitle ->
+                        actualViewModel.updateChatTitle(chatId, newTitle)
+                    },
+                    onUpdateChatBinding = { chatId, characterCardName ->
+                        actualViewModel.updateChatCharacterCardBinding(chatId, characterCardName)
+                    },
+                    onCreateGroup = { groupName, characterCardName -> 
+                        actualViewModel.createGroup(groupName, characterCardName)
+                    },
+                    onUpdateChatOrderAndGroup = { reorderedHistories, movedItem, targetGroup ->
+                        actualViewModel.updateChatOrderAndGroup(
+                                reorderedHistories,
+                                movedItem,
+                                targetGroup
+                        )
+                    },
+                    onUpdateGroupName = { oldName, newName, characterCardName ->
+                        actualViewModel.updateGroupName(oldName, newName, characterCardName)
+                    },
+                    onDeleteGroup = { groupName, deleteChats, characterCardName ->
+                        actualViewModel.deleteGroup(groupName, deleteChats, characterCardName)
+                    },
+                    chatHistories = chatHistories,
+                    currentId = currentChatId,
+                    lazyListState = historyListState,
+                    onBack = { actualViewModel.toggleChatHistorySelector() },
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = onSearchQueryChange,
+                    historyDisplayMode = historyDisplayMode,
+                    onDisplayModeChange = onDisplayModeChange,
+                    autoSwitchCharacterCard = autoSwitchCharacterCard,
+                    onAutoSwitchCharacterCardChange = onAutoSwitchCharacterCardChange,
+                    activeCharacterCard = activeCharacterCard
+            )
         }
     }
 }

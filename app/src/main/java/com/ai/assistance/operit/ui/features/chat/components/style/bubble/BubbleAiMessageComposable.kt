@@ -27,10 +27,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
+import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRendererState
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.features.chat.components.LinkPreviewDialog
 import com.ai.assistance.operit.util.markdown.toCharStream
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import androidx.compose.foundation.Image
 import coil.compose.AsyncImage
@@ -50,12 +52,18 @@ fun BubbleAiMessageComposable(
     isHidden: Boolean = false
 ) {
     val context = LocalContext.current
-    val preferencesManager = remember { UserPreferencesManager(context) }
+    val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val showThinkingProcess by preferencesManager.showThinkingProcess.collectAsState(initial = true)
     val showStatusTags by preferencesManager.showStatusTags.collectAsState(initial = true)
     val avatarShapePref by preferencesManager.avatarShape.collectAsState(initial = UserPreferencesManager.AVATAR_SHAPE_CIRCLE)
     val avatarCornerRadius by preferencesManager.avatarCornerRadius.collectAsState(initial = 8f)
+    
+    // 收集显示偏好设置
+    val showModelProvider by displayPreferencesManager.showModelProvider.collectAsState(initial = false)
+    val showModelName by displayPreferencesManager.showModelName.collectAsState(initial = false)
+    val showRoleName by displayPreferencesManager.showRoleName.collectAsState(initial = false)
     
     // 根据角色名获取头像
     val aiAvatarUri by remember(message.roleName) {
@@ -88,6 +96,9 @@ fun BubbleAiMessageComposable(
     // 链接预览弹窗状态
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkToPreview by remember { mutableStateOf("") }
+    
+    // 创建并保存StreamMarkdownRenderer的状态，使用message.timestamp作为key确保同一条消息共享状态
+    val rendererState = remember(message.timestamp) { StreamMarkdownRendererState() }
 
     val xmlRenderer = remember(showThinkingProcess, showStatusTags) {
         CustomXmlRenderer(
@@ -125,7 +136,7 @@ fun BubbleAiMessageComposable(
 
     Row(
         modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 0.dp, vertical = 4.dp)
             .alpha(alpha)
             .offset(y = offsetY.dp),
         horizontalArrangement = Arrangement.Start,
@@ -153,26 +164,63 @@ fun BubbleAiMessageComposable(
         }
         Spacer(modifier = Modifier.width(8.dp))
 
-        if (imageUrl != null) {
-            AsyncImage(
-                model = Uri.parse(imageUrl),
-                contentDescription = "Image from AI",
-                modifier = Modifier
-                    .padding(end = 64.dp)
-                    .heightIn(max = 80.dp)
-                    .clip(RoundedCornerShape(16.dp)),
-                contentScale = ContentScale.Fit
-            )
-        } else {
-            // Message bubble
-            Surface(
-                modifier = Modifier
-                    .padding(end = 64.dp)
-                    .defaultMinSize(minHeight = 44.dp),
-                shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
-                color = backgroundColor,
-                tonalElevation = 2.dp
-            ) {
+        // 使用Column来垂直排列名称和消息气泡
+        Column(
+            modifier = Modifier
+                .padding(end = 32.dp)
+                .weight(1f, fill = false)
+        ) {
+            // 根据用户设置显示角色名称、模型名称和供应商信息
+            val displayText = buildString {
+                // 根据用户设置添加角色名称
+                if (showRoleName && message.roleName.isNotEmpty()) {
+                    append(message.roleName)
+                }
+                
+                // 根据用户设置添加模型名称
+                if (showModelName && message.modelName.isNotEmpty()) {
+                    if (isNotEmpty()) append(" | ")
+                    append(message.modelName)
+                }
+                
+                // 根据用户设置添加供应商
+                if (showModelProvider && message.provider.isNotEmpty()) {
+                    if (showModelName && message.modelName.isNotEmpty()) {
+                        append(" by ")
+                    } else if (isNotEmpty()) {
+                        append(" | ")
+                    }
+                    append(message.provider)
+                }
+            }
+            
+            if (displayText.isNotEmpty()) {
+                Text(
+                    text = displayText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
+                )
+            }
+            
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = Uri.parse(imageUrl),
+                    contentDescription = "Image from AI",
+                    modifier = Modifier
+                        .heightIn(max = 80.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                // Message bubble
+                Surface(
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 44.dp),
+                    shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
+                    color = backgroundColor,
+                    tonalElevation = 2.dp
+                ) {
                 // 使用 message.timestamp 作为 key，确保在重组期间，
                 // 只要是同一条消息，StreamMarkdownRenderer就不会被销毁和重建。
                 key(message.timestamp) {
@@ -185,19 +233,25 @@ fun BubbleAiMessageComposable(
                             backgroundColor = backgroundColor,
                             onLinkClick = rememberedOnLinkClick,
                             xmlRenderer = xmlRenderer,
-                            modifier = Modifier.padding(12.dp)
+                            modifier = Modifier.padding(12.dp),
+                            state = rendererState,
+                            fillMaxWidth = false  // bubble模式：横向缩紧
                         )
                     } else {
                         // 对于已完成的静态消息，使用 content 参数的渲染器以支持Markdown
+                        // 共享相同的state，避免重新计算nodes等状态
                         StreamMarkdownRenderer(
                             content = message.content,
                             textColor = textColor,
                             backgroundColor = backgroundColor,
                             onLinkClick = rememberedOnLinkClick,
                             xmlRenderer = xmlRenderer,
-                            modifier = Modifier.padding(12.dp)
+                            modifier = Modifier.padding(12.dp),
+                            state = rendererState,
+                            fillMaxWidth = false  // bubble模式：横向缩紧
                         )
                     }
+                }
                 }
             }
         }

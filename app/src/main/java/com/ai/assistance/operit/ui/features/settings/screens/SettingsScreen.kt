@@ -48,9 +48,11 @@ fun SettingsScreen(
         navigateToToolPermissions: () -> Unit,
         navigateToModelConfig: () -> Unit,
         navigateToThemeSettings: () -> Unit,
+        navigateToGlobalDisplaySettings: () -> Unit,
         navigateToModelPrompts: () -> Unit,
         navigateToFunctionalConfig: () -> Unit,
         navigateToChatHistorySettings: () -> Unit,
+        navigateToChatBackupSettings: () -> Unit,
         navigateToLanguageSettings: () -> Unit,
         navigateToSpeechServicesSettings: () -> Unit,
         navigateToCustomHeadersSettings: () -> Unit,
@@ -62,7 +64,7 @@ fun SettingsScreen(
 ) {
         val context = LocalContext.current
         val apiPreferences = remember { ApiPreferences.getInstance(context) }
-        val userPreferences = remember { UserPreferencesManager(context) }
+        val userPreferences = remember { UserPreferencesManager.getInstance(context) }
         val scope = rememberCoroutineScope()
 
         // 创建和记住滚动状态，设置为上次保存的位置
@@ -75,26 +77,9 @@ fun SettingsScreen(
                 }
         }
 
-        // Collect API settings as state
-        val showFpsCounter = apiPreferences.showFpsCounterFlow.collectAsState(initial = ApiPreferences.DEFAULT_SHOW_FPS_COUNTER).value
-        val keepScreenOn = apiPreferences.keepScreenOnFlow.collectAsState(initial = ApiPreferences.DEFAULT_KEEP_SCREEN_ON).value
-        val enableReplyNotification = apiPreferences.enableReplyNotificationFlow.collectAsState(initial = ApiPreferences.DEFAULT_ENABLE_REPLY_NOTIFICATION).value
-
         val hasBackgroundImage = userPreferences.useBackgroundImage.collectAsState(initial = false).value
-
-        // Mutable state for editing
-        var showFpsCounterInput by remember { mutableStateOf(showFpsCounter) }
-        var keepScreenOnInput by remember { mutableStateOf(keepScreenOn) }
-        var enableReplyNotificationInput by remember { mutableStateOf(enableReplyNotification) }
         
         var showSaveSuccessMessage by remember { mutableStateOf(false) }
-
-        // Update local state when preferences change
-        LaunchedEffect(showFpsCounter, keepScreenOn, enableReplyNotification) {
-                showFpsCounterInput = showFpsCounter
-                keepScreenOnInput = keepScreenOn
-                enableReplyNotificationInput = enableReplyNotification
-        }
 
         val cardContainerColor = if (hasBackgroundImage) {
                 MaterialTheme.colorScheme.surface
@@ -138,6 +123,13 @@ fun SettingsScreen(
                                 subtitle = stringResource(id = R.string.settings_theme_subtitle),
                                 icon = Icons.Default.Palette,
                                 onClick = navigateToThemeSettings
+                        )
+                        
+                        CompactSettingsItem(
+                                title = stringResource(R.string.settings_global_display),
+                                subtitle = stringResource(R.string.settings_global_display_subtitle),
+                                icon = Icons.Default.Visibility,
+                                onClick = navigateToGlobalDisplaySettings
                         )
                         
                         CompactSettingsItem(
@@ -227,62 +219,6 @@ fun SettingsScreen(
                         )
                 }
 
-                // ======= 显示和行为设置 =======
-                SettingsSection(
-                        title = stringResource(id = R.string.settings_section_display),
-                        icon = Icons.Default.Visibility,
-                        containerColor = cardContainerColor
-                ) {
-                        // 开关控件
-                        Column(
-                                modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(componentBackgroundColor)
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                                CompactToggleWithDescription(
-                                        title = stringResource(id = R.string.settings_keep_screen_on),
-                                        description = stringResource(id = R.string.settings_keep_screen_on_desc),
-                                        checked = keepScreenOnInput,
-                                        onCheckedChange = {
-                                                keepScreenOnInput = it
-                                                scope.launch {
-                                                        apiPreferences.saveKeepScreenOn(it)
-                                                        showSaveSuccessMessage = true
-                                                }
-                                        }
-                                )
-                                Divider(modifier = Modifier.padding(vertical = 4.dp))
-                                CompactToggleWithDescription(
-                                        title = stringResource(id = R.string.show_fps_counter),
-                                        description = stringResource(id = R.string.fps_counter_description),
-                                        checked = showFpsCounterInput,
-                                        onCheckedChange = {
-                                                showFpsCounterInput = it
-                                                scope.launch {
-                                                        apiPreferences.saveShowFpsCounter(it)
-                                                        showSaveSuccessMessage = true
-                                                }
-                                        }
-                                )
-                                Divider(modifier = Modifier.padding(vertical = 4.dp))
-                                CompactToggleWithDescription(
-                                        title = stringResource(id = R.string.settings_reply_notification),
-                                        description = stringResource(id = R.string.settings_reply_notification_desc),
-                                        checked = enableReplyNotificationInput,
-                                        onCheckedChange = {
-                                                enableReplyNotificationInput = it
-                                                scope.launch {
-                                                        apiPreferences.saveEnableReplyNotification(it)
-                                                        showSaveSuccessMessage = true
-                                                }
-                                        }
-                                )
-                        }
-                }
-
                 // ======= 数据和权限 =======
                 SettingsSection(
                         title = stringResource(id = R.string.settings_data_permissions),
@@ -298,11 +234,18 @@ fun SettingsScreen(
                         
                         CompactSettingsItem(
                                 title = stringResource(id = R.string.settings_data_backup),
-                                subtitle = stringResource(id = R.string.settings_data_backup_subtitle),
-                                icon = Icons.Default.History,
-                                onClick = navigateToChatHistorySettings
+                                subtitle = stringResource(id = R.string.settings_data_backup_desc),
+                                icon = Icons.Default.CloudUpload,
+                                onClick = navigateToChatBackupSettings
                         )
                         
+                        CompactSettingsItem(
+                                title = stringResource(id = R.string.settings_chat_history_management),
+                                subtitle = stringResource(id = R.string.settings_chat_history_management_subtitle),
+                                icon = Icons.Default.ManageHistory,
+                                onClick = navigateToChatHistorySettings
+                        )
+
                         CompactSettingsItem(
                                 title = stringResource(id = R.string.settings_token_usage_stats),
                                 subtitle = stringResource(id = R.string.settings_token_usage_subtitle),

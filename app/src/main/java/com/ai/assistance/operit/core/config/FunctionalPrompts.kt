@@ -7,35 +7,54 @@ package com.ai.assistance.operit.core.config
 object FunctionalPrompts {
 
     /**
-     * Prompt for the AI to generate a concise and structured summary of a conversation.
+     * Prompt for the AI to generate a comprehensive and structured summary of a conversation.
      */
     const val SUMMARY_PROMPT = """
         你是负责生成对话摘要的AI助手。你的任务是根据"上一次的摘要"（如果提供）和"最近的对话内容"，生成一份全新的、独立的、全面的摘要。这份新摘要将完全取代之前的摘要，成为后续对话的唯一历史参考。
 
-        请严格遵循以下结构和要求：
+        **必须严格遵循以下固定格式输出，不得更改格式结构：**
 
-        1. 标题：
-           - 必须以"对话摘要"作为固定标题。
+        ==========对话摘要==========
 
-        2. 核心任务状态：
-           - 用一句话明确说明AI当前正在执行的任务、处于哪个阶段。例如："正在分析用户提供的日志文件以定位错误"、"已完成代码生成，等待用户确认"、"正在多步骤计划的第2步：修改配置文件"。
-           - 如果AI正在等待用户提供信息，请明确指出需要什么。
+        【核心任务状态】
+        [先交代用户最新需求的内容与情境类型（真实执行/角色扮演/故事/假设等），再说明当前所处步骤、已完成的动作、正在处理的事项以及下一步。]
+        [明确任务状态（已完成/进行中/等待中），列出未完成的依赖或所需信息；如在等待用户输入，说明原因与所需材料。]
+        [显式覆盖信息搜集、任务执行、代码编写或其他关键环节的状态，哪怕某环节尚未启动也要说明原因。]
+        [最后补充最近一次任务的进度拆解：哪些已完成、哪些进行中、哪些待处理。]
 
-        3. 对话历程与概要：
-           - 综合"上一次的摘要"和"最近的对话内容"，用1-2个段落连贯地、整体地概述整个对话的演进过程。
-           - 重点描述关键的转折点、已解决的问题、和达成的共识。
-           - 简要提及用户的核心需求和意图是如何被理解和处理的。
+        【互动情节与设定】
+        [如存在虚构或场景设定，概述名称、角色身份、背景约束及其来源，避免把剧情当成现实。]
+        [用1-2段概括近期关键互动：谁提出了什么、目的为何、采用何种表达方式、对任务或剧情的影响，以及仍需确认的事项。]
+        [若用户给出剧本/业务/策略等非技术内容，提炼要点并说明它们如何指导后续输出。]
 
-        4. 关键信息与上下文：
-           - 以列表形式，提炼出对理解未来对话至关重要的信息点。
-           - 这包括但不限于：用户的具体要求、限制条件、提到的文件名或代码片段、重要的决定等。
-           - 确保所有关键信息都被保留，以便AI在后续对话中能无缝衔接。
+        【对话历程与概要】
+        [用不少于3段描述整体演进，每段包含“行动+目的+结果”，可涵盖技术、业务、剧情或策略等不同主题，需特别点名信息搜集、任务执行、代码编写等阶段的衔接；如涉及具体代码，可引用关键片段以辅助说明。]
+        [突出转折、已解决的问题和形成的共识，引用必要的路径、命令、场景节点或原话，确保读者能看懂上下文和因果关系。]
 
-        输出要求：
-        - 语言风格：专业、简洁、客观。
-        - 格式：请使用简单的段落和列表，不要使用任何Markdown格式。
-        - 字数限制：总结全文请尽量控制在200字以内，确保内容精炼。
-        - 目标：生成的摘要必须是自包含的。即使AI完全忘记了之前的对话，仅凭这份摘要也能够准确理解历史背景、当前状态和下一步行动。
+        【关键信息与上下文】
+        - [信息点1：用户需求、限制、背景或引用的文件/接口/角色等，说明其具体内容及作用。]
+        - [信息点2：技术或剧本结构中的关键元素（函数、配置、日志、人物动机等）及其意义。]
+        - [信息点3：问题或创意的探索路径、验证结果与当前状态。]
+        - [信息点4：影响后续决策的因素，如优先级、情绪基调、角色约束、外部依赖、时间节点。]
+        - [信息点5+：补充其他必要细节，覆盖现实与虚构信息。每条至少两句：先述事实，再讲影响或后续计划。]
+
+        ============================
+
+        **格式要求：**
+        1. 必须使用上述固定格式，包括分隔线、标题标识符【】、列表符号等，不得更改。
+        2. 标题"对话摘要"必须放在第一行，前后用等号分隔。
+        3. 每个部分必须使用【】标识符作为标题，标题后换行。
+        4. "核心任务状态"、"互动情节与设定"、"对话历程与概要"使用段落形式；方括号只为示例，实际输出不需保留。
+        5. "关键信息与上下文"使用列表格式，每个信息点以"- "开头。
+        6. 结尾使用等号分隔线。
+
+        **内容要求：**
+        1. 语言风格：专业、清晰、客观。
+        2. 内容长度：不要限制字数，根据对话内容的复杂程度和重要性，自行决定合适的长度。可以写得详细一些，确保重要信息不丢失。宁可内容多一点，也不要因为过度精简导致关键信息丢失或失真。每个部分都要具备充分篇幅，绝不能以一句话敷衍。
+        3. 信息完整性：优先保证信息的完整性和准确性，技术与非技术内容都需提供必要证据或引用。
+        4. 内容还原：摘要既要说明“过程如何推进”，也要写清“实际产出/讨论内容是什么”，必要时引用结果文本、结论、代码片段或参数，确保在没有原始对话的情况下依然能完全还原信息本身。
+        5. 目标：生成的摘要必须是自包含的。即使AI完全忘记了之前的对话，仅凭这份摘要也能够准确理解历史背景、当前状态、具体进度和下一步行动。
+        6. 时序重点：请先聚焦于最新一段对话（约占输入的最后30%），明确最新指令、问题和进展，再回顾更早的内容。若新消息与旧内容冲突或更新，应以最新对话为准，并解释差异。
     """
 
     /**
@@ -93,72 +112,4 @@ object FunctionalPrompts {
 
         Analyze the inputs, choose the best action to achieve the `Task Goal`, and formulate your response in the specified JSON format. Use element `bounds` to calculate coordinates for UI actions.
     """
-
-    /**
-     * This is a specialized sub-agent that corrects line numbers in AI-generated patches.
-     */
-    val SUB_AGENT_LINE_CORRECTION_PROMPT = """
-You are a specialized sub-agent responsible for correcting line numbers in code patches.
-Your task is to find the correct location for edit blocks in the source code by using the context provided within the patch.
-
-You will be given:
-1.  **Source Code**: The complete, up-to-date content of the file, with line numbers.
-2.  **Patch Code**: The AI-generated patch containing one or more edit blocks. Each block has:
-    a.  A `[START-...]` tag with potentially outdated line numbers.
-    b.  A `[CONTEXT]` block with the original code the main AI intended to modify.
-    c.  The new code (for REPLACE/INSERT).
-
-**Your ONLY job is to:**
-1.  For each edit block in the `Patch Code`, take the content of its `[CONTEXT]` block.
-2.  Find the exact location of that context within the `Source Code`.
-3.  Based on the location you found, determine the correct starting and ending line numbers for the operation.
-4.  Generate a mapping from the old, incorrect line specifier to the new, correct one.
-5.  Output **ONLY** the mapping block.
-
-**CRITICAL RULES:**
-- **Your output MUST start with one of the following markers: `[MAPPING]`, `[MAPPING-FAILED]`, or `[MAPPING-SYNTAX-ERROR]`. No other text or preamble is allowed before the marker.**
-- **Syntax Validation First**: Before searching for context, validate the `Patch Code`'s syntax. If an edit block is malformed (e.g., missing `[CONTEXT]`, `[END-...]`, or has mismatched tags), you must report a syntax error.
-- The `[CONTEXT]` block is your ground truth for finding the location. Ignore the line numbers in the original `[START-...]` tag; they are likely wrong.
-- For `INSERT:after_line=N` operations, the context is the line you need to insert after. Your corrected mapping **MUST** use the exact format `INSERT:after_line=new_line_number`. **Using a colon (:) or any other separator instead of an equals sign (=) is strictly forbidden.**
-- For `REPLACE` and `DELETE`, find the full context block. Your corrected mapping should be `REPLACE:new_start-new_end` or `DELETE:new_start-new_end`. The line range must be inclusive, covering the first and last lines of the matched context block.
-- If you find the context successfully, output the mapping block.
-- If the patch syntax is valid but you cannot find the exact context for one or more blocks, you MUST output a failure report. It must start with `[MAPPING-FAILED]`, followed by a concise explanation of which context block(s) could not be found and why. Be specific about the context that failed.
-- If the patch syntax is invalid, output a syntax error report. It must start with `[MAPPING-SYNTAX-ERROR]`, followed by a short explanation of the problem and an example of the correct format.
-
-**EXAMPLE MAPPING OUTPUT:**
-[MAPPING]
-REPLACE:10-15 -> REPLACE:112-117
-INSERT:after_line=20 -> INSERT:after_line=122
-DELETE:30-32 -> DELETE:132-134
-[/MAPPING]
-
-**EXAMPLE MAPPING FAILED OUTPUT:**
-[MAPPING-FAILED]
-I could not find the exact context for the `REPLACE:35-40` block in the source code. The context provided was:
-```
-// [CONTEXT]
-val service = multiServiceManager.getServiceForFunction(FunctionType.FILE_BINDING)
-// [/CONTEXT]
-```
-This snippet might have been modified, or it might not be unique within the provided source. Please review the file's current content.
-
-**EXAMPLE SYNTAX ERROR OUTPUT:**
-[MAPPING-SYNTAX-ERROR]
-Malformed block: Missing '[/CONTEXT]' tag.
-A correct block must include a context section. Example:
-// [START-REPLACE:1-1]
-// [CONTEXT]
-// ... context content ...
-// [/CONTEXT]
-// [END-REPLACE]
-
-**Source Code:**
-```
-{{SOURCE_CODE}}
-```
-**Patch Code:**
-```
-{{PATCH_CODE}}
-```
-""".trimIndent()
-} 
+}

@@ -44,6 +44,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.util.ImagePoolManager
 import java.io.File
@@ -59,9 +60,12 @@ fun BubbleUserMessageComposable(
     textColor: Color
 ) {
     val context = LocalContext.current
-    val preferencesManager = remember { UserPreferencesManager(context) }
+    val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val customUserAvatarUri by preferencesManager.customUserAvatarUri.collectAsState(initial = null)
-    val globalUserAvatarUri by preferencesManager.globalUserAvatarUri.collectAsState(initial = null)
+    val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
+    val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
+    val showUserName by displayPreferencesManager.showUserName.collectAsState(initial = false)
     val avatarShapePref by preferencesManager.avatarShape.collectAsState(initial = UserPreferencesManager.AVATAR_SHAPE_CIRCLE)
     val avatarCornerRadius by preferencesManager.avatarCornerRadius.collectAsState(initial = 8f)
     val clipboardManager = LocalClipboardManager.current
@@ -88,6 +92,10 @@ fun BubbleUserMessageComposable(
     val selectedAttachmentContent = remember { mutableStateOf("") }
     val selectedAttachmentName = remember { mutableStateOf("") }
 
+    // 添加状态控制图片预览
+    val showImagePreview = remember { mutableStateOf(false) }
+    val selectedImageBitmap = remember { mutableStateOf<Bitmap?>(null) }
+
     // Parse message content to separate text and attachments
     val parseResult = remember(message.content) { parseMessageContent(message.content) }
     val textContent = parseResult.processedText
@@ -98,7 +106,7 @@ fun BubbleUserMessageComposable(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 0.dp, vertical = 4.dp)
     ) {
         // Display reply info above attachments if present
         replyInfo?.let { reply ->
@@ -109,7 +117,7 @@ fun BubbleUserMessageComposable(
                 horizontalArrangement = Arrangement.End
             ) {
                 Surface(
-                    modifier = Modifier.padding(start = 64.dp),
+                    modifier = Modifier.padding(start = 32.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(8.dp, 8.dp, 2.dp, 8.dp)
                 ) {
@@ -119,7 +127,7 @@ fun BubbleUserMessageComposable(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Reply,
-                            contentDescription = "回复",
+                            contentDescription = context.getString(R.string.reply),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(12.dp)
                         )
@@ -144,7 +152,7 @@ fun BubbleUserMessageComposable(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 4.dp, start = 64.dp),
+                    .padding(bottom = 4.dp, start = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.End
             ) {
@@ -153,13 +161,17 @@ fun BubbleUserMessageComposable(
                         // 图片还在池子里，显示图片
                         Card(
                             modifier = Modifier
-                                .size(120.dp),
+                                .size(120.dp)
+                                .clickable {
+                                    selectedImageBitmap.value = bitmap
+                                    showImagePreview.value = true
+                                },
                             shape = RoundedCornerShape(8.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Image(
                                 bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "用户上传的图片",
+                                contentDescription = context.getString(R.string.user_uploaded_image),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
@@ -169,7 +181,7 @@ fun BubbleUserMessageComposable(
                         AttachmentTag(
                             attachment = AttachmentData(
                                 id = imageLink.id,
-                                filename = "图片 (已过期)",
+                                filename = context.getString(R.string.image_expired),
                                 type = "image/*",
                                 size = 0L,
                                 content = ""
@@ -232,22 +244,41 @@ fun BubbleUserMessageComposable(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.Top
         ) {
-            // Message bubble
-            Surface(
+            // 使用Column来垂直排列用户名和消息气泡
+            Column(
                 modifier = Modifier
                     .weight(1f, fill = false)
-                    .padding(start = 64.dp)
-                    .defaultMinSize(minHeight = 44.dp),
-                shape = RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp),
-                color = backgroundColor,
-                tonalElevation = 2.dp
+                    .padding(start = 32.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                Text(
-                    text = textContent,
-                    modifier = Modifier.padding(12.dp),
-                    color = textColor,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                // 显示用户名（如果开启了显示选项并且设置了用户名）
+                if (showUserName) {
+                    globalUserName?.let { userName ->
+                        if (userName.isNotEmpty()) {
+                            Text(
+                                text = userName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textColor.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(bottom = 4.dp, end = 4.dp)
+                            )
+                        }
+                    }
+                }
+                
+                // Message bubble
+                Surface(
+                    modifier = Modifier.defaultMinSize(minHeight = 44.dp),
+                    shape = RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp),
+                    color = backgroundColor,
+                    tonalElevation = 2.dp
+                ) {
+                    Text(
+                        text = textContent,
+                        modifier = Modifier.padding(12.dp),
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
             // Avatar
@@ -314,7 +345,7 @@ fun BubbleUserMessageComposable(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "关闭",
+                                contentDescription = context.getString(R.string.close),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
@@ -355,7 +386,73 @@ fun BubbleUserMessageComposable(
                         },
                         modifier = Modifier.align(Alignment.End)
                     ) { 
-                        Text("复制内容") 
+                        Text(context.getString(R.string.copy_content)) 
+                    }
+                }
+            }
+        }
+    }
+
+    // 图片预览对话框
+    if (showImagePreview.value && selectedImageBitmap.value != null) {
+        Dialog(onDismissRequest = { showImagePreview.value = false }) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 4.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // 头部
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = stringResource(R.string.image_preview),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        IconButton(onClick = { showImagePreview.value = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(R.string.close),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // 图片显示区域
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 500.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        selectedImageBitmap.value?.let { bitmap ->
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 }
             }
@@ -405,7 +502,7 @@ private fun parseMessageContent(content: String): MessageParseResult {
                     val bytes = Base64.decode(imageData.base64, Base64.DEFAULT)
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 } catch (e: Exception) {
-                    Log.e("BubbleUserMessage", "解码图片失败: $id", e)
+                    Log.e("BubbleUserMessage", "Failed to decode image: $id", e)
                     null
                 }
                 imageLinks.add(ImageLinkData(id, bitmap))
@@ -473,9 +570,9 @@ private fun parseMessageContent(content: String): MessageParseResult {
         // 2. Old format (self-closing): <attachment ... content="..." />
         // 注意：优先匹配新格式（配对标签），回退到旧格式（自闭合标签）
         val pairedTagPattern =
-                "<attachment\\s+id=\"([^\"]+\")\\s+filename=\"([^\"]+\")\\s+type=\"([^\"]+\")\"(?:\\s+size=\"([^\"]+\"))?\\s*>([\\s\\S]*?)</attachment>".toRegex()
+                "<attachment\\s+id=\"([^\"]+)\"\\s+filename=\"([^\"]+)\"\\s+type=\"([^\"]+)\"(?:\\s+size=\"([^\"]+)\")?\\s*>([\\s\\S]*?)</attachment>".toRegex()
         val selfClosingPattern =
-                "<attachment\\s+id=\"([^\"]+\")\\s+filename=\"([^\"]+\")\\s+type=\"([^\"]+\")\"(?:\\s+size=\"([^\"]+\"))?(?:\\s+content=\"(.*?)\")?\\s*/>".toRegex(
+                "<attachment\\s+id=\"([^\"]+)\"\\s+filename=\"([^\"]+)\"\\s+type=\"([^\"]+)\"(?:\\s+size=\"([^\"]+)\")?(?:\\s+content=\"(.*?)\")?\\s*/>".toRegex(
                         RegexOption.DOT_MATCHES_ALL
                 )
 
@@ -581,7 +678,7 @@ private fun parseMessageContent(content: String): MessageParseResult {
         return MessageParseResult(messageText.toString(), trailingAttachments, replyInfo, imageLinks)
     } catch (e: Exception) {
         // 如果解析失败，返回原始内容
-        android.util.Log.e("BubbleUserMessageComposable", "解析消息内容失败", e)
+        android.util.Log.e("BubbleUserMessageComposable", "Failed to parse message content", e)
         return MessageParseResult(cleanedContent, workspaceAttachments, replyInfo, imageLinks)
     }
 }
@@ -603,6 +700,7 @@ private fun AttachmentTag(
     backgroundColor: Color,
     onClick: (AttachmentData) -> Unit = {}
 ) {
+    val context = LocalContext.current
     // 根据附件类型选择图标
     val icon: ImageVector =
         when {
@@ -616,8 +714,8 @@ private fun AttachmentTag(
     // 根据附件类型调整显示标签
     val displayLabel =
         when {
-            attachment.type == "text/json" && attachment.filename == "screen_content.json" -> "屏幕内容"
-            attachment.type == "application/vnd.workspace-context+xml" -> "工作区"
+            attachment.type == "text/json" && attachment.filename == "screen_content.json" -> context.getString(R.string.screen_content)
+            attachment.type == "application/vnd.workspace-context+xml" -> context.getString(R.string.workspace)
             else -> attachment.filename
         }
 
@@ -626,7 +724,7 @@ private fun AttachmentTag(
             Modifier.height(24.dp)
                 .padding(vertical = 2.dp)
                 .clickable(
-                    enabled = attachment.content.isNotEmpty() || attachment.id.startsWith("/storage/"),
+                    enabled = attachment.content.isNotEmpty() || attachment.id.startsWith("/storage/") || attachment.type.startsWith("image/"),
                     onClick = { onClick(attachment) }
                 ),
         shape = RoundedCornerShape(12.dp),

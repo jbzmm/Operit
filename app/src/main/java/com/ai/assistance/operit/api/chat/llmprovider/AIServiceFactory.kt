@@ -82,19 +82,21 @@ object AIServiceFactory {
 
         // 图片处理支持标志
         val supportsVision = config.enableDirectImageProcessing
+        // Tool Call支持标志
+        val enableToolCall = config.enableToolCall
         
         return when (config.apiProviderType) {
             // OpenAI格式，支持原生和兼容OpenAI API的服务
-            ApiProviderType.OPENAI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
+            ApiProviderType.OPENAI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
 
             // Claude格式，支持Anthropic Claude系列
-            ApiProviderType.ANTHROPIC -> ClaudeProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType)
+            ApiProviderType.ANTHROPIC -> ClaudeProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, enableToolCall)
 
             // Gemini格式，支持Google Gemini系列
-            ApiProviderType.GOOGLE -> GeminiProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType)
+            ApiProviderType.GOOGLE -> GeminiProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, config.enableGoogleSearch, enableToolCall)
 
             // LM Studio使用OpenAI兼容格式
-            ApiProviderType.LMSTUDIO -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
+            ApiProviderType.LMSTUDIO -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
 
             // MNN本地推理引擎
             ApiProviderType.MNN -> MNNProvider(
@@ -102,28 +104,30 @@ object AIServiceFactory {
                 modelName = config.modelName,  // 使用modelName而不是mnnModelPath
                 forwardType = config.mnnForwardType,
                 threadCount = config.mnnThreadCount,
-                providerType = config.apiProviderType
+                providerType = config.apiProviderType,
+                enableToolCall = enableToolCall
             )
 
             // 阿里云（通义千问）使用专用的QwenProvider
-            ApiProviderType.ALIYUN -> QwenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
+            ApiProviderType.ALIYUN -> QwenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
 
             // 其他中文服务商，当前使用OpenAI Provider (大多数兼容OpenAI格式)
             // 后续可根据需要实现专用Provider
-            ApiProviderType.BAIDU -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.XUNFEI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.ZHIPU -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.BAICHUAN -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.MOONSHOT -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
+            ApiProviderType.BAIDU -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.XUNFEI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.ZHIPU -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.BAICHUAN -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.MOONSHOT -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
 
             // 默认使用OpenAI格式（大多数服务商兼容）
-            ApiProviderType.DEEPSEEK -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.SILICONFLOW -> QwenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.OPENROUTER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.INFINIAI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.ALIPAY_BAILING -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.PPINFRA -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
-            ApiProviderType.OTHER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision)
+            ApiProviderType.DEEPSEEK -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.MISTRAL -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.SILICONFLOW -> QwenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.OPENROUTER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.INFINIAI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.ALIPAY_BAILING -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.PPINFRA -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.OTHER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
         }
     }
 }

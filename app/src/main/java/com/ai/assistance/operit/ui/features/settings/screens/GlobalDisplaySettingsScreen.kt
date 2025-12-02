@@ -1,0 +1,314 @@
+package com.ai.assistance.operit.ui.features.settings.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
+import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.components.CustomScaffold
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlobalDisplaySettingsScreen(
+    onBackPressed: () -> Unit
+) {
+    val context = LocalContext.current
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
+    val apiPreferences = remember { ApiPreferences.getInstance(context) }
+    val userPreferences = remember { UserPreferencesManager.getInstance(context) }
+    val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+
+    // 收集显示设置状态
+    val showModelProvider by displayPreferencesManager.showModelProvider.collectAsState(initial = false)
+    val showModelName by displayPreferencesManager.showModelName.collectAsState(initial = false)
+    val showRoleName by displayPreferencesManager.showRoleName.collectAsState(initial = false)
+    val showUserName by displayPreferencesManager.showUserName.collectAsState(initial = false)
+    val showFpsCounter by displayPreferencesManager.showFpsCounter.collectAsState(initial = false)
+    val enableReplyNotification by displayPreferencesManager.enableReplyNotification.collectAsState(initial = true)
+    val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
+    val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
+    val keepScreenOn by apiPreferences.keepScreenOnFlow.collectAsState(initial = true)
+
+    val hasBackgroundImage by userPreferences.useBackgroundImage.collectAsState(initial = false)
+
+    var showSaveSuccessMessage by remember { mutableStateOf(false) }
+    var userNameInput by remember { mutableStateOf(globalUserName ?: "") }
+
+    // 同步全局用户名状态
+    LaunchedEffect(globalUserName) {
+        userNameInput = globalUserName ?: ""
+    }
+
+    val componentBackgroundColor = if (hasBackgroundImage) {
+        MaterialTheme.colorScheme.surface
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+    }
+
+    CustomScaffold() { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .verticalScroll(scrollState)
+        ) {
+            // ======= 消息显示设置 =======
+            SectionTitle(
+                text = stringResource(R.string.message_display_settings),
+                icon = Icons.Default.Message
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_model_provider),
+                subtitle = stringResource(R.string.show_model_provider_description),
+                checked = showModelProvider,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showModelProvider = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_model_name),
+                subtitle = stringResource(R.string.show_model_name_description),
+                checked = showModelName,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showModelName = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_role_name),
+                subtitle = stringResource(R.string.show_role_name_description),
+                checked = showRoleName,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showRoleName = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_user_name),
+                subtitle = stringResource(R.string.show_user_name_description),
+                checked = showUserName,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showUserName = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            // 用户名字输入框
+            if (showUserName) {
+                OutlinedTextField(
+                    value = userNameInput,
+                    onValueChange = { userNameInput = it },
+                    label = { Text(stringResource(R.string.global_user_name)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    singleLine = true,
+                    trailingIcon = {
+                        if (userNameInput != globalUserName) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    displayPreferencesManager.saveDisplaySettings(globalUserName = userNameInput)
+                                    showSaveSuccessMessage = true
+                                }
+                            }) {
+                                Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
+                            }
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ======= 系统显示设置 =======
+            SectionTitle(
+                text = stringResource(R.string.system_display_settings),
+                icon = Icons.Default.Settings
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.show_fps_counter),
+                subtitle = stringResource(R.string.show_fps_counter_description),
+                checked = showFpsCounter,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(showFpsCounter = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.enable_reply_notification),
+                subtitle = stringResource(R.string.enable_reply_notification_description),
+                checked = enableReplyNotification,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(enableReplyNotification = it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
+                title = stringResource(R.string.keep_screen_on),
+                subtitle = stringResource(R.string.keep_screen_on_description),
+                checked = keepScreenOn,
+                onCheckedChange = {
+                    scope.launch {
+                        apiPreferences.saveKeepScreenOn(it)
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ======= 重置按钮 =======
+            Button(
+                onClick = {
+                    scope.launch {
+                        displayPreferencesManager.resetDisplaySettings()
+                        showSaveSuccessMessage = true
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.RestartAlt,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.reset_all_display_settings),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            // 底部间距
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // 保存成功提示
+        if (showSaveSuccessMessage) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(1500)
+                showSaveSuccessMessage = false
+            }
+            Snackbar(
+                modifier = Modifier.padding(16.dp),
+                action = {
+                    TextButton(onClick = { showSaveSuccessMessage = false }) {
+                        Text(stringResource(id = android.R.string.ok))
+                    }
+                }
+            ) {
+                Text(stringResource(R.string.settings_saved))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(bottom = 8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun DisplayToggleItem(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    backgroundColor: androidx.compose.ui.graphics.Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(backgroundColor)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}

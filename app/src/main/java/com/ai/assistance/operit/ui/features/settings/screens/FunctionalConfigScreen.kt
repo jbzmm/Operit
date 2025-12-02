@@ -20,12 +20,17 @@ import androidx.compose.ui.platform.LocalContext
 import com.ai.assistance.operit.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigSummary
+import com.ai.assistance.operit.data.model.getModelByIndex
+import com.ai.assistance.operit.data.model.getModelList
+import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
+import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -46,6 +51,8 @@ fun FunctionalConfigScreen(
     // 配置映射状态
     val configMapping =
             functionalConfigManager.functionConfigMappingFlow.collectAsState(initial = emptyMap())
+    val configMappingWithIndex =
+            functionalConfigManager.functionConfigMappingWithIndexFlow.collectAsState(initial = emptyMap())
 
     // 配置摘要列表
     var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
@@ -143,20 +150,22 @@ fun FunctionalConfigScreen(
 
                 // 功能类型列表
                 items(FunctionType.values()) { functionType ->
-                    val currentConfigId =
-                            configMapping.value[functionType]
-                                    ?: FunctionalConfigManager.DEFAULT_CONFIG_ID
-                    val currentConfig = configSummaries.find { it.id == currentConfigId }
+                    val currentConfigMapping =
+                            configMappingWithIndex.value[functionType]
+                                    ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+                    val currentConfig = configSummaries.find { it.id == currentConfigMapping.configId }
 
                     FunctionConfigCard(
                             functionType = functionType,
                             currentConfig = currentConfig,
+                            currentModelIndex = currentConfigMapping.modelIndex,
                             availableConfigs = configSummaries,
-                            onConfigSelected = { configId ->
+                            onConfigSelected = { configId, modelIndex ->
                                 scope.launch {
                                     functionalConfigManager.setConfigForFunction(
                                             functionType,
-                                            configId
+                                            configId,
+                                            modelIndex
                                     )
                                     // 刷新服务实例
                                     EnhancedAIService.refreshServiceForFunction(
@@ -243,10 +252,12 @@ fun FunctionalConfigScreen(
 fun FunctionConfigCard(
         functionType: FunctionType,
         currentConfig: ModelConfigSummary?,
+        currentModelIndex: Int,
         availableConfigs: List<ModelConfigSummary>,
-        onConfigSelected: (String) -> Unit
+        onConfigSelected: (String, Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var expandedConfigId by remember { mutableStateOf<String?>(null) } // 记录当前展开的配置的模型列表
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val modelConfigManager = remember { ModelConfigManager(context) }
@@ -309,8 +320,14 @@ fun FunctionConfigCard(
                             )
 
                             if (currentConfig != null) {
+                                val modelList = getModelList(currentConfig.modelName)
+                                val displayModel = if (modelList.size > 1) {
+                                    getModelByIndex(currentConfig.modelName, currentModelIndex)
+                                } else {
+                                    currentConfig.modelName
+                                }
                                 Text(
-                                        text = stringResource(id = R.string.model_label, currentConfig.modelName),
+                                        text = stringResource(id = R.string.model_label, displayModel),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -373,9 +390,14 @@ fun FunctionConfigCard(
                                             val apiPreferences = ApiPreferences.getInstance(context)
                                             val customHeadersJson = apiPreferences.getCustomHeaders()
 
+                                            // 根据 modelIndex 选择具体的模型
+                                            val actualIndex = getValidModelIndex(fullConfig.modelName, currentModelIndex)
+                                            val selectedModelName = getModelByIndex(fullConfig.modelName, actualIndex)
+                                            val configWithSelectedModel = fullConfig.copy(modelName = selectedModelName)
+
                                             val service =
                                                     AIServiceFactory.createService(
-                                                            config = fullConfig,
+                                                            config = configWithSelectedModel,
                                                             customHeadersJson = customHeadersJson,
                                                             modelConfigManager = modelConfigManager,
                                                             context = context
@@ -437,62 +459,146 @@ fun FunctionConfigCard(
                                     config.id ==
                                             (currentConfig?.id
                                                     ?: FunctionalConfigManager.DEFAULT_CONFIG_ID)
+                            val modelList = getModelList(config.modelName)
+                            val hasMultipleModels = modelList.size > 1
+                            val isExpanded = expandedConfigId == config.id
 
-                            Surface(
-                                    modifier =
-                                            Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
-                                                onConfigSelected(config.id)
-                                                expanded = false
-                                            },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color =
-                                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                            else MaterialTheme.colorScheme.surface,
-                                    border =
-                                            BorderStroke(
-                                                    width = if (isSelected) 0.dp else 0.5.dp,
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Surface(
+                                        modifier =
+                                                Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                                                    if (hasMultipleModels) {
+                                                        // 如果有多个模型，切换展开状态
+                                                        expandedConfigId = if (isExpanded) null else config.id
+                                                    } else {
+                                                        // 如果只有一个模型，直接选择
+                                                        onConfigSelected(config.id, 0)
+                                                        expanded = false
+                                                    }
+                                                },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color =
+                                                if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surface,
+                                        border =
+                                                BorderStroke(
+                                                        width = if (isSelected) 0.dp else 0.5.dp,
+                                                        color =
+                                                                if (isSelected)
+                                                                        MaterialTheme.colorScheme.primary
+                                                                else
+                                                                        MaterialTheme.colorScheme
+                                                                                .outlineVariant.copy(
+                                                                                alpha = 0.5f
+                                                                        )
+                                                )
+                                ) {
+                                    Row(
+                                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isSelected && !hasMultipleModels) {
+                                            Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = stringResource(id = R.string.selected_desc),
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                    text = config.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight =
+                                                            if (isSelected) FontWeight.Bold
+                                                            else FontWeight.Normal,
                                                     color =
                                                             if (isSelected)
                                                                     MaterialTheme.colorScheme.primary
-                                                            else
-                                                                    MaterialTheme.colorScheme
-                                                                            .outlineVariant.copy(
-                                                                            alpha = 0.5f
-                                                                    )
+                                                            else MaterialTheme.colorScheme.onSurface
                                             )
-                            ) {
-                                Row(
-                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = stringResource(id = R.string.selected_desc),
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                            if (hasMultipleModels) {
+                                                Text(
+                                                        text = "${modelList.size}个模型",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            } else {
+                                                Text(
+                                                        text = config.modelName,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        
+                                        if (hasMultipleModels) {
+                                            Icon(
+                                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                                text = config.name,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight =
-                                                        if (isSelected) FontWeight.Bold
-                                                        else FontWeight.Normal,
-                                                color =
-                                                        if (isSelected)
-                                                                MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.onSurface
-                                        )
-
-                                        Text(
-                                                text = config.modelName,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                }
+                                
+                                // 如果有多个模型且已展开，显示模型列表
+                                androidx.compose.animation.AnimatedVisibility(visible = hasMultipleModels && isExpanded) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp)
+                                    ) {
+                                        // 计算有效索引一次，避免重复计算
+                                        val validIndex = getValidModelIndex(config.modelName, currentModelIndex)
+                                        modelList.forEachIndexed { index, modelName ->
+                                            val isModelSelected = isSelected && validIndex == index
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 2.dp)
+                                                    .clickable {
+                                                        onConfigSelected(config.id, index)
+                                                        expanded = false
+                                                        expandedConfigId = null
+                                                    },
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (isModelSelected)
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                else
+                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    if (isModelSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = stringResource(id = R.string.selected_desc),
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                    }
+                                                    Text(
+                                                        text = modelName,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = if (isModelSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isModelSelected)
+                                                            MaterialTheme.colorScheme.primary
+                                                        else
+                                                            MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -519,7 +625,6 @@ fun getFunctionDisplayName(functionType: FunctionType): String {
         FunctionType.CHAT -> stringResource(id = R.string.function_type_chat)
         FunctionType.SUMMARY -> stringResource(id = R.string.function_type_summary)
         FunctionType.PROBLEM_LIBRARY -> stringResource(id = R.string.function_type_problem_library)
-        FunctionType.FILE_BINDING -> stringResource(id = R.string.function_type_file_binding)
         FunctionType.UI_CONTROLLER -> stringResource(id = R.string.function_type_ui_controller)
         FunctionType.TRANSLATION -> stringResource(id = R.string.function_type_translation)
         FunctionType.IMAGE_RECOGNITION -> stringResource(id = R.string.function_type_image_recognition)
@@ -533,7 +638,6 @@ fun getFunctionDescription(functionType: FunctionType): String {
         FunctionType.CHAT -> stringResource(id = R.string.function_desc_chat)
         FunctionType.SUMMARY -> stringResource(id = R.string.function_desc_summary)
         FunctionType.PROBLEM_LIBRARY -> stringResource(id = R.string.function_desc_problem_library)
-        FunctionType.FILE_BINDING -> stringResource(id = R.string.function_desc_file_binding)
         FunctionType.UI_CONTROLLER -> stringResource(id = R.string.function_desc_ui_controller)
         FunctionType.TRANSLATION -> stringResource(id = R.string.function_desc_translation)
         FunctionType.IMAGE_RECOGNITION -> stringResource(id = R.string.function_desc_image_recognition)

@@ -57,16 +57,22 @@ fun useFloatingWindowLauncher(
     actualViewModel: ChatViewModel,
     permissionLauncher: ActivityResultLauncher<String>
 ): () -> Unit {
+    val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     return {
+        val isCurrentlyFloating = actualViewModel.isFloatingMode.value
         actualViewModel.onFloatingButtonClick(
             FloatingMode.WINDOW,
             permissionLauncher,
             colorScheme,
             typography
         )
+        // 如果当前不是悬浮模式，说明是要启动悬浮窗，则最小化应用
+        if (!isCurrentlyFloating) {
+            (context as? android.app.Activity)?.moveTaskToBack(true)
+        }
     }
 }
 
@@ -90,7 +96,7 @@ fun ChatScreenHeader(
     val scope = rememberCoroutineScope()
 
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
-    val userPreferencesManager = remember { UserPreferencesManager(context) }
+    val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
     val activeCharacterCard by characterCardManager.activeCharacterCardFlow.collectAsState(initial = null)
     val activeCharacterAvatarUri by remember(activeCharacterCard?.id) {
         activeCharacterCard?.id?.let { userPreferencesManager.getAiAvatarForCharacterCardFlow(it) } ?: flowOf(null)
@@ -102,6 +108,8 @@ fun ChatScreenHeader(
         ) { isGranted ->
             if (isGranted) {
                 actualViewModel.launchFloatingModeIn(FloatingMode.WINDOW, colorScheme, typography)
+                // WINDOW模式启动后最小化应用
+                (context as? android.app.Activity)?.moveTaskToBack(true)
             } else {
                 actualViewModel.showToast(context.getString(R.string.microphone_permission_denied))
             }

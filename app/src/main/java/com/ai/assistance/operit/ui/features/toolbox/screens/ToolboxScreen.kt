@@ -14,11 +14,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.BuildCircle
-import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material.icons.rounded.Transform
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +37,7 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpeg
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.FileManagerScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.logcat.LogcatScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.shellexecutor.ShellExecutorScreen
-import com.ai.assistance.operit.terminal.view.TerminalScreen as TerminalViewScreen
+import com.ai.assistance.operit.terminal.main.TerminalScreen as TerminalViewScreen
 // import com.ai.assistance.operit.ui.features.toolbox.screens.terminalconfig.TerminalAutoConfigScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.uidebugger.UIDebuggerScreen
 import kotlinx.coroutines.delay
@@ -91,7 +89,8 @@ fun ToolboxScreen(
         onSpeechToTextSelected: () -> Unit,
         onToolTesterSelected: () -> Unit,
         onAgreementSelected: () -> Unit,
-        onDefaultAssistantGuideSelected: () -> Unit
+        onDefaultAssistantGuideSelected: () -> Unit,
+        onProcessLimitRemoverSelected: () -> Unit
 ) {
         // 屏幕配置信息，用于响应式布局
         val configuration = LocalConfiguration.current
@@ -193,6 +192,13 @@ fun ToolboxScreen(
                                 description = stringResource(R.string.tool_log_viewer_desc),
                                 category = ToolCategory.DEVELOPMENT,
                                 onClick = onLogcatSelected
+                        ),
+                        Tool(
+                                name = stringResource(R.string.tool_process_limit_remover),
+                                icon = Icons.Default.LockOpen,
+                                description = stringResource(R.string.tool_process_limit_remover_desc),
+                                category = ToolCategory.SYSTEM,
+                                onClick = onProcessLimitRemoverSelected
                         )
                 )
 

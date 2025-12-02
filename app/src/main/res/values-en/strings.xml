@@ -84,6 +84,8 @@
     <string name="dragon_bones_config">DragonBones Config</string>
     <string name="collapse">Collapse</string>
     <string name="expand">Expand</string>
+    <string name="collapsed">Collapsed</string>
+    <string name="expanded">Expanded</string>
     <string name="select_model">Select Model</string>
     <string name="current_model">Current Model</string>
     <string name="scale">Scale: %1$s</string>
@@ -122,6 +124,10 @@
     <string name="mcp">MCP</string>
     <string name="token_config_title">DeepSeek Token Configuration</string>
     <string name="chat_history_settings">Chat History Management</string>
+    <string name="character_card_change_title">Character Card Updated</string>
+    <string name="character_card_change_prompt">The character card has changed. Do you want to go to Chat Management to handle chats bound to it?</string>
+    <string name="go_to_chat_management">Go to Chat Management</string>
+    <string name="maybe_later">Maybe Later</string>
     
     <!-- Chat History Management Screen -->
     <string name="chat_history_manager">Chat History Manager</string>
@@ -191,7 +197,6 @@
     <string name="config_get_token">Get Token</string>
     <string name="config_use_free">Fleece from contributors</string>
     <string name="config_custom">Custom</string>
-    <string name="config_tip">Your own token is more stable. Overusing the contributors\' keys will bankrupt the author and the software will no longer be updated</string>
     <string name="config_free_usage_exceeded">Free daily usage limit reached</string>
     
     <!-- One-click configuration related -->
@@ -281,15 +286,22 @@
     <string name="auto_read_message">Auto Read</string>
     <string name="auto_read_desc">When enabled, AI responses will be automatically read aloud</string>
     <string name="auto_read_active">Auto read enabled</string>
+    <string name="disable_stream_output">Disable Stream Output</string>
+    <string name="disable_stream_output_desc">When disabled, AI responses will be displayed all at once instead of streaming word by word</string>
     <string name="stop_reading">Stop Reading</string>
     <string name="edit_and_resend">Edit &amp; Resend</string>
     <string name="reply_message">Reply</string>
     <string name="select_copy">Select &amp; Copy</string>
+    <string name="create_branch">Create Branch</string>
+    <string name="branch">Branch</string>
+    <string name="parent_chat">Parent: %1$s</string>
 
     <string name="modify_memory">Modify Memory</string>
     <string name="delete_from_here">Delete From Here</string>
     <string name="multi_select">Multi-select</string>
     <string name="exit_multi_select">Exit Multi-select</string>
+    <string name="select_all_messages">Select all</string>
+    <string name="clear_selection">Cancel</string>
     <string name="delete_selected">Delete Selected</string>
     <string name="share_selected">Share</string>
     <string name="selected_count">%d selected</string>
@@ -364,6 +376,8 @@
     <string name="microphone_permission_floating_required">Floating window feature requires microphone permission for voice interaction</string>
     
     <!-- AI Tools -->
+    <string name="max_mode_title">Max Mode</string>
+    <string name="max_mode_info">When Max Mode (extra-large context) is on, the context window is %2$sk. Turn it off to return to %1$sk. You can customize these values in Settings.</string>
     <string name="ai_tools_enabled">AI Tools Enabled</string>
     <string name="tools_extracting">Detecting tool calls...</string>
     <string name="tools_executing">Executing tool: %1$s</string>
@@ -402,9 +416,17 @@
     <string name="settings_theme_appearance">Theme and Appearance</string>
     <string name="settings_theme_appearance_desc">Personalize app appearance, including dark/light mode and custom color schemes</string>
     <string name="settings_customize_theme">Customize Theme</string>
+    <string name="settings_global_display">Global Display Settings</string>
+    <string name="settings_global_display_subtitle">Manage message display, FPS counter, notifications and other global display options</string>
     <string name="settings_data_backup">Data Backup and Recovery</string>
     <string name="settings_data_backup_desc">Import, export, or delete chat history and problem library data for easy backup and recovery of important information</string>
+    <string name="settings_chat_history_management">Chat History Management</string>
+    <string name="settings_chat_history_management_subtitle">View stats and batch organize your conversations</string>
     <string name="settings_manage_backup">Manage Backup</string>
+    
+    <string name="reset_successful">Reset Successfully</string>
+    <string name="reset_default_character">Reset Default Character</string>
+    <string name="reset_default_character_confirm">Are you sure you want to reset the default character card? This will restore the default name, settings, and prompts, and reset the avatar and theme.</string>
     
     <string name="settings_section_ai_model">AI Model Configuration</string>
     <string name="settings_model_parameters">Model and Parameter Configuration</string>
@@ -872,6 +894,7 @@
     
     <!-- Chat History Selector -->
     <string name="chat_history">Chat History</string>
+    <string name="search_chat_history_hint">Search</string>
     <string name="new_chat">New Chat</string>
     <string name="new_conversation">New Conversation</string>
     
@@ -1246,6 +1269,8 @@
     <!-- Manual Memory Update -->
     <string name="manual_memory_update">Manual Memory Update</string>
     <string name="manual_memory_update_desc">When AI forgets to summarize after task completion, manually trigger memory saving to store valuable content from this conversation into long-term memory.</string>
+    <string name="manual_conversation_summary">Manual Conversation Summary</string>
+    <string name="manual_conversation_summary_desc">Immediately trigger a conversation summary to compress context and keep key points from both sides. Useful for long chats or before sending new messages.</string>
     
     <!-- Context and Summary Settings Screen -->
     <string name="screen_title_context_summary_settings">Context and Summary Settings</string>
@@ -1300,6 +1325,41 @@
     <string name="tool_shell_executor_desc">Execute Shell commands and view output results with common command presets</string>
     <string name="tool_log_viewer">Log Viewer</string>
     <string name="tool_log_viewer_desc">Real-time capture and view system and application logs with filtering and search support</string>
+    <string name="tool_process_limit_remover">Phantom Process Limit Remover</string>
+    <string name="tool_process_limit_remover_desc">Manage Android 12+ phantom process count limits to allow more background child processes</string>
+    
+    <!-- Process Limit Remover Screen -->
+    <string name="process_limit_title">Phantom Process Limit Remover</string>
+    <string name="process_limit_subtitle">Manage Android 12+ phantom process count limits</string>
+    <string name="process_limit_info_title">About Phantom Process Limits</string>
+    <string name="process_limit_what_is_title">What are Phantom Process Limits?</string>
+    <string name="process_limit_what_is_desc">Android 12+ introduced the Phantom Processes mechanism to limit the number of background child processes, preventing apps from consuming system resources by creating excessive child processes.</string>
+    <string name="process_limit_benefits_title">Benefits of Removing Limits</string>
+    <string name="process_limit_benefits_desc">• Allow apps to create more background child processes\n• Improve background task execution capability\n• Prevent child processes from being unexpectedly terminated\n• Suitable for apps requiring multi-process handling</string>
+    <string name="process_limit_warnings_title">Cautions</string>
+    <string name="process_limit_warnings_desc">• Only supports Android 12 and above\n• May increase battery consumption and memory usage\n• Requires ADB Shell or Root privileges\n• Settings will be reset after device reboot</string>
+    <string name="process_limit_action_remove">Remove Limit</string>
+    <string name="process_limit_action_remove_desc">Remove Android system phantom process count limits</string>
+    <string name="process_limit_action_restore">Restore Limit</string>
+    <string name="process_limit_action_restore_desc">Restore Android system default phantom process limits</string>
+    <string name="process_limit_status_checking">Checking…</string>
+    <string name="process_limit_status_removed">Limit Removed (Max: %s)</string>
+    <string name="process_limit_status_limited">Limited (Current: %s processes)</string>
+    <string name="process_limit_status_default">Default Limit (No custom value set)</string>
+    <string name="process_limit_status_unknown">Unknown Status</string>
+    <string name="process_limit_status_unsupported">Device Not Supported (Requires Android 12+)</string>
+    <string name="process_limit_current_status">Current Status</string>
+    <string name="process_limit_choose_action">Choose Action</string>
+    <string name="process_limit_execute">Execute</string>
+    <string name="process_limit_executing">Executing…</string>
+    <string name="process_limit_success_title">Success</string>
+    <string name="process_limit_error_title">Failed</string>
+    <string name="process_limit_execution_history">Execution History</string>
+    <string name="process_limit_no_history">No execution history yet</string>
+    <string name="process_limit_output">Output</string>
+    <string name="process_limit_error_output">Error Output</string>
+    <string name="process_limit_exit_code">Exit Code: %d</string>
+    <string name="process_limit_command">Command</string>
     <string name="toolbox_description">Convenient and practical tool collection to improve your work efficiency</string>
     
     <!-- MCP Config Screen -->
@@ -2133,10 +2193,18 @@
     <string name="delete_group_only">Delete group only</string>
     <string name="chats_move_to_ungrouped">Chats will be moved to \"Ungrouped\"</string>
     <string name="edit_title">Edit Title</string>
+    <string name="move_up">Move Up</string>
+    <string name="move_down">Move Down</string>
+    <string name="drag_item">Drag item %1$s</string>
     <string name="new_title">New title</string>
     <string name="new_group">New Group</string>
     <string name="group_name">Group name</string>
     <string name="create_new_group">Create new group</string>
+    <string name="target_group_optional">Target Group (Optional)</string>
+    <string name="enter_group_name_hint">Group name (leave empty to keep)</string>
+    <string name="batch_assign_description">Batch assign selected chats to a character card or group. You can modify the group without changing the character card, or modify both.</string>
+    <string name="batch_assign_title">Batch Assign Chat History</string>
+    <string name="batch_assign_subtitle">Select multiple chat records and batch adjust character card binding or grouping</string>
     <string name="long_press_to_manage">Long press to manage</string>
     <string name="edit_title_desc">Edit title</string>
     <string name="reorder">Reorder</string>
@@ -2184,10 +2252,12 @@
     <string name="chat_settings_bar_right_margin_desc">Adjust the distance between chat settings button and the right edge of the screen, in dp</string>
     <string name="chat_settings_button_end_padding">Chat Settings Button End Padding</string>
     <string name="chat_settings_button_end_padding_desc">Adjust the distance between chat settings button and the right edge of the screen, in dp</string>
+    <string name="chat_area_horizontal_padding">Chat Area Horizontal Padding</string>
+    <string name="chat_area_horizontal_padding_desc">Adjust the distance between chat message area and the left/right edges of the screen, in dp</string>
     <string name="current_value">Current Value</string>
     <string name="closer_to_edge">Closer to Edge</string>
     <string name="farther_from_edge">Farther from Edge</string>
-    <string name="invalid_value_range">Invalid value. Please enter a number between %.1f and %.1f</string>
+    <string name="invalid_value_range" formatted="false">Invalid value. Please enter a number between %.1f and %.1f</string>
     <string name="reset_to_default">Reset to Default</string>
     <string name="layout_reset_settings">Reset Layout Settings</string>
     <string name="layout_reset_settings_desc">Reset all layout adjustment settings to default values</string>
@@ -2204,6 +2274,15 @@
     <string name="settings_usage_summary">Usage Summary</string>
     <string name="settings_total_tokens">Total Tokens</string>
     <string name="settings_total_cost">Total Cost</string>
+    <string name="settings_total_requests">Total Requests</string>
+    <string name="settings_request_count">Request Count</string>
+    <string name="settings_request_count_label">Requests: %1$d</string>
+    <string name="settings_billing_mode">Billing Mode</string>
+    <string name="settings_billing_mode_token">Token-based Billing</string>
+    <string name="settings_billing_mode_count">Per-request Billing</string>
+    <string name="settings_price_per_request">Price Per Request (CNY)</string>
+    <string name="settings_per_request_cost">¥%1$.4f per request</string>
+    <string name="settings_switch_billing_mode">Switch Billing Mode</string>
     <string name="settings_model_details">Model Details</string>
     <string name="settings_click_to_edit_pricing">Click to edit pricing</string>
     <string name="settings_edit_model_pricing">Edit Model Pricing - %1$s</string>
@@ -2430,6 +2509,9 @@
     <string name="model_config_name_placeholder">e.g.: GPT-4 Config, Claude Config...</string>
     <string name="create_action">Create</string>
     <string name="new_config_created">New Configuration Created</string>
+    <string name="rename_model_config">Rename Model Configuration</string>
+    <string name="rename_model_config_desc">Modify the name of the model configuration</string>
+    <string name="config_renamed">Configuration Renamed</string>
     
     <!-- ModelApiSettingsSection strings -->
     <string name="api_endpoint_placeholder">e.g.: https://api.openai.com/v1/chat/completions</string>
@@ -2450,6 +2532,11 @@
     <string name="default_config_model_restriction">When using default configuration, only deepseek-chat model can be used</string>
     <string name="enable_direct_image_processing">Enable Direct Image Processing</string>
     <string name="enable_direct_image_processing_desc">When enabled, images will be sent directly to the AI for processing instead of using OCR tools to read them</string>
+    <string name="enable_google_search">Enable Google Search</string>
+    <string name="enable_google_search_desc">When enabled, Gemini will use Google Search to enhance responses (may incur additional charges)</string>
+    <string name="enable_tool_call">Enable Tool Call Interface</string>
+    <string name="enable_tool_call_desc">When enabled, will use the model\'s native Tool Call interface for tool invocation instead of XML format (requires model support)</string>
+    <string name="search_sources">Search Sources</string>
     <string name="api_settings_saved">API settings saved</string>
     <string name="save_api_settings">Save API Settings</string>
     <string name="available_models_list">Available Models List</string>
@@ -2471,6 +2558,7 @@
     <string name="provider_baichuan">Baichuan Models</string>
     <string name="provider_moonshot">Moonshot AI</string>
     <string name="provider_deepseek">Deepseek Models</string>
+    <string name="provider_mistral">Mistral AI (Codestral)</string>
     <string name="provider_siliconflow">SiliconFlow</string>
     <string name="provider_openrouter">OpenRouter (Multi-model Hub)</string>
     <string name="provider_infiniai">InfiniAI</string>
@@ -2502,20 +2590,21 @@
     <string name="generation_parameters">Generation Parameters</string>
     <string name="creativity_parameters">Creativity Parameters</string>
     <string name="repetition_control_parameters">Repetition Control Parameters</string>
-    <string name="reset_parameters">Reset Parameters</string>
-    <string name="save_parameters">Save Parameters</string>
+    <string name="reset_parameters">Reset</string>
+    <string name="save_parameters">Save</string>
     <string name="api_name_format">API name: %s</string>
     <string name="must_be_integer">Must be an integer</string>
     <string name="value">Value</string>
     <string name="range_format">Range: %1$s - %2$s</string>
     <string name="must_be_float">Must be a float</string>
+    <string name="must_be_valid_json">Must be valid JSON</string>
     <string name="default_value_format">Default value: %s</string>
     <string name="temperature_recommendation">Temperature Recommendation</string>
     <string name="parameter_value">Parameter Value</string>
     <string name="parameter_range_format">Range: %1$s - %2$s</string>
   
     <!-- Custom Parameters Dialog -->
-    <string name="add_custom_parameter">Add Custom Parameter</string>
+    <string name="add_custom_parameter">Add</string>
     <string name="custom_parameter_added">Custom parameter added</string>
     <string name="add_custom_parameter_failed">Failed to add custom parameter: %s</string>
     <string name="parameter_name">Parameter Name</string>
@@ -2548,6 +2637,7 @@
     <string name="value_type_float">Float</string>
     <string name="value_type_string">String</string>
     <string name="value_type_boolean">Boolean</string>
+    <string name="value_type_object">Object(JSON)</string>
     <string name="other_parameters">Other Parameters</string>
 
     <string name="settings_title">Settings</string>
@@ -2582,8 +2672,10 @@
     <string name="screen_title_model_prompts_settings">Model Prompts Settings</string>
     <string name="screen_title_functional_config">Functional Model Configuration</string>
     <string name="screen_title_theme_settings">Theme Settings</string>
+    <string name="screen_title_global_display_settings">Global Display Settings</string>
     <string name="screen_title_layout_adjustment">Layout Adjustment</string>
     <string name="screen_title_chat_history_settings">Chat History Management</string>
+    <string name="screen_title_chat_backup_settings">Data Backup &amp; Restore</string>
     <string name="screen_title_language_settings">Language Settings</string>
     <string name="screen_title_file_manager">File Manager</string>
     <string name="screen_title_terminal">Command Terminal</string>
@@ -2597,6 +2689,7 @@
     <string name="screen_title_tool_tester">Tool Testing Center</string>
     <string name="screen_title_text_to_speech">Text to Speech</string>
     <string name="screen_title_speech_to_text">Speech Recognition</string>
+    <string name="screen_title_process_limit_remover">Phantom Process Limit Remover</string>
     <string name="screen_title_default_assistant_guide">Default Assistant Setup</string>
     <string name="screen_title_mcp_market">MCP Market</string>
     <string name="screen_title_mcp_publish">Publish MCP Plugin</string>
@@ -3022,13 +3115,19 @@
     <!-- Step 1 -->
     <string name="default_assistant_guide_step1_title">Open System Settings</string>
     <string name="default_assistant_guide_step1_desc">First, you need to enter the Android system settings interface</string>
+    <string name="default_assistant_guide_step1_detail1">• Open System Settings → Apps → Default apps → Digital assistant app</string>
+    <string name="default_assistant_guide_step1_detail2">• Find and select "Operit AI" in the assistant app list</string>
+    <string name="default_assistant_guide_step1_detail_android12">Android 12+: Settings → Apps → Default apps → Digital assistant app → Default digital assistant app</string>
     <string name="default_assistant_guide_open_settings">Open Settings</string>
     
     <!-- Step 2 -->
+    <string name="default_assistant_guide_open_gesture_settings">Open Gesture Settings</string>
     <string name="default_assistant_guide_step2_title">Find Assistant Settings</string>
     <string name="default_assistant_guide_step2_desc">In system settings, find voice assistant or digital assistant related options</string>
     <string name="default_assistant_guide_step2_detail1">• The settings location may vary slightly between different phone manufacturers</string>
     <string name="default_assistant_guide_step2_detail2">• Usually located at: Settings → Apps → Default apps → Digital assistant app</string>
+    <string name="default_assistant_guide_step2_detail3">• Voice wake-up: \"Hey Google\" or your device\'s designated wake word (device support required)</string>
+    <string name="default_assistant_guide_step2_note">Note: Gesture settings may vary between phone brands. Please check available options in system settings</string>
     <string name="default_assistant_guide_step2_detail_android12">Android 12+: Settings → Apps → Default apps → Digital assistant app → Default digital assistant app</string>
     
     <!-- Step 3 -->
@@ -3036,6 +3135,7 @@
     <string name="default_assistant_guide_step3_desc">Choose Operit AI from the assistant app list</string>
     <string name="default_assistant_guide_step3_detail1">• Find \"Operit AI\" in the available assistant apps list</string>
     <string name="default_assistant_guide_step3_detail2">• Tap to select, and the system will set Operit as the default assistant</string>
+    <string name="default_assistant_guide_step3_detail3">• You can try speaking or typing to interact with the assistant</string>
     
     <!-- Step 4 -->
     <string name="default_assistant_guide_step4_title">Test Voice Assistant</string>
@@ -3047,4 +3147,291 @@
     <string name="default_assistant_guide_troubleshooting_title">Having Problems?</string>
     <string name="default_assistant_guide_troubleshooting_content">If you can\'t find Operit in the list, please ensure:\n\n• The app is properly installed and not disabled\n• Necessary permissions have been granted (microphone, overlay, etc.)\n• Try restarting the device and setting it up again\n\nSome custom systems may restrict third-party apps from being set as default assistants. If you encounter this situation, you can still use Operit through the in-app floating window feature.</string>
 
+    <!-- Voice Interaction Service -->
+    <string name="voice_interaction_service_name">Operit AI Assistant</string>
+    <string name="voice_interaction_service_summary">Intelligent voice assistant service</string>
+
+    <!-- Tool Permission Settings -->
+    <string name="tool_permissions_title">Tool Permissions</string>
+    <string name="tool_permissions_description">By default, all tools require you to \'Ask\'. You can add exceptions below.</string>
+    <string name="global_permission_switch">Global Permission Switch</string>
+    <string name="global_permission_switch_description">This setting acts as a master control and can override individual tool permissions.</string>
+    <string name="permission_level_allow">Allowed</string>
+    <string name="permission_level_allow_description">These tools will run automatically.</string>
+    <string name="permission_level_cautious">Cautious</string>
+    <string name="permission_level_cautious_description">These tools will ask only for dangerous operations.</string>
+    <string name="permission_level_forbid">Forbidden</string>
+    <string name="permission_level_forbid_description">These tools will never run.</string>
+    <string name="permission_level_ask">Ask</string>
+    <string name="permission_level_ask_description">Default behavior for all tools.</string>
+    <string name="add_tool">Add Tool</string>
+    <string name="no_tools_in_group">No tools added to this group.</string>
+    <string name="remove_tool">Remove</string>
+    <string name="select_tools">Select Tools</string>
+    <string name="search_tools">Search</string>
+    <string name="done">Done</string>
+    <string name="forbid">Forbid</string>
+
+    <!-- Orientation Change Dialog -->
+    <string name="dialog_title_orientation_change">Screen Orientation Change</string>
+    <string name="dialog_message_orientation_change">Screen orientation has changed. Reload the page?</string>
+    <string name="dialog_button_confirm">Reload</string>
+    <string name="dialog_button_dismiss">Cancel</string>
+    
+    <!-- Chat binding announcement -->
+    <string name="chat_binding_announcement_title">Chats Are Now Linked to Character Cards</string>
+    <string name="chat_binding_announcement_body">Starting with this update, every conversation is linked to a character card.\n\nAll of your previous chats have been mapped to the &quot;Default character card&quot; automatically. Head to Settings &gt; Chat Management if you need to edit, regroup, or rename them.</string>
+    <string name="chat_binding_announcement_primary_button">Review</string>
+    <string name="chat_binding_announcement_acknowledge">Got it</string>
+    <string name="chat_binding_announcement_acknowledge_countdown">Got it (%1$ds left)</string>
+
+    <string name="settings_context_card_title">Setup Instructions:</string>
+    <string name="settings_context_card_content">· Context Length: Recommended to set to your daily maximum usage value.\n· Max Context Length: Recommended to set to the maximum value supported by the model API.\nThe software will automatically compress the context when the threshold is reached to prevent exceeding the limit. Note that a larger context is not always better; user cooperation with the software is required.</string>
+
+    <!-- Chat component hardcoded strings -->
+    <string name="reply">Reply</string>
+    <string name="image">Image</string>
+    <string name="image_expired">Image (Expired)</string>
+    <string name="copy_content">Copy Content</string>
+    <string name="user_reply_instruction">User is replying to your previous message:</string>
+    <string name="workspace_status">Workspace Status</string>
+    <string name="workspace">Workspace</string>
+    <string name="history_dialog_summary">History Dialog Summary</string>
+    <string name="confirm_delete_summary">Confirm Delete Summary</string>
+    <string name="confirm_delete_summary_message">Are you sure you want to delete this summary? This action cannot be undone.</string>
+    <string name="tool_execution_result">Tool Execution Result</string>
+    <string name="success">Success</string>
+    <string name="failed">Failed</string>
+    <string name="execution_success">Execution Successful</string>
+    <string name="execution_failed">Execution Failed</string>
+    <string name="copy_result">Copy Result</string>
+    <string name="tool_call_parameters">Call Parameters</string>
+    <string name="tool_call">Tool Call</string>
+    <string name="lines_count">lines</string>
+    <string name="edit_message">Edit Message</string>
+    <string name="visual">Visual</string>
+    <string name="plain_text">Plain Text</string>
+    <string name="plain_text_content">Plain Text Content</string>
+    <string name="input_text_content">Enter text content...</string>
+    <string name="text_label">Text</string>
+    <string name="attributes_optional">Attributes (Optional)</string>
+    <string name="content_label">Content</string>
+    <string name="tag_example">e.g: code, image, bold</string>
+    <string name="attributes_example">e.g: id="example" class="test"</string>
+    <string name="new_tag">New Tag</string>
+    <string name="create_new_xml_tag">Create a new XML tag</string>
+    <string name="modify_xml_tag_content">Modify XML tag content</string>
+    <string name="select_memory_folder">Select Memory Folder</string>
+    <string name="select_memory_folder_description">Select one or more folders, AI will be able to retrieve relevant memories from them</string>
+    <string name="load_folder_failed">Failed to load folder: %1$s</string>
+    <string name="no_memory_folder">No memory folders available\nPlease create folders in memory management first</string>
+    <string name="confirm_with_count">Confirm (%1$d)</string>
+    <string name="uncategorized">Uncategorized</string>
+    <string name="link_preview">Link Preview</string>
+    <string name="link_address">Link Address:</string>
+    <string name="no_app_found">No app found to open this link</string>
+    <string name="open_link_failed">Failed to open link: %1$s</string>
+    <string name="visit">Visit</string>
+    <string name="confirm_link_safety">Please confirm the link is safe before visiting</string>
+    <string name="select_export_platform">Select Export Platform</string>
+    <string name="configure_android_app">Configure Android App</string>
+    <string name="configure_windows_app">Configure Windows App</string>
+    <string name="package_name_label">Package Name</string>
+    <string name="app_name_label">App Name</string>
+    <string name="app_icon">App Icon:</string>
+    <string name="click_select_icon">Click to select icon</string>
+    <string name="exporting">Exporting</string>
+    <string name="export_failed">Export Failed</string>
+    <string name="file_saved_to">File saved to:</string>
+    <string name="token_limit_warning">Token Limit Warning</string>
+    <string name="token_limit_warning_message">The message has exceeded the token limit. Continuing to send may result in context loss or AI being unable to understand. Continue?</string>
+    <string name="continue_send">Continue Send</string>
+    <string name="microphone_permission_denied_toast">Microphone permission denied</string>
+    <string name="executing_tool">Executing tool: %1$s</string>
+    <string name="processing_tool_result">Processing tool result: %1$s</string>
+    <string name="input_question_hint">Enter your question...</string>
+    <string name="input_question_with_workspace">Enter question, use @ to reference files</string>
+    <string name="add_attachment">Add Attachment</string>
+    <string name="user_uploaded_image">User uploaded image</string>
+    <string name="decode_image_failed">Failed to decode image: %1$s</string>
+    <string name="parse_message_failed">Failed to parse message content</string>
+    <string name="unknown_tool">Unknown Tool</string>
+    <string name="cancel_reply">Cancel Reply</string>
+    <string name="content_fragment">Content Fragment</string>
+    <string name="add_text">Add Text</string>
+    <string name="add_tag">Add Tag</string>
+    <string name="save_and_resend">Save and Resend</string>
+    <string name="update_memory">Update Memory</string>
+    <string name="chat_message">Chat Message</string>
+    <string name="share_failed_log">Share Failed</string>
+    <string name="generate_image_failed">Failed to generate image: %1$s</string>
+    <string name="start_export">Starting export...</string>
+    <string name="file_operation_error">File operation error: %1$s</string>
+    
+    <!-- Missing translations added -->
+    <string name="bind_character_card">Bind Character Card</string>
+    <string name="unbound_character_card">Unbound</string>
+    <string name="chat_binding_scope_hint">Only affects binding for this conversation, will not modify existing messages</string>
+    <string name="history_filter_role_card">Categorize by Character Card</string>
+    <string name="history_filter_role_card_desc">Character Card - Folder - Conversation three-level classification</string>
+    <string name="history_filter_folder">Categorize by Folder</string>
+    <string name="history_filter_folder_desc">Display as Folder + Conversation (all character cards)</string>
+    <string name="history_filter_current_card">Show Current Character Card Only</string>
+    <string name="history_filter_current_card_desc">Only show folders and conversations under the current character card</string>
+    <string name="history_auto_switch_character">Auto Switch Character Card</string>
+    <string name="history_auto_switch_character_desc">Automatically match bound character card when switching conversations</string>
+    <string name="voice_input">Voice Input</string>
+    <string name="insert_attachment">Insert Attachment</string>
+    <string name="remove_attachment">Remove Attachment</string>
+    <string name="token_limit_exceeded_message">Maximum token limit exceeded (%1$d / %2$d)</string>
+    
+    <!-- Font Settings -->
+    <string name="font_file_saved">Font file saved (.%1$s)</string>
+    <string name="font_file_save_failed">Failed to save font file</string>
+    <string name="unsupported_font_format">Unsupported file format, please select .ttf, .otf or .ttc font file</string>
+    <string name="current_character">Current Character: %1$s</string>
+    <string name="theme_auto_bind_character_card">Theme settings will be automatically bound to this character card</string>
+    <string name="enable_custom_font">Enable Custom Font</string>
+    <string name="use_system_or_custom_font">Use system font or custom font file</string>
+    <string name="font_type_label">Font Type</string>
+    <string name="system_font">System Font</string>
+    <string name="custom_font_file">Custom File</string>
+    <string name="select_system_font">Select System Font</string>
+    <string name="custom_font_file_title">Custom Font File</string>
+    <string name="font_file_support_desc">Supports .ttf, .otf and .ttc font files</string>
+    <string name="select_font_file">Select Font File</string>
+    <string name="clear_font">Clear Font</string>
+    <string name="current_font_file_path">Current font file:\n%1$s</string>
+    <string name="font_size_scale_label">Font Size Scale (%1$s)</string>
+    
+    <!-- Chat History Batch -->
+    <string name="no_available_character_cards_toast">No available character cards, please create one first</string>
+    <string name="please_select_chats_first">Please select chat records first</string>
+    <string name="chats_unbound_from_card">Removed character card binding from %1$d conversations</string>
+    <string name="chats_assigned_to_character">Assigned %1$d conversations to \'%2$s\'</string>
+    <string name="chats_group_updated">Set group to \'%2$s\' for %1$d conversations</string>
+    <string name="batch_update_failed">Batch update failed: %1$s</string>
+    <string name="loading_data_please_wait">Loading data, please wait…</string>
+    <string name="no_chat_stats_to_assign">No chat statistics found to assign</string>
+    <string name="please_select_a_character_card">Please select a character card</string>
+    <string name="assigned_to_character_card">Assigned to character card \'%1$s\'</string>
+    <string name="assign_failed_error">Assignment failed: %1$s</string>
+    <string name="chat_history_overview">Chat History Overview</string>
+    <string name="counting_chat_data">Counting chat data…</string>
+    <string name="no_chat_data_available">No chat data available.</string>
+    <string name="chats_and_messages_count">%1$d conversations · %2$d messages</string>
+    <string name="click_to_assign_to_card">Click to assign to existing character card</string>
+    <string name="search_by_title_group_card">Search by title, group or character card</string>
+    <string name="filter_chat_history">Filter Chat History</string>
+    <string name="no_chat_records_for_batch">No chat records available for batch operations.</string>
+    <string name="no_matching_chats_adjust_filter">No matching chat records, please adjust filter conditions.</string>
+    
+    <!-- Assign Dialog -->
+    <string name="assign_to_character_card_title">Assign to Character Card</string>
+    <string name="unbound_chats_select_card">There are %1$d chat records not bound to a character card. Please select the target character card:</string>
+    <string name="no_cards_create_first">No available character cards, please create one first.</string>
+    <string name="assign_action">Assign</string>
+    <string name="select_all_current_list">Select All</string>
+    <string name="target_character_card_optional">Target Character Card (Optional)</string>
+    <string name="select_card_or_unbind">Select a character card or cancel binding</string>
+    <string name="remove_character_card_binding">Remove Character Card Binding</string>
+    <string name="no_available_character_cards_dropdown">No Available Character Cards</string>
+    <string name="cancel_selection">Cancel Selection</string>
+    <string name="character_card_label">Character Card: %1$s</string>
+    <string name="chat_records_label">Chat Records</string>
+    <string name="group_label">Group: %1$s</string>
+    <string name="unnamed_conversation">Unnamed Conversation</string>
+    
+    <!-- Character Selector -->
+    <string name="select_character">Select Character</string>
+    <string name="character_count">%1$d characters</string>
+    
+    <!-- Attachment Selector -->
+    <string name="attachment_photo">Photo</string>
+    <string name="attachment_camera">Camera</string>
+    <string name="attachment_memory">Memory</string>
+    <string name="attachment_audio">Audio</string>
+    <string name="attachment_file">File</string>
+    <string name="attachment_screen_content">Screen Content</string>
+    <string name="attachment_notifications">Notifications</string>
+    <string name="attachment_location">Location</string>
+    <string name="attachments_count">Attachments (%1$d)</string>
+    
+    <!-- Workspace -->
+    <string name="select_file_to_reference">Select file to reference</string>
+    <string name="workspace_directory_invalid">Workspace directory does not exist or is invalid</string>
+    <string name="chat_not_bound_to_workspace">Current chat not bound to workspace</string>
+    <string name="file_browser">File Browser</string>
+    <string name="unbind_workspace_title">Unbind Workspace</string>
+    <string name="unbind">Unbind</string>
+    <string name="unbind_workspace_confirm">Are you sure you want to unbind the workspace for this chat? You will no longer be able to access workspace files and context information.</string>
+    <string name="save_changes_question">Save changes?</string>
+    <string name="file_modified_save_prompt">File \'%1$s\' has been modified, save changes?</string>
+    <string name="dont_save">Don\'t Save</string>
+    <string name="format_code">Format Code</string>
+    <string name="create_default_workspace">Create Default</string>
+    <string name="create_new_workspace_in_app">Create new workspace in app</string>
+    <string name="select_existing_workspace">Select Existing</string>
+    <string name="select_folder_from_device">Select a folder from device</string>
+    
+    <!-- Global Display Settings -->
+    <string name="global_display_settings_description">These settings control global display behavior, independent of character cards and theme configurations.</string>
+    <string name="message_display_settings">Message Display Settings</string>
+    <string name="show_model_provider">Show Model Provider</string>
+    <string name="show_model_provider_description">Display model provider name in AI messages</string>
+    <string name="show_model_name">Show Model Name</string>
+    <string name="show_model_name_description">Display the model name being used in AI messages</string>
+    <string name="show_role_name">Show Role Card Name</string>
+    <string name="show_role_name_description">Display current character card name in AI messages</string>
+    <string name="show_user_name">Show User Name</string>
+    <string name="show_user_name_description">Display user name in user messages</string>
+    <string name="global_user_name">Global User Name</string>
+    <string name="system_display_settings">System Display Settings</string>
+    <string name="show_fps_counter_description">Display frame rate performance metrics on screen</string>
+    <string name="enable_reply_notification">Enable Reply Notifications</string>
+    <string name="enable_reply_notification_description">Send system notification when AI replies</string>
+    <string name="keep_screen_on">Keep Screen On</string>
+    <string name="keep_screen_on_description">Keep screen awake to prevent auto-lock during conversations</string>
+    <string name="reset_all_display_settings">Reset All Display Settings</string>
+    
+    <!-- Chat History Management -->
+    <string name="default_profile_name">Default Profile</string>
+    <string name="removed_character_card_binding">Removed character card binding from %1$d chat(s)</string>
+    <string name="assigned_chats_to_character_card">Assigned %1$d chat(s) to \"%2$s\"</string>
+    <string name="assigned_chats_to_group">Assigned %1$d chat(s) to group \"%2$s\"</string>
+    <string name="deleted_unbound_workspaces">Deleted %1$d unbound workspace(s)</string>
+    <string name="delete_failed">Delete failed: %1$s</string>
+    <string name="character_card_statistics">Character Card Statistics</string>
+    <string name="character_card_statistics_subtitle">View chats and message counts for each character card</string>
+    <string name="character_fallback">C</string>
+    <string name="selected_chats_count">Selected %1$d / %2$d</string>
+    <string name="apply_changes">Apply Changes</string>
+    <string name="apply_group">Apply Group</string>
+    <string name="apply_character_card">Apply Card</string>
+    <string name="unbound_workspaces_title">Unbound Workspaces</string>
+    <string name="unbound_workspaces_subtitle">Manage workspace folders not used by any chat</string>
+    <string name="no_unbound_workspaces">No unbound workspace folders</string>
+    <string name="selected_workspaces_count">Selected %1$d / %2$d</string>
+    <string name="clear_all">Clear</string>
+    <string name="delete_selected_workspaces">Delete Selected Workspaces (%1$d)</string>
+    <string name="delete_workspaces_confirmation">Are you sure you want to delete the selected %1$d workspace(s)?\n\nAll files and data will be permanently lost.</string>
+    <string name="not_used_by_any_chat">Not used by any chat</string>
+    
+    <!-- Accessibility - Markdown Block Types -->
+    <string name="code_block">Code Block</string>
+    <string name="table_block">Table</string>
+    <string name="plan_execution_graph">Execution Plan</string>
+    <string name="image_block">Image</string>
+    <string name="image_load_failed">Image failed to load</string>
+    <string name="save_image">Save Image</string>
+    <string name="image_saved">Image saved to gallery</string>
+    <string name="save_failed">Save failed</string>
+    <string name="xml_block">XML Block</string>
+    <string name="tool_call_block">Tool Call</string>
+    <string name="tool_result_block">Tool Result</string>
+    <string name="thinking_process_block">Thinking Process</string>
+    <string name="search_content_block">Search Content</string>
+    <string name="status_info_block">Status Info</string>
+    <string name="html_content_block">HTML Content</string>
+    <string name="mood_tag_block">Mood Tag</string>
 </resources>

@@ -25,24 +25,40 @@ import com.ai.assistance.operit.util.LocaleUtils.AUTO_LANGUAGE_CODE
 private val Context.userPreferencesDataStore: DataStore<Preferences> by
         preferencesDataStore(name = "user_preferences")
 
-// 全局单例实例
-lateinit var preferencesManager: UserPreferencesManager
-    private set
+// 向后兼容的全局实例访问方式
+val preferencesManager: UserPreferencesManager
+    get() = UserPreferencesManager.instance ?: throw IllegalStateException(
+        "UserPreferencesManager not initialized. Call UserPreferencesManager.getInstance(context) first."
+    )
 
 fun initUserPreferencesManager(context: Context, defaultProfileName: String = "Default") {
-    preferencesManager = UserPreferencesManager(context)
+    val manager = UserPreferencesManager.getInstance(context)
 
     // 在后台初始化默认配置
     GlobalScope.launch {
-        val profiles = preferencesManager.profileListFlow.first()
+        val profiles = manager.profileListFlow.first()
         if (profiles.isEmpty() || !profiles.contains("default")) {
-            preferencesManager.createProfile(defaultProfileName, isDefault = true)
+            manager.createProfile(defaultProfileName, isDefault = true)
         }
     }
 }
 
-class UserPreferencesManager(private val context: Context) {
+class UserPreferencesManager private constructor(private val context: Context) {
     companion object {
+        @Volatile
+        private var INSTANCE: UserPreferencesManager? = null
+
+        internal val instance: UserPreferencesManager?
+            get() = INSTANCE
+
+        fun getInstance(context: Context): UserPreferencesManager {
+            return INSTANCE ?: synchronized(this) {
+                val instance = UserPreferencesManager(context.applicationContext)
+                INSTANCE = instance
+                instance
+            }
+        }
+
         // 基本偏好相关键
         private val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
         private val PROFILE_LIST = stringPreferencesKey("profile_list")
@@ -106,6 +122,7 @@ class UserPreferencesManager(private val context: Context) {
         private val FONT_TYPE = stringPreferencesKey("font_type")  // "system" or "file"
         private val SYSTEM_FONT_NAME = stringPreferencesKey("system_font_name")
         private val CUSTOM_FONT_PATH = stringPreferencesKey("custom_font_path")
+        private val FONT_SCALE = floatPreferencesKey("font_scale")
 
         // Chat style preference
         private val CHAT_STYLE = stringPreferencesKey("chat_style")
@@ -142,15 +159,11 @@ class UserPreferencesManager(private val context: Context) {
         private val KEY_ON_COLOR_MODE = stringPreferencesKey("on_color_mode")
         private val KEY_CUSTOM_CHAT_TITLE = stringPreferencesKey("custom_chat_title")
         private val KEY_SHOW_INPUT_PROCESSING_STATUS = booleanPreferencesKey("show_input_processing_status")
-        
-        // 全局用户头像设置
-        private val KEY_GLOBAL_USER_AVATAR_URI = stringPreferencesKey("global_user_avatar_uri")
-        
-        // 全局用户名称设置
-        private val KEY_GLOBAL_USER_NAME = stringPreferencesKey("global_user_name")
 
         // 布局调整设置
+        // 注意：全局用户头像和名称设置已移至 DisplayPreferencesManager
         private val CHAT_SETTINGS_BUTTON_END_PADDING = floatPreferencesKey("chat_settings_button_end_padding")
+        private val CHAT_AREA_HORIZONTAL_PADDING = floatPreferencesKey("chat_area_horizontal_padding")
 
         // 最近使用颜色
         private val RECENT_COLORS = stringPreferencesKey("recent_colors")
@@ -383,23 +396,8 @@ class UserPreferencesManager(private val context: Context) {
                 preferences[KEY_CUSTOM_AI_AVATAR_URI]
             }
 
-    // 全局用户头像设置
-    val globalUserAvatarUri: Flow<String?> =
-            context.userPreferencesDataStore.data.map { preferences ->
-                preferences[KEY_GLOBAL_USER_AVATAR_URI]
-            }
-
-    // 全局用户名称设置
-    val globalUserName: Flow<String?> =
-            context.userPreferencesDataStore.data.map { preferences ->
-                preferences[KEY_GLOBAL_USER_NAME]
-            }
-
-    // 获取有效的用户头像（优先角色卡设置，如果为空则使用全局设置）
-    val effectiveUserAvatarUri: Flow<String?> =
-            context.userPreferencesDataStore.data.map { preferences ->
-                preferences[KEY_CUSTOM_USER_AVATAR_URI] ?: preferences[KEY_GLOBAL_USER_AVATAR_URI]
-            }
+    // 注意：全局用户头像和名称设置已移至 DisplayPreferencesManager
+    // 如需获取有效的用户头像（角色卡优先，然后回退到全局），请在UI层组合 customUserAvatarUri 和 DisplayPreferencesManager.globalUserAvatarUri
 
     val avatarShape: Flow<String> =
             context.userPreferencesDataStore.data.map { preferences ->
@@ -447,10 +445,20 @@ class UserPreferencesManager(private val context: Context) {
             preferences[CUSTOM_FONT_PATH]
         }
 
+    val fontScale: Flow<Float> =
+        context.userPreferencesDataStore.data.map { preferences ->
+            preferences[FONT_SCALE] ?: 1.0f
+        }
+
     // 布局调整设置
     val chatSettingsButtonEndPadding: Flow<Float> =
         context.userPreferencesDataStore.data.map { preferences ->
             preferences[CHAT_SETTINGS_BUTTON_END_PADDING] ?: 2f // 默认2dp
+        }
+
+    val chatAreaHorizontalPadding: Flow<Float> =
+        context.userPreferencesDataStore.data.map { preferences ->
+            preferences[CHAT_AREA_HORIZONTAL_PADDING] ?: 16f // 默认16dp
         }
 
     // 获取最近使用颜色
@@ -494,10 +502,18 @@ class UserPreferencesManager(private val context: Context) {
         }
     }
 
+    // 保存聊天区域水平内边距
+    suspend fun saveChatAreaHorizontalPadding(padding: Float) {
+        context.userPreferencesDataStore.edit { preferences ->
+            preferences[CHAT_AREA_HORIZONTAL_PADDING] = padding
+        }
+    }
+
     // 重置布局设置
     suspend fun resetLayoutSettings() {
         context.userPreferencesDataStore.edit { preferences ->
             preferences.remove(CHAT_SETTINGS_BUTTON_END_PADDING)
+            preferences.remove(CHAT_AREA_HORIZONTAL_PADDING)
         }
     }
 
@@ -580,12 +596,11 @@ class UserPreferencesManager(private val context: Context) {
             onColorMode: String? = null,
             customChatTitle: String? = null,
             showInputProcessingStatus: Boolean? = null,
-            globalUserAvatarUri: String? = null,
-            globalUserName: String? = null,
             useCustomFont: Boolean? = null,
             fontType: String? = null,
             systemFontName: String? = null,
-            customFontPath: String? = null
+            customFontPath: String? = null,
+            fontScale: Float? = null
     ) {
         context.userPreferencesDataStore.edit { preferences ->
             themeMode?.let { preferences[THEME_MODE] = it }
@@ -629,15 +644,13 @@ class UserPreferencesManager(private val context: Context) {
             onColorMode?.let { preferences[KEY_ON_COLOR_MODE] = it }
             customChatTitle?.let { preferences[KEY_CUSTOM_CHAT_TITLE] = it }
             showInputProcessingStatus?.let { preferences[KEY_SHOW_INPUT_PROCESSING_STATUS] = it }
-            // 全局用户头像单独保存，不跟随角色卡主题
-            globalUserAvatarUri?.let { preferences[KEY_GLOBAL_USER_AVATAR_URI] = it }
-            // 全局用户名称单独保存，不跟随角色卡主题
-            globalUserName?.let { preferences[KEY_GLOBAL_USER_NAME] = it }
+            // 注意：全局用户头像和名称已移至 DisplayPreferencesManager
             // 字体设置
             useCustomFont?.let { preferences[USE_CUSTOM_FONT] = it }
             fontType?.let { preferences[FONT_TYPE] = it }
             systemFontName?.let { preferences[SYSTEM_FONT_NAME] = it }
             customFontPath?.let { preferences[CUSTOM_FONT_PATH] = it }
+            fontScale?.let { preferences[FONT_SCALE] = it }
         }
     }
 
@@ -679,15 +692,13 @@ class UserPreferencesManager(private val context: Context) {
             preferences.remove(KEY_ON_COLOR_MODE)
             preferences.remove(KEY_CUSTOM_CHAT_TITLE)
             preferences.remove(KEY_SHOW_INPUT_PROCESSING_STATUS)
-            // 重置全局用户头像
-            preferences.remove(KEY_GLOBAL_USER_AVATAR_URI)
-            // 重置全局用户名称
-            preferences.remove(KEY_GLOBAL_USER_NAME)
+            // 全局用户头像和名称已迁移到 DisplayPreferencesManager
             // 重置字体设置
             preferences.remove(USE_CUSTOM_FONT)
             preferences.remove(FONT_TYPE)
             preferences.remove(SYSTEM_FONT_NAME)
             preferences.remove(CUSTOM_FONT_PATH)
+            preferences.remove(FONT_SCALE)
         }
     }
 
@@ -935,7 +946,7 @@ class UserPreferencesManager(private val context: Context) {
             THEME_MODE, BACKGROUND_IMAGE_URI, BACKGROUND_MEDIA_TYPE, APP_BAR_CONTENT_COLOR_MODE,
             CHAT_STYLE, KEY_CUSTOM_USER_AVATAR_URI, KEY_CUSTOM_AI_AVATAR_URI, KEY_AVATAR_SHAPE,
             KEY_ON_COLOR_MODE, KEY_CUSTOM_CHAT_TITLE, FONT_TYPE, SYSTEM_FONT_NAME, CUSTOM_FONT_PATH
-            // 注意：KEY_GLOBAL_USER_AVATAR_URI 和 KEY_GLOBAL_USER_NAME 不包含在内，因为全局设置不跟随角色卡主题切换
+            // 注意：全局用户头像和名称已移至 DisplayPreferencesManager，不跟随角色卡主题切换
         )
     }
 
@@ -946,6 +957,7 @@ class UserPreferencesManager(private val context: Context) {
             STATUS_BAR_TRANSPARENT, STATUS_BAR_HIDDEN, CHAT_HEADER_TRANSPARENT, CHAT_INPUT_TRANSPARENT,
             FORCE_APP_BAR_CONTENT_COLOR_ENABLED, CHAT_HEADER_OVERLAY_MODE, USE_BACKGROUND_BLUR,
             KEY_SHOW_THINKING_PROCESS, KEY_SHOW_STATUS_TAGS, KEY_SHOW_INPUT_PROCESSING_STATUS, USE_CUSTOM_FONT
+            // 注意：消息显示设置已移至 DisplayPreferencesManager，不跟随角色卡主题切换
         )
     }
 
@@ -958,7 +970,7 @@ class UserPreferencesManager(private val context: Context) {
 
     private fun getAllFloatThemeKeys(): List<Preferences.Key<Float>> {
         return listOf(
-            BACKGROUND_IMAGE_OPACITY, BACKGROUND_BLUR_RADIUS, KEY_AVATAR_CORNER_RADIUS
+            BACKGROUND_IMAGE_OPACITY, BACKGROUND_BLUR_RADIUS, KEY_AVATAR_CORNER_RADIUS, FONT_SCALE
         )
     }
 

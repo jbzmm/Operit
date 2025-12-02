@@ -3,6 +3,7 @@ package com.ai.assistance.operit.core.tools.packTool
 import android.content.Context
 import android.util.Log
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.PackageToolExecutor
 import com.ai.assistance.operit.core.tools.ToolPackage
 import com.ai.assistance.operit.core.tools.javascript.JsEngine
@@ -10,6 +11,9 @@ import com.ai.assistance.operit.core.tools.mcp.MCPManager
 import com.ai.assistance.operit.core.tools.mcp.MCPPackage
 import com.ai.assistance.operit.core.tools.mcp.MCPServerConfig
 import com.ai.assistance.operit.core.tools.mcp.MCPToolExecutor
+import com.ai.assistance.operit.data.model.PackageToolPromptCategory
+import com.ai.assistance.operit.data.model.ToolPrompt
+import com.ai.assistance.operit.data.model.ToolResult
 import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -390,6 +394,27 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     }
 
     /**
+     * Wrapper for tool execution: builds ToolResult for the 'use_package' tool.
+     * Keeps registration site minimal by centralizing result construction here.
+     */
+    fun executeUsePackageTool(toolName: String, packageName: String): ToolResult {
+        if (packageName.isBlank()) {
+            return ToolResult(
+                toolName = toolName,
+                success = false,
+                result = StringResultData(""),
+                error = "缺少必需参数: package_name"
+            )
+        }
+        val text = usePackage(packageName)
+        return ToolResult(
+            toolName = toolName,
+            success = true,
+            result = StringResultData(text)
+        )
+    }
+
+    /**
      * 检查是否是已注册的MCP服务器
      *
      * @param serverName 服务器名称
@@ -426,7 +451,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         // Register each tool with the format packageName:toolName
         toolPackage.tools.forEach { packageTool ->
             val toolName = "${toolPackage.name}:${packageTool.name}"
-            aiToolHandler.registerTool(toolName, toolPackage.category) { tool ->
+            aiToolHandler.registerTool(toolName) { tool ->
                 packageToolExecutor.invoke(tool)
             }
         }
@@ -632,7 +657,6 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             // 使用MCP特定的执行器注册工具
             aiToolHandler.registerTool(
                     name = toolName,
-                    category = toolPackage.category,
                     executor = mcpToolExecutor
             )
 
@@ -735,6 +759,53 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         }
 
         return null
+    }
+
+    /**
+     * 将 ToolPackage 转换为 PackageToolPromptCategory
+     * 用于生成结构化的包工具提示词
+     * 
+     * @param toolPackage 要转换的工具包
+     * @return PackageToolPromptCategory 对象
+     */
+    fun toPromptCategory(toolPackage: ToolPackage): PackageToolPromptCategory {
+        val toolPrompts = toolPackage.tools.map { packageTool ->
+            // 将 PackageTool 转换为 ToolPrompt
+            val parametersString = if (packageTool.parameters.isNotEmpty()) {
+                packageTool.parameters.joinToString(", ") { param ->
+                    val required = if (param.required) "required" else "optional"
+                    "${param.name} (${param.type}, $required)"
+                }
+            } else {
+                ""
+            }
+            
+            ToolPrompt(
+                name = packageTool.name,
+                description = packageTool.description,
+                parameters = parametersString
+            )
+        }
+        
+        return PackageToolPromptCategory(
+            packageName = toolPackage.name,
+            packageDescription = toolPackage.description,
+            tools = toolPrompts
+        )
+    }
+    
+    /**
+     * 获取所有已导入包的提示词分类列表
+     * 
+     * @return 已导入包的 PackageToolPromptCategory 列表
+     */
+    fun getImportedPackagesPromptCategories(): List<PackageToolPromptCategory> {
+        val importedPackageNames = getImportedPackages()
+        return importedPackageNames.mapNotNull { packageName ->
+            getPackageTools(packageName)?.let { toolPackage ->
+                toPromptCategory(toolPackage)
+            }
+        }
     }
 
     /** Clean up resources when the manager is no longer needed */

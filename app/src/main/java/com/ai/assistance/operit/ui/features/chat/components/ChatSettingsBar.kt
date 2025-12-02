@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -22,11 +23,13 @@ import androidx.compose.material.icons.outlined.Portrait
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.TipsAndUpdates
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material.icons.outlined.VolumeOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +39,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
@@ -55,8 +62,12 @@ import com.ai.assistance.operit.data.model.ModelConfigSummary
 import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.model.PromptProfile
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
+import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.model.PromptFunctionType
+import com.ai.assistance.operit.data.model.getModelByIndex
+import com.ai.assistance.operit.data.model.getModelList
+import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.PromptPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.permissions.PermissionLevel
@@ -77,9 +88,13 @@ fun ChatSettingsBar(
     enableThinkingGuidance: Boolean,
     onToggleThinkingGuidance: () -> Unit,
     maxWindowSizeInK: Float,
+    baseContextLengthInK: Float,
+    maxContextLengthInK: Float,
     onContextLengthChange: (Float) -> Unit,
     enableMemoryQuery: Boolean,
     onToggleMemoryQuery: () -> Unit,
+    enableMaxContextMode: Boolean,
+    onToggleEnableMaxContextMode: () -> Unit,
     summaryTokenThreshold: Float,
     onSummaryTokenThresholdChange: (Float) -> Unit,
     onNavigateToUserPreferences: () -> Unit,
@@ -89,7 +104,10 @@ fun ChatSettingsBar(
     onToggleAutoRead: () -> Unit,
     enableTools: Boolean,
     onToggleTools: () -> Unit,
-    onManualMemoryUpdate: () -> Unit
+    disableStreamOutput: Boolean,
+    onToggleDisableStreamOutput: () -> Unit,
+    onManualMemoryUpdate: () -> Unit,
+    onManualSummarizeConversation: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val iconScale by
@@ -108,13 +126,18 @@ fun ChatSettingsBar(
     val modelConfigManager = remember { ModelConfigManager(context) }
     val configMapping by
             functionalConfigManager.functionConfigMappingFlow.collectAsState(initial = emptyMap())
+    val configMappingWithIndex by
+            functionalConfigManager.functionConfigMappingWithIndexFlow.collectAsState(initial = emptyMap())
     var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
     LaunchedEffect(Unit) { configSummaries = modelConfigManager.getAllConfigSummaries() }
     val currentConfigId =
             configMapping[FunctionType.CHAT] ?: FunctionalConfigManager.DEFAULT_CONFIG_ID
-            
+    val currentConfigMapping =
+            configMappingWithIndex[FunctionType.CHAT] ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+    
+    // 获取上下文长度设置，用于显示在 MaxMode 描述中
     // 新增：用户偏好（记忆）选择逻辑
-    val userPreferencesManager = remember { UserPreferencesManager(context) }
+    val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
     val activeProfileId by
             userPreferencesManager.activeProfileIdFlow.collectAsState(initial = "default")
     var preferenceProfiles by remember { mutableStateOf<List<PreferenceProfile>>(emptyList()) }
@@ -128,9 +151,9 @@ fun ChatSettingsBar(
     val chatSettingsBarRightMargin by
             userPreferencesManager.chatSettingsButtonEndPadding.collectAsState(initial = 2f)
 
-    val onSelectModel: (String) -> Unit = { selectedId ->
+    val onSelectModel: (String, Int) -> Unit = { selectedId, modelIndex ->
         scope.launch {
-            functionalConfigManager.setConfigForFunction(FunctionType.CHAT, selectedId)
+            functionalConfigManager.setConfigForFunction(FunctionType.CHAT, selectedId, modelIndex)
             EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
         }
     }
@@ -211,8 +234,25 @@ fun ChatSettingsBar(
                         modifier = Modifier.size(20.dp)
                     )
                 }
+                AnimatedVisibility(visible = disableStreamOutput) {
+                    Icon(
+                        imageVector = Icons.Outlined.Block,
+                        contentDescription = stringResource(R.string.disable_stream_output),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+ 
+                AnimatedVisibility(visible = enableMaxContextMode) {
+                    Icon(
+                        imageVector = Icons.Rounded.Whatshot,
+                        contentDescription = stringResource(R.string.max_mode_title),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
 
-                IconButton(onClick = { showMenu = !showMenu }, modifier = Modifier.size(28.dp)) {
+                 IconButton(onClick = { showMenu = !showMenu }, modifier = Modifier.size(28.dp)) {
                     Icon(
                         imageVector = Icons.Outlined.Tune,
                         contentDescription = stringResource(R.string.settings_options),
@@ -257,10 +297,11 @@ fun ChatSettingsBar(
                                         Modifier.padding(vertical = 4.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
+                            // ========== 基础配置类 ==========
                             // 模型选择器
                             ModelSelectorItem(
                                 configSummaries = configSummaries,
-                                currentConfigId = currentConfigId,
+                                currentConfigMapping = currentConfigMapping,
                                 onSelectModel = onSelectModel,
                                 expanded = showModelDropdown,
                                     onExpandedChange = { showModelDropdown = it },
@@ -293,6 +334,43 @@ fun ChatSettingsBar(
                                 }
                             )
 
+                            // Max模式
+                            SettingItem(
+                                title = stringResource(R.string.max_mode_title),
+                                icon = if (enableMaxContextMode) Icons.Rounded.Whatshot else Icons.Outlined.Whatshot,
+                                iconTint = if (enableMaxContextMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                isChecked = enableMaxContextMode,
+                                onToggle = onToggleEnableMaxContextMode,
+                                onInfoClick = {
+                                    val normalLengthText = if (baseContextLengthInK % 1f == 0f) {
+                                        baseContextLengthInK.toInt().toString()
+                                    } else {
+                                        String.format("%.1f", baseContextLengthInK)
+                                    }
+                                    val maxLengthText = if (maxContextLengthInK % 1f == 0f) {
+                                        maxContextLengthInK.toInt().toString()
+                                    } else {
+                                        String.format("%.1f", maxContextLengthInK)
+                                    }
+                                    infoPopupContent = context.getString(R.string.max_mode_title) to context.getString(
+                                        R.string.max_mode_info,
+                                        normalLengthText,
+                                        maxLengthText
+                                    )
+                                    showMenu = false
+                                }
+                            )
+
+                            Divider(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                thickness = 0.5.dp,
+                                    color =
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                    alpha = 0.2f
+                                            )
+                            )
+
+                            // ========== 记忆相关 ==========
                             // 记忆附着
                             SettingItem(
                                 title = stringResource(R.string.memory_attachment),
@@ -315,40 +393,37 @@ fun ChatSettingsBar(
                                 }
                             )
 
-                            // 上下文长度设置
-                            // SettingSliderItem(
-                            //     label = "上下文长度",
-                            //     icon = Icons.Outlined.History,
-                            //     value = maxWindowSizeInK,
-                            //     onValueChange = onContextLengthChange,
-                            //     onInfoClick = {
-                            //         infoPopupContent =
-                            //             "上下文长度" to
-                            //                 "控制模型记忆的对话长度（单位：千tokens）。较短的长度可以节省Token，但可能会忘记早期对话内容。"
-                            //         showMenu = false
-                            //     },
-                            //     valueRange = 1f..1024f,
-                            //     steps = 1022,
-                            //     decimalFormatPattern = "#.#",
-                            //     unitText = "k"
-                            // )
+                            // 手动更新记忆
+                            ActionSettingItem(
+                                title = stringResource(R.string.manual_memory_update),
+                                icon = Icons.Outlined.Save,
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                onClick = {
+                                    onManualMemoryUpdate()
+                                    showMenu = false
+                                },
+                                onInfoClick = {
+                                    infoPopupContent =
+                                        context.getString(R.string.manual_memory_update) to context.getString(R.string.manual_memory_update_desc)
+                                    showMenu = false
+                                }
+                            )
 
-                            // // 摘要阈值设置
-                            // SettingSliderItem(
-                            //     label = "摘要阈值",
-                            //     icon = Icons.Outlined.Speed,
-                            //     value = summaryTokenThreshold,
-                            //     onValueChange = onSummaryTokenThresholdChange,
-                            //     onInfoClick = {
-                            //         infoPopupContent =
-                            //             "摘要阈值" to
-                            //                 "当上下文Token使用率超过此阈值时，自动触发聊天摘要。范围 0.1-0.95。"
-                            //         showMenu = false
-                            //     },
-                            //     valueRange = 0.1f..0.95f,
-                            //     steps = 84,
-                            //     decimalFormatPattern = "#.##"
-                            // )
+                            // 手动总结对话
+                            ActionSettingItem(
+                                title = stringResource(R.string.manual_conversation_summary),
+                                icon = Icons.Outlined.History,
+                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                onClick = {
+                                    onManualSummarizeConversation()
+                                    showMenu = false
+                                },
+                                onInfoClick = {
+                                    infoPopupContent =
+                                        context.getString(R.string.manual_conversation_summary) to context.getString(R.string.manual_conversation_summary_desc)
+                                    showMenu = false
+                                }
+                            )
 
                             Divider(
                                 modifier = Modifier.padding(vertical = 2.dp),
@@ -359,6 +434,7 @@ fun ChatSettingsBar(
                                             )
                             )
 
+                            // ========== 输出相关 ==========
                             // 自动朗读
                             SettingItem(
                                 title = stringResource(R.string.auto_read_message),
@@ -380,7 +456,29 @@ fun ChatSettingsBar(
                                     showMenu = false
                                 }
                             )
-                            
+
+                            // 禁用流式输出
+                            SettingItem(
+                                title = stringResource(R.string.disable_stream_output),
+                                    icon =
+                                            if (disableStreamOutput) Icons.Outlined.Block
+                                            else Icons.Outlined.Speed,
+                                    iconTint =
+                                            if (disableStreamOutput)
+                                                    MaterialTheme.colorScheme.error // 开启时为红色
+                                            else
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                            alpha = 0.7f // 关闭时为灰色
+                                                    ),
+                                isChecked = disableStreamOutput,
+                                onToggle = onToggleDisableStreamOutput,
+                                onInfoClick = {
+                                        infoPopupContent =
+                                                context.getString(R.string.disable_stream_output) to context.getString(R.string.disable_stream_output_desc)
+                                    showMenu = false
+                                }
+                            )
+
                             Divider(
                                 modifier = Modifier.padding(vertical = 2.dp),
                                 thickness = 0.5.dp,
@@ -390,6 +488,7 @@ fun ChatSettingsBar(
                                             )
                             )
 
+                            // ========== AI功能类 ==========
                             // AI计划模式
                             SettingItem(
                                 title = stringResource(R.string.ai_planning_mode),
@@ -411,77 +510,6 @@ fun ChatSettingsBar(
                                 }
                             )
 
-                            Divider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.2f
-                                            )
-                            )
-
-                            // 禁用工具
-                            SettingItem(
-                                title = stringResource(R.string.disable_tools),
-                                    icon =
-                                            if (!enableTools) Icons.Outlined.Block
-                                            else Icons.Outlined.Build,
-                                    iconTint =
-                                            if (!enableTools) MaterialTheme.colorScheme.error
-                                            else
-                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                            alpha = 0.7f
-                                                    ),
-                                isChecked = !enableTools,
-                                onToggle = onToggleTools,
-                                onInfoClick = {
-                                        infoPopupContent =
-                                                context.getString(R.string.disable_tools) to context.getString(R.string.disable_tools_desc)
-                                    showMenu = false
-                                }
-                            )
-
-                            Divider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.2f
-                                            )
-                            )
-
-                            // 自动批准
-                            SettingItem(
-                                title = stringResource(R.string.auto_approve),
-                                    icon =
-                                            if (permissionLevel == PermissionLevel.ALLOW)
-                                                    Icons.Rounded.Security
-                                            else Icons.Outlined.Security,
-                                    iconTint =
-                                            if (permissionLevel == PermissionLevel.ALLOW)
-                                                    MaterialTheme.colorScheme.primary
-                                            else
-                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                            alpha = 0.7f
-                                                    ),
-                                isChecked = permissionLevel == PermissionLevel.ALLOW,
-                                onToggle = onTogglePermission,
-                                onInfoClick = {
-                                        infoPopupContent =
-                                                context.getString(R.string.auto_approve) to context.getString(R.string.auto_approve_desc)
-                                    showMenu = false
-                                }
-                            )
-
-                            Divider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.2f
-                                            )
-                            )
-
                             // 思考模式
                             SettingItem(
                                 title = stringResource(R.string.thinking_mode),
@@ -501,15 +529,6 @@ fun ChatSettingsBar(
                                     infoPopupContent = context.getString(R.string.thinking_mode) to context.getString(R.string.thinking_mode_desc)
                                     showMenu = false
                                 }
-                            )
-
-                            Divider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.2f
-                                            )
                             )
 
                             // 思考引导
@@ -534,18 +553,56 @@ fun ChatSettingsBar(
                                 }
                             )
 
-                            // 手动更新记忆
-                            ActionSettingItem(
-                                title = stringResource(R.string.manual_memory_update),
-                                icon = Icons.Outlined.Save,
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                onClick = {
-                                    onManualMemoryUpdate()
-                                    showMenu = false
-                                },
+                            Divider(
+                                modifier = Modifier.padding(vertical = 2.dp),
+                                thickness = 0.5.dp,
+                                    color =
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                    alpha = 0.2f
+                                            )
+                            )
+
+                            // ========== 权限与工具 ==========
+                            // 禁用工具
+                            SettingItem(
+                                title = stringResource(R.string.disable_tools),
+                                    icon =
+                                            if (!enableTools) Icons.Outlined.Block
+                                            else Icons.Outlined.Build,
+                                    iconTint =
+                                            if (!enableTools) MaterialTheme.colorScheme.error
+                                            else
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                            alpha = 0.7f
+                                                    ),
+                                isChecked = !enableTools,
+                                onToggle = onToggleTools,
                                 onInfoClick = {
-                                    infoPopupContent =
-                                        context.getString(R.string.manual_memory_update) to context.getString(R.string.manual_memory_update_desc)
+                                        infoPopupContent =
+                                                context.getString(R.string.disable_tools) to context.getString(R.string.disable_tools_desc)
+                                    showMenu = false
+                                }
+                            )
+
+                            // 自动批准
+                            SettingItem(
+                                title = stringResource(R.string.auto_approve),
+                                    icon =
+                                            if (permissionLevel == PermissionLevel.ALLOW)
+                                                    Icons.Rounded.Security
+                                            else Icons.Outlined.Security,
+                                    iconTint =
+                                            if (permissionLevel == PermissionLevel.ALLOW)
+                                                    MaterialTheme.colorScheme.primary
+                                            else
+                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                            alpha = 0.7f
+                                                    ),
+                                isChecked = permissionLevel == PermissionLevel.ALLOW,
+                                onToggle = onTogglePermission,
+                                onInfoClick = {
+                                        infoPopupContent =
+                                                context.getString(R.string.auto_approve) to context.getString(R.string.auto_approve_desc)
                                     showMenu = false
                                 }
                             )
@@ -601,16 +658,6 @@ fun ChatSettingsBar(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Divider(
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.3f
-                                            )
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
                             Text(
                                 text = infoPopupContent!!.second,
                                 fontSize = 14.sp,
@@ -634,8 +681,26 @@ private fun SettingItem(
     onToggle: () -> Unit,
     onInfoClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val stateDescription = if (isChecked) {
+        context.getString(R.string.enabled)
+    } else {
+        context.getString(R.string.disabled)
+    }
+    
     Row(
-        modifier = Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .padding(horizontal = 12.dp)
+            .semantics {
+                contentDescription = title
+            }
+            .toggleable(
+                value = isChecked,
+                onValueChange = { onToggle() },
+                role = Role.Switch
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 图标
@@ -643,7 +708,9 @@ private fun SettingItem(
             imageVector = icon,
             contentDescription = null,
             tint = iconTint,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier
+                .size(16.dp)
+                .clearAndSetSemantics {}
         )
         // 详情按钮（左侧）
         IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
@@ -660,13 +727,18 @@ private fun SettingItem(
             fontSize = 13.sp,
             fontWeight = FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp)
+                .clearAndSetSemantics {}
         )
         // 开关
         Switch(
             checked = isChecked,
-            onCheckedChange = { onToggle() },
-            modifier = Modifier.scale(0.65f),
+            onCheckedChange = null, // 由Row的toggleable处理
+            modifier = Modifier
+                .scale(0.65f)
+                .clearAndSetSemantics {},
                 colors =
                         SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.primary,
@@ -802,20 +874,29 @@ private fun MemorySelectorItem(
 ) {
     val currentProfile = preferenceProfiles.find { it.id == currentProfileId }
 
+    val currentProfileName = currentProfile?.name ?: stringResource(R.string.not_selected)
+    val expandStateDesc = if (expanded) stringResource(R.string.expanded) else stringResource(R.string.collapsed)
+    val accessibilityDesc = "${stringResource(R.string.memory)}: $currentProfileName, $expandStateDesc"
+    
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
                 .height(36.dp)
+                .semantics {
+                    contentDescription = accessibilityDesc
+                }
                 .clickable { onExpandedChange(!expanded) }
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Outlined.Portrait,
-                contentDescription = stringResource(R.string.memory_selection),
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier
+                    .size(16.dp)
+                    .clearAndSetSemantics {}
             )
             // 详情按钮（左侧）
             IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
@@ -835,6 +916,7 @@ private fun MemorySelectorItem(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -843,14 +925,15 @@ private fun MemorySelectorItem(
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
             }
             Icon(
                     imageVector =
                             if (expanded) Icons.Filled.KeyboardArrowUp
                             else Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) stringResource(R.string.collapse_verb) else stringResource(R.string.expand_verb),
+                contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
@@ -899,11 +982,6 @@ private fun MemorySelectorItem(
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
-                Divider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -921,29 +999,42 @@ private fun MemorySelectorItem(
 @Composable
 private fun ModelSelectorItem(
     configSummaries: List<ModelConfigSummary>,
-    currentConfigId: String,
-    onSelectModel: (String) -> Unit,
+    currentConfigMapping: FunctionConfigMapping,
+    onSelectModel: (String, Int) -> Unit,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onManageClick: () -> Unit,
     onInfoClick: () -> Unit
 ) {
-    val currentConfig = configSummaries.find { it.id == currentConfigId }
+    val currentConfig = configSummaries.find { it.id == currentConfigMapping.configId }
+    var expandedConfigId by remember { mutableStateOf<String?>(null) } // 用于记录当前展开的配置的模型列表
 
+    val currentModelName = currentConfig?.let { config ->
+        val validIndex = getValidModelIndex(config.modelName, currentConfigMapping.modelIndex)
+        getModelByIndex(config.modelName, validIndex)
+    } ?: stringResource(R.string.not_selected)
+    val expandStateDesc = if (expanded) stringResource(R.string.expanded) else stringResource(R.string.collapsed)
+    val accessibilityDesc = "${stringResource(R.string.model)}: $currentModelName, $expandStateDesc"
+    
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
                 .height(36.dp)
+                .semantics {
+                    contentDescription = accessibilityDesc
+                }
                 .clickable { onExpandedChange(!expanded) }
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Outlined.DataObject,
-                contentDescription = stringResource(R.string.model_selection),
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier
+                    .size(16.dp)
+                    .clearAndSetSemantics {}
             )
             // 详情按钮（左侧）
             IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
@@ -963,20 +1054,37 @@ private fun ModelSelectorItem(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = currentConfig?.name ?: stringResource(R.string.not_selected),
+                // 只显示选中的模型名称
+                currentConfig?.let { config ->
+                    val validIndex = getValidModelIndex(config.modelName, currentConfigMapping.modelIndex)
+                    val selectedModel = getModelByIndex(config.modelName, validIndex)
+                    Text(
+                        text = selectedModel.ifEmpty { stringResource(R.string.not_selected) },
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clearAndSetSemantics {}
+                    )
+                } ?: Text(
+                    text = stringResource(R.string.not_selected),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
             }
             Icon(
                 imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) stringResource(R.string.collapse_verb) else stringResource(R.string.expand_verb),
+                contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
@@ -992,60 +1100,129 @@ private fun ModelSelectorItem(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 configSummaries.forEach { config ->
-                    val isSelected = config.id == currentConfigId
-                    Box(
-                            modifier =
-                                    Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
-                                            .background(
-                                                    if (isSelected)
-                                                            MaterialTheme.colorScheme.primary.copy(
-                                                                    alpha = 0.1f
-                                                            )
-                                                    else Color.Transparent
-                                            )
-                            .clickable {
-                                onSelectModel(config.id)
-                                onExpandedChange(false)
-                            }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    val isSelected = config.id == currentConfigMapping.configId
+                    val modelList = getModelList(config.modelName)
+                    val hasMultipleModels = modelList.size > 1
+                    val isExpanded = expandedConfigId == config.id
+                    
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                                modifier =
+                                        Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                                .background(
+                                                        if (isSelected)
+                                                                MaterialTheme.colorScheme.primary.copy(
+                                                                        alpha = 0.1f
+                                                                )
+                                                        else Color.Transparent
+                                                )
+                                .clickable {
+                                    if (hasMultipleModels) {
+                                        // 如果有多个模型，切换展开状态
+                                        expandedConfigId = if (isExpanded) null else config.id
+                                    } else {
+                                        // 如果只有一个模型，直接选择
+                                        onSelectModel(config.id, 0)
+                                        onExpandedChange(false)
+                                    }
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text(
-                                text = config.name,
-                                    fontWeight =
-                                            if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color =
-                                            if (isSelected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = config.modelName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = config.name,
+                                        fontWeight =
+                                                if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color =
+                                                if (isSelected) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                if (hasMultipleModels) {
+                                    Text(
+                                        text = "${modelList.size}个模型",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 10.sp
+                                    )
+                                    Icon(
+                                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Text(
+                                        text = config.modelName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // 如果有多个模型且已展开，显示模型列表
+                        if (hasMultipleModels && isExpanded) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 8.dp)
+                            ) {
+                                // 计算有效索引一次，避免重复计算
+                                val validIndex = getValidModelIndex(config.modelName, currentConfigMapping.modelIndex)
+                                modelList.forEachIndexed { index, modelName ->
+                                    val isModelSelected = isSelected && validIndex == index
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                if (isModelSelected)
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                else Color.Transparent
+                                            )
+                                            .clickable {
+                                                onSelectModel(config.id, index)
+                                                onExpandedChange(false)
+                                                expandedConfigId = null
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = modelName,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isModelSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isModelSelected) 
+                                                MaterialTheme.colorScheme.primary 
+                                            else 
+                                                MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (index < modelList.size - 1) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                     if (configSummaries.last() != config) {
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
-                Divider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1071,17 +1248,30 @@ private fun PromptSelectorItem(
     onInfoClick: () -> Unit
 ) {
     val currentProfile = promptProfiles.find { it.id == currentProfileId }
+    
+    val currentProfileName = currentProfile?.name ?: stringResource(R.string.not_selected)
+    val expandStateDesc = if (expanded) stringResource(R.string.expanded) else stringResource(R.string.collapsed)
+    val accessibilityDesc = "${stringResource(R.string.prompt)}: $currentProfileName, $expandStateDesc"
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(36.dp).clickable { onExpandedChange(!expanded) }.padding(horizontal = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .semantics {
+                    contentDescription = accessibilityDesc
+                }
+                .clickable { onExpandedChange(!expanded) }
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Outlined.Message,
-                contentDescription = stringResource(R.string.prompt_selection),
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier
+                    .size(16.dp)
+                    .clearAndSetSemantics {}
             )
             // 详情按钮（左侧）
             IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
@@ -1101,6 +1291,7 @@ private fun PromptSelectorItem(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -1109,13 +1300,16 @@ private fun PromptSelectorItem(
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clearAndSetSemantics {}
                 )
             }
             Icon(
                 imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) stringResource(R.string.collapse_verb) else stringResource(R.string.expand_verb),
-                modifier = Modifier.size(20.dp),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(20.dp)
+                    .clearAndSetSemantics {},
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
         }
@@ -1163,11 +1357,6 @@ private fun PromptSelectorItem(
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
-                Divider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1202,12 +1391,25 @@ private fun ActionSettingItem(
                                 RoundedCornerShape(8.dp)
                         )
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onClick)
+                        .semantics {
+                            contentDescription = title
+                        }
+                        .clickable(
+                            onClick = onClick,
+                            role = Role.Button
+                        )
                         .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 图标
-        Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(16.dp))
+        Icon(
+            imageVector = icon, 
+            contentDescription = null, 
+            tint = iconTint, 
+            modifier = Modifier
+                .size(16.dp)
+                .clearAndSetSemantics {}
+        )
         // 详情按钮（左侧）
         IconButton(onClick = onInfoClick, modifier = Modifier.size(24.dp)) {
             Icon(
@@ -1223,7 +1425,10 @@ private fun ActionSettingItem(
             fontSize = 13.sp,
             fontWeight = FontWeight.Normal,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp)
+                .clearAndSetSemantics {}
         )
     }
 }

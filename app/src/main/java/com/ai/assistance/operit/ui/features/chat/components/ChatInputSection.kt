@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
@@ -30,17 +31,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ChatMessage
@@ -54,8 +59,8 @@ import android.net.Uri
 @Composable
 fun ChatInputSection(
     actualViewModel: ChatViewModel,
-    userMessage: String,
-    onUserMessageChange: (String) -> Unit,
+    userMessage: TextFieldValue,
+    onUserMessageChange: (TextFieldValue) -> Unit,
     onSendMessage: () -> Unit,
     onCancelMessage: () -> Unit,
     isLoading: Boolean,
@@ -78,33 +83,35 @@ fun ChatInputSection(
     showInputProcessingStatus: Boolean = true,
     enableTools: Boolean = true, // 工具是否启用
     replyToMessage: ChatMessage? = null, // 回复目标消息
-    onClearReply: (() -> Unit)? = null // 清除回复状态的回调
+    onClearReply: (() -> Unit)? = null, // 清除回复状态的回调
+    isWorkspaceOpen: Boolean = false
 ) {
     val showTokenLimitDialog = remember { mutableStateOf(false) }
+    val showFullscreenInput = remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     if (showTokenLimitDialog.value) {
         AlertDialog(
             onDismissRequest = { showTokenLimitDialog.value = false },
-            title = { Text("Token 超限警告") },
-            text = { Text("消息已超出Token上限，继续发送可能会导致上下文丢失或AI无法理解。是否继续？") },
+            title = { Text(context.getString(R.string.token_limit_warning)) },
+            text = { Text(context.getString(R.string.token_limit_warning_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showTokenLimitDialog.value = false
                         onSendMessage()
                     }
-                ) { Text("继续发送") }
+                ) { Text(context.getString(R.string.continue_send)) }
             },
             dismissButton = {
                 TextButton(onClick = { showTokenLimitDialog.value = false }) {
-                    Text("取消")
+                    Text(context.getString(R.string.cancel))
                 }
             }
         )
     }
     val modernTextStyle = TextStyle(fontSize = 13.sp, lineHeight = 16.sp)
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
@@ -114,7 +121,7 @@ fun ChatInputSection(
     val currentWindowSize by actualViewModel.currentWindowSize.collectAsState()
     val maxWindowSizeInK by actualViewModel.maxWindowSizeInK.collectAsState()
     val maxTokens = (maxWindowSizeInK * 1024).toInt()
-    val userMessageTokens = remember(userMessage) { ChatUtils.estimateTokenCount(userMessage) }
+    val userMessageTokens = remember(userMessage.text) { ChatUtils.estimateTokenCount(userMessage.text) }
 
     val isOverTokenLimit =
         if (maxTokens > 0) {
@@ -123,7 +130,7 @@ fun ChatInputSection(
             false
         }
 
-    val canSendMessage = userMessage.isNotBlank() || attachments.isNotEmpty()
+    val canSendMessage = userMessage.text.isNotBlank() || attachments.isNotEmpty()
     val sendButtonEnabled =
         when {
             isProcessing -> true // Cancel button
@@ -142,7 +149,7 @@ fun ChatInputSection(
                     typography
                 )
             } else {
-                actualViewModel.showToast("麦克风权限被拒绝")
+                actualViewModel.showToast(context.getString(R.string.microphone_permission_denied_toast))
             }
         }
 
@@ -189,7 +196,7 @@ fun ChatInputSection(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Reply,
-                            contentDescription = "回复",
+                            contentDescription = context.getString(R.string.reply_message),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
@@ -215,7 +222,7 @@ fun ChatInputSection(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "取消回复",
+                                contentDescription = context.getString(R.string.cancel_reply),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -228,11 +235,11 @@ fun ChatInputSection(
             SimpleAnimatedVisibility(visible = showInputProcessingStatus && inputState !is InputProcessingState.Idle && inputState !is InputProcessingState.Completed) {
                 val (progressColor, message) = when (inputState) {
                     is InputProcessingState.Connecting -> MaterialTheme.colorScheme.tertiary to inputState.message
-                    is InputProcessingState.ExecutingTool -> MaterialTheme.colorScheme.secondary to "正在执行工具: ${inputState.toolName}"
+                    is InputProcessingState.ExecutingTool -> MaterialTheme.colorScheme.secondary to context.getString(R.string.executing_tool, inputState.toolName)
                     is InputProcessingState.Processing -> MaterialTheme.colorScheme.primary to inputState.message
                     is InputProcessingState.ProcessingToolResult -> MaterialTheme.colorScheme.tertiary.copy(
                         alpha = 0.8f
-                    ) to "正在处理工具结果: ${inputState.toolName}"
+                    ) to context.getString(R.string.processing_tool_result, inputState.toolName)
                     is InputProcessingState.Summarizing -> MaterialTheme.colorScheme.tertiary to inputState.message
                     is InputProcessingState.Receiving -> MaterialTheme.colorScheme.secondary to inputState.message
                     else -> MaterialTheme.colorScheme.primary to ""
@@ -319,7 +326,10 @@ fun ChatInputSection(
                     value = userMessage,
                     onValueChange = onUserMessageChange,
                     placeholder = {
-                        Text("请输入您的问题...", style = modernTextStyle)
+                        Text(
+                            if (isWorkspaceOpen) context.getString(R.string.input_question_with_workspace) else context.getString(R.string.input_question_hint),
+                            style = modernTextStyle
+                        )
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -339,6 +349,17 @@ fun ChatInputSection(
                         MaterialTheme.colorScheme.outline
                     ),
                     shape = RoundedCornerShape(16.dp),
+                    trailingIcon = {
+                        if (userMessage.text.contains("\n")) {
+                            IconButton(onClick = { showFullscreenInput.value = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = "Fullscreen input",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
                     enabled = !isProcessing || allowTextInputWhileProcessing
                 )
 
@@ -371,7 +392,7 @@ fun ChatInputSection(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "添加附件",
+                        contentDescription = context.getString(R.string.add_attachment),
                         tint =
                         if (showAttachmentPanel)
                             MaterialTheme.colorScheme.onPrimary
@@ -461,9 +482,9 @@ fun ChatInputSection(
                         },
                         contentDescription =
                         when {
-                            isProcessing -> "取消"
-                            canSendMessage -> "发送"
-                            else -> "语音输入"
+                            isProcessing -> context.getString(R.string.cancel)
+                            canSendMessage -> context.getString(R.string.send)
+                            else -> context.getString(R.string.voice_input)
                         },
                         tint = iconTint,
                         modifier = Modifier.size(22.dp)
@@ -478,7 +499,7 @@ fun ChatInputSection(
             if (isOverTokenLimit && canSendMessage) {
                 Text(
                     text =
-                    "已超出最大Token限制 (${userMessageTokens + currentWindowSize} / $maxTokens)",
+                    context.getString(R.string.token_limit_exceeded_message, userMessageTokens + currentWindowSize, maxTokens),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.labelSmall,
                     modifier =
@@ -506,9 +527,18 @@ fun ChatInputSection(
                 onAttachLocation = onAttachLocation,
                 onAttachMemory = onAttachMemory,
                 onTakePhoto = onTakePhoto,
-                userQuery = userMessage,
+                userQuery = userMessage.text,
                 onDismiss = { setShowAttachmentPanel(false) }
             )
+
+            if (showFullscreenInput.value) {
+                FullscreenInputDialog(
+                    value = userMessage,
+                    onValueChange = onUserMessageChange,
+                    onDismiss = { showFullscreenInput.value = false },
+                    onConfirm = { showFullscreenInput.value = false }
+                )
+            }
 
         }
     }
@@ -516,6 +546,7 @@ fun ChatInputSection(
 
 @Composable
 fun AttachmentChip(attachmentInfo: AttachmentInfo, onRemove: () -> Unit, onInsert: () -> Unit) {
+    val context = LocalContext.current
     val isImage = attachmentInfo.mimeType.startsWith("image/")
     val icon: ImageVector = if (isImage) Icons.Default.Image else Icons.Default.Description
 
@@ -560,7 +591,7 @@ fun AttachmentChip(attachmentInfo: AttachmentInfo, onRemove: () -> Unit, onInser
             IconButton(onClick = onInsert, modifier = Modifier.size(14.dp)) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "插入附件",
+                    contentDescription = context.getString(R.string.insert_attachment),
                     modifier = Modifier.size(10.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -571,7 +602,7 @@ fun AttachmentChip(attachmentInfo: AttachmentInfo, onRemove: () -> Unit, onInser
             IconButton(onClick = onRemove, modifier = Modifier.size(14.dp)) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "删除附件",
+                    contentDescription = context.getString(R.string.remove_attachment),
                     modifier = Modifier.size(10.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )

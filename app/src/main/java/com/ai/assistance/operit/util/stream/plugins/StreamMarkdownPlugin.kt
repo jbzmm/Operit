@@ -51,17 +51,43 @@ class StreamMarkdownFencedCodeBlockPlugin(private val includeFences: Boolean = t
                             }
                     )
     private var endMatcher: StreamKmpGraph? = null
+    private var isMatchingEndFence = false
+    private var hasStartedMatchingFence = false
 
     override fun processChar(c: Char, atStartOfLine: Boolean): Boolean {
         if (state == PluginState.PROCESSING) {
-            val matcher = endMatcher!!
-            when (matcher.processChar(c)) {
-                is StreamKmpMatchResult.Match -> {
-                    reset()
-                    return includeFences
+            // 只有在行首时才开始尝试匹配结束符
+            if (atStartOfLine) {
+                isMatchingEndFence = true
+                hasStartedMatchingFence = false
+                endMatcher!!.reset()
+            }
+
+            if (isMatchingEndFence) {
+                if (!hasStartedMatchingFence) {
+                    if (c == ' ') {
+                        return includeFences
+                    }
+                    hasStartedMatchingFence = true
                 }
-                is StreamKmpMatchResult.InProgress -> return includeFences
-                is StreamKmpMatchResult.NoMatch -> return true
+
+                val matcher = endMatcher!!
+                when (matcher.processChar(c)) {
+                    is StreamKmpMatchResult.Match -> {
+                        reset()
+                        return includeFences
+                    }
+                    is StreamKmpMatchResult.InProgress -> return includeFences
+                    is StreamKmpMatchResult.NoMatch -> {
+                        // 匹配失败，说明这一行不是结束符
+                        // 禁用后续字符的匹配，直到下一行
+                        isMatchingEndFence = false
+                        return true
+                    }
+                }
+            } else {
+                // 这一行已经确定不是结束符，直接作为内容
+                return true
             }
         } else { // IDLE or TRYING
             when (val result = startMatcher.processChar(c)) {
@@ -102,6 +128,8 @@ class StreamMarkdownFencedCodeBlockPlugin(private val includeFences: Boolean = t
         state = PluginState.IDLE
         startMatcher.reset()
         endMatcher = null
+        isMatchingEndFence = false
+        hasStartedMatchingFence = false
     }
 }
 
@@ -649,11 +677,25 @@ class StreamMarkdownBlockQuotePlugin(private val includeMarker: Boolean = true) 
                     )
 
     override fun processChar(c: Char, atStartOfLine: Boolean): Boolean {
-        if (state == PluginState.PROCESSING) {
-            if (c == '\n') {
+        if (c == '\n') {
+            if (state == PluginState.PROCESSING) {
+                state = PluginState.WAITFOR
+            } else {
                 reset()
             }
             return true
+        }
+
+        if (state == PluginState.WAITFOR) {
+            if (atStartOfLine) {
+                if (c == '>') {
+                    state = PluginState.PROCESSING
+                    return true
+                } else {
+                    reset()
+                    return true
+                }
+            }
         }
 
         if (atStartOfLine) {

@@ -17,6 +17,13 @@ fun getJsToolsDefinition(): String {
                     if (environment) params.environment = environment;
                     return toolCall("read_file_full", params);
                 },
+                readPart: (path, startLine, endLine, environment) => {
+                    const params = { path };
+                    if (startLine !== undefined) params.start_line = String(startLine);
+                    if (endLine !== undefined) params.end_line = String(endLine);
+                    if (environment) params.environment = environment;
+                    return toolCall("read_file_part", params);
+                },
                 write: (path, content, append, environment) => {
                     const params = { path, content };
                     if (append !== undefined) params.append = append ? "true" : "false";
@@ -44,10 +51,11 @@ fun getJsToolsDefinition(): String {
                     if (environment) params.environment = environment;
                     return toolCall("move_file", params);
                 },
-                copy: (source, destination, recursive, environment) => {
+                copy: (source, destination, recursive, sourceEnvironment, destEnvironment) => {
                     const params = { source, destination };
                     if (recursive !== undefined) params.recursive = recursive ? "true" : "false";
-                    if (environment) params.environment = environment;
+                    if (sourceEnvironment) params.source_environment = sourceEnvironment;
+                    if (destEnvironment) params.dest_environment = destEnvironment;
                     return toolCall("copy_file", params);
                 },
                 mkdir: (path, create_parents, environment) => {
@@ -65,6 +73,11 @@ fun getJsToolsDefinition(): String {
                     const params = { path, pattern, ...options };
                     // environment can be included in options
                     return toolCall("grep_code", params);
+                },
+                grepContext: (path, intent, options = {}) => {
+                    const params = { path, intent, ...options };
+                    // environment and file_pattern can be included in options
+                    return toolCall("grep_context", params);
                 },
                 info: (path, environment) => {
                     const params = { path };
@@ -114,7 +127,14 @@ fun getJsToolsDefinition(): String {
                     }
                     return toolCall("http_request", params);
                 },
-                visit: (url) => toolCall("visit_web", { url }),
+                visit: (params) => {
+                    if (typeof params === 'string') {
+                        // 向后兼容，如果只传入一个字符串，则假定为URL
+                        return toolCall("visit_web", { url: params });
+                    }
+                    // 否则，假定为参数对象
+                    return toolCall("visit_web", params);
+                },
                 // 新增增强版HTTP请求
                 http: (options) => {
                     const params = { ...options };

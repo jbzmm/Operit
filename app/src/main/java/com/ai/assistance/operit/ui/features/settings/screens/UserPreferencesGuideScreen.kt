@@ -143,7 +143,7 @@ fun UserPreferencesGuideScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val preferencesManager = remember { UserPreferencesManager(context) }
+    val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
 
     var selectedGender by remember { mutableStateOf("") }
     var selectedOccupation by remember { mutableStateOf("") }

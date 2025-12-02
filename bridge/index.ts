@@ -41,6 +41,10 @@ export interface McpServiceInfo {
     endpoint?: string;
     connectionType?: 'httpStream' | 'sse';
 
+    // Authentication for remote services
+    bearerToken?: string;
+    headers?: Record<string, string>;
+
     created: number;
     lastUsed?: number;
 }
@@ -107,7 +111,7 @@ class McpBridge {
 
     // 请求超时(毫秒)
     private readonly REQUEST_TIMEOUT = 180000; // 180秒超时 (3分钟)
-    private readonly SPAWN_TIMEOUT = 60000; // spawn命令60秒超时
+    private readonly SPAWN_TIMEOUT = 180000; // spawn命令180秒超时
 
     // 服务错误记录
     private mcpErrors: Map<string, string> = new Map();
@@ -215,6 +219,8 @@ class McpBridge {
             cwd: info.cwd,
             endpoint: info.endpoint,
             connectionType: info.connectionType || 'httpStream', // Default to httpStream
+            bearerToken: info.bearerToken,
+            headers: info.headers,
             description: info.description || `MCP Service: ${name}`,
             env: info.env || {},
             created: Date.now(),
@@ -828,6 +834,8 @@ class McpBridge {
                         env: params.env,
                         endpoint: params.endpoint,
                         connectionType: params.connectionType,
+                        bearerToken: params.bearerToken,
+                        headers: params.headers,
                     });
 
                     response = {

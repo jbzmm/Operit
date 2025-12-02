@@ -1,13 +1,17 @@
 package com.ai.assistance.operit.ui.features.chat.webview.workspace
 
 import android.annotation.SuppressLint
+import android.os.Environment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.core.tools.AIToolHandler
@@ -49,6 +54,13 @@ data class OpenFileInfo(
         val name: String = File(path).name
 )
 
+// 快速路径条目
+data class QuickPathEntry(
+        val name: String,
+        val path: String,
+        val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
 /** 文件浏览器组件 - VSCode风格 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +81,32 @@ fun FileBrowser(
     var newFileName by remember { mutableStateOf("") }
     // 用于控制长按上下文菜单的状态
     var contextMenuExpandedFor by remember { mutableStateOf<DirectoryEntry?>(null) }
+    // 排序方式：0=名称, 1=大小, 2=修改时间
+    var sortMode by remember { mutableStateOf(0) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    // 是否显示隐藏文件（以.开头）
+    var showHiddenFiles by remember { mutableStateOf(false) }
+    
+    // 快速路径定义
+    val quickPaths = remember {
+        listOf(
+            QuickPathEntry(
+                name = "Ubuntu",
+                path = File(context.filesDir, "usr/var/lib/proot-distro/installed-rootfs/ubuntu").absolutePath,
+                icon = Icons.Default.Terminal
+            ),
+            QuickPathEntry(
+                name = "SDCard",
+                path = Environment.getExternalStorageDirectory().absolutePath,
+                icon = Icons.Default.SdCard
+            ),
+            QuickPathEntry(
+                name = "Workspace",
+                path = File(context.filesDir, "workspace").absolutePath,
+                icon = Icons.Default.Folder
+            )
+        )
+    }
 
     fun loadDirectory(path: String) {
         if (isLoading) return // 防止并发加载
@@ -232,13 +270,72 @@ fun FileBrowser(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
             ) {
+                // 头部省略的路径显示（使用水平滚动，自动滚动到末尾）
+                val scrollState = rememberScrollState()
+                var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+                
+                LaunchedEffect(currentPath, textLayoutResult) {
+                    textLayoutResult?.let {
+                        // 滚动到末尾，显示路径的最后部分
+                        scrollState.scrollTo(scrollState.maxValue)
+                    }
+                }
+                
                 Text(
                         text = currentPath,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        overflow = TextOverflow.Clip,
+                        onTextLayout = { textLayoutResult = it },
+                        modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(scrollState)
                 )
+
+                // 显示/隐藏隐藏文件按钮
+                IconButton(
+                        onClick = { showHiddenFiles = !showHiddenFiles },
+                        modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                            if (showHiddenFiles) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (showHiddenFiles) "隐藏.文件" else "显示.文件",
+                            modifier = Modifier.size(18.dp),
+                            tint = if (showHiddenFiles) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                // 排序按钮
+                Box {
+                    IconButton(
+                            onClick = { showSortMenu = true },
+                            modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                                Icons.Default.Sort,
+                                contentDescription = "排序",
+                                modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    
+                    DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                                text = { Text("按名称${if (sortMode == 0) " ✓" else ""}") },
+                                onClick = { sortMode = 0; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                                text = { Text("按大小${if (sortMode == 1) " ✓" else ""}") },
+                                onClick = { sortMode = 1; showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                                text = { Text("按修改时间${if (sortMode == 2) " ✓" else ""}") },
+                                onClick = { sortMode = 2; showSortMenu = false }
+                        )
+                    }
+                }
 
                 if (isManageMode) {
                     IconButton(
@@ -262,6 +359,28 @@ fun FileBrowser(
                                 modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+            }
+            
+            // 快速路径栏
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(quickPaths) { quickPath ->
+                    QuickPathChip(
+                        entry = quickPath,
+                        isActive = currentPath.startsWith(quickPath.path),
+                        onClick = {
+                            // 检查路径是否存在
+                            val pathFile = File(quickPath.path)
+                            if (pathFile.exists() && pathFile.isDirectory) {
+                                loadDirectory(quickPath.path)
+                            }
+                        }
+                    )
                 }
             }
 
@@ -291,8 +410,14 @@ fun FileBrowser(
                         }
                     }
 
-                    items(fileList.sortedWith(compareBy({ !it.isDirectory }, { it.name }))) { item
-                        ->
+                    // 根据showHiddenFiles过滤文件列表
+                    val filteredList = if (showHiddenFiles) {
+                        fileList
+                    } else {
+                        fileList.filter { !it.name.startsWith(".") }
+                    }
+                    
+                    items(getSortedFileList(filteredList, sortMode)) { item ->
                         Box { // 使用Box来定位上下文菜单
                             FileListItem(
                                     name = item.name,
@@ -367,6 +492,44 @@ fun FileBrowser(
             }
         }
     }
+}
+
+/** 快速路径芯片组件 */
+@Composable
+private fun QuickPathChip(
+    entry: QuickPathEntry,
+    isActive: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = isActive,
+        onClick = onClick,
+        label = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = entry.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = entry.name,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = isActive,
+            borderColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+        )
+    )
 }
 
 /** 抽取出的文件列表项，实现紧凑布局和长按手势 */
@@ -450,3 +613,31 @@ fun getFileIcon(fileName: String) =
             fileName.endsWith(".md", true) -> Icons.Default.Article
             else -> Icons.Default.InsertDriveFile
         }
+
+/**
+ * 根据排序模式对文件列表进行排序
+ * @param fileList 原始文件列表
+ * @param sortMode 0=按名称, 1=按大小, 2=按修改时间
+ */
+private fun getSortedFileList(fileList: List<DirectoryEntry>, sortMode: Int): List<DirectoryEntry> {
+    return when (sortMode) {
+        0 -> fileList.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+        1 -> fileList.sortedWith(compareBy({ !it.isDirectory }, { -it.size }))
+        2 -> fileList.sortedWith(compareBy({ !it.isDirectory }, { -parseLastModified(it.lastModified) }))
+        else -> fileList.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+    }
+}
+
+/**
+ * 解析修改时间字符串为毫秒时间戳
+ */
+@SuppressLint("SimpleDateFormat")
+private fun parseLastModified(dateString: String): Long {
+    return try {
+        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.getDefault())
+        inputFormat.timeZone = TimeZone.getTimeZone("UTC")
+        inputFormat.parse(dateString)?.time ?: 0L
+    } catch (e: Exception) {
+        0L
+    }
+}

@@ -59,11 +59,23 @@ class ApiPreferences private constructor(private val context: Context) {
         fun getModelOutputPriceKey(providerModel: String) =
                 floatPreferencesKey("model_output_price_${providerModel.replace(":", "_")}")
 
-        val SHOW_FPS_COUNTER = booleanPreferencesKey("show_fps_counter")
+        // 请求次数统计键
+        fun getRequestCountKey(providerModel: String) =
+                intPreferencesKey("request_count_${providerModel.replace(":", "_")}")
+
+        // 计费方式键
+        fun getBillingModeKey(providerModel: String) =
+                stringPreferencesKey("billing_mode_${providerModel.replace(":", "_")}")
+
+        // 按次计费价格键
+        fun getPricePerRequestKey(providerModel: String) =
+                floatPreferencesKey("price_per_request_${providerModel.replace(":", "_")}")
+
         val ENABLE_AI_PLANNING = booleanPreferencesKey("enable_ai_planning")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
-        val ENABLE_REPLY_NOTIFICATION = booleanPreferencesKey("enable_reply_notification")
-
+        // Default values
+        const val DEFAULT_ENABLE_AI_PLANNING = false
+        const val DEFAULT_KEEP_SCREEN_ON = true
         // Keys for Thinking Mode and Thinking Guidance
         val ENABLE_THINKING_MODE = booleanPreferencesKey("enable_thinking_mode")
         val ENABLE_THINKING_GUIDANCE = booleanPreferencesKey("enable_thinking_guidance")
@@ -74,28 +86,11 @@ class ApiPreferences private constructor(private val context: Context) {
         // Key for Auto Read
         val ENABLE_AUTO_READ = booleanPreferencesKey("enable_auto_read")
 
-        // Key for Waifu Mode
-        val ENABLE_WAIFU_MODE = booleanPreferencesKey("enable_waifu_mode")
-        val WAIFU_CHAR_DELAY = intPreferencesKey("waifu_char_delay") // 每字符延迟（毫秒）
-        val WAIFU_REMOVE_PUNCTUATION = booleanPreferencesKey("waifu_remove_punctuation") // 是否移除标点符号
-        val WAIFU_DISABLE_ACTIONS = booleanPreferencesKey("waifu_disable_actions") // 是否禁止动作表情
-        val WAIFU_ENABLE_EMOTICONS = booleanPreferencesKey("waifu_enable_emoticons") // 是否启用表情包
-        val WAIFU_ENABLE_SELFIE = booleanPreferencesKey("waifu_enable_selfie") // 是否启用自拍功能
-        val WAIFU_SELFIE_PROMPT = stringPreferencesKey("waifu_selfie_prompt") // 自拍功能的外貌提示词
-
         // Key for Tools Enable/Disable
         val ENABLE_TOOLS = booleanPreferencesKey("enable_tools")
 
-        // Keys for Summary Settings
-        val ENABLE_SUMMARY = booleanPreferencesKey("enable_summary")
-        val ENABLE_SUMMARY_BY_MESSAGE_COUNT = booleanPreferencesKey("enable_summary_by_message_count")
-        val SUMMARY_MESSAGE_COUNT_THRESHOLD = intPreferencesKey("summary_message_count_threshold")
-
-        // Key for Context Length
-        val CONTEXT_LENGTH = floatPreferencesKey("context_length")
-
-        // Key for Summary Token Threshold
-        val SUMMARY_TOKEN_THRESHOLD = floatPreferencesKey("summary_token_threshold")
+        // Key for Disable Stream Output
+        val DISABLE_STREAM_OUTPUT = booleanPreferencesKey("disable_stream_output")
 
         // Custom Prompt Settings
         val CUSTOM_INTRO_PROMPT = stringPreferencesKey("custom_intro_prompt")
@@ -109,11 +104,6 @@ class ApiPreferences private constructor(private val context: Context) {
         val MAX_TEXT_RESULT_LENGTH = intPreferencesKey("max_text_result_length")
         val MAX_HTTP_RESPONSE_LENGTH = intPreferencesKey("max_http_response_length")
 
-        const val DEFAULT_SHOW_FPS_COUNTER = false
-        const val DEFAULT_ENABLE_AI_PLANNING = false
-        const val DEFAULT_KEEP_SCREEN_ON = true
-        const val DEFAULT_ENABLE_REPLY_NOTIFICATION = true
-
         // Default values for Thinking Mode and Thinking Guidance
         const val DEFAULT_ENABLE_THINKING_MODE = false
         const val DEFAULT_ENABLE_THINKING_GUIDANCE = false
@@ -124,28 +114,11 @@ class ApiPreferences private constructor(private val context: Context) {
         // Default value for Auto Read
         const val DEFAULT_ENABLE_AUTO_READ = false
 
-        // Default value for Waifu Mode
-        const val DEFAULT_ENABLE_WAIFU_MODE = false
-        const val DEFAULT_WAIFU_CHAR_DELAY = 500 // 500ms per character (2 chars per second)
-        const val DEFAULT_WAIFU_REMOVE_PUNCTUATION = false // 默认保留标点符号
-        const val DEFAULT_WAIFU_DISABLE_ACTIONS = false // 默认允许动作表情
-        const val DEFAULT_WAIFU_ENABLE_EMOTICONS = false // 默认不启用表情包
-        const val DEFAULT_WAIFU_ENABLE_SELFIE = false // 默认不启用自拍功能
-        const val DEFAULT_WAIFU_SELFIE_PROMPT = "kipfel vrchat, long hair, Matcha color hair, purple eyes, sweater vest, black skirt, black necktie, collared shirt, long sleeves, black headwear, beanie, pleated skirt, hair bun, white shirt, hair ribbon, hairclip, hair between eyes, black footwear, blush, hair ornament, cat hat, very long hair, sweater, animal ear headwear, bag, bandaid on leg, socks" // 默认外貌提示词
-
         // Default value for Tools Enable/Disable
         const val DEFAULT_ENABLE_TOOLS = true
 
-        // Default values for Summary Settings
-        const val DEFAULT_ENABLE_SUMMARY = true
-        const val DEFAULT_ENABLE_SUMMARY_BY_MESSAGE_COUNT = true
-        const val DEFAULT_SUMMARY_MESSAGE_COUNT_THRESHOLD = 8
-
-        // Default value for Context Length (in K)
-        const val DEFAULT_CONTEXT_LENGTH = 48.0f
-
-        // Default value for Summary Token Threshold
-        const val DEFAULT_SUMMARY_TOKEN_THRESHOLD = 0.70f
+        // Default value for Disable Stream Output (default false, meaning stream is enabled by default)
+        const val DEFAULT_DISABLE_STREAM_OUTPUT = false
 
         // Default values for custom prompts
         const val DEFAULT_INTRO_PROMPT = "你是Operit，一个全能AI助手，旨在解决用户提出的任何任务。你有各种工具可以调用，以高效完成复杂的请求。"
@@ -185,12 +158,6 @@ class ApiPreferences private constructor(private val context: Context) {
             }
         }
     }
-    // Get FPS Counter Display setting as Flow
-    val showFpsCounterFlow: Flow<Boolean> =
-            context.apiDataStore.data.map { preferences ->
-                preferences[SHOW_FPS_COUNTER] ?: DEFAULT_SHOW_FPS_COUNTER
-            }
-
     // Get AI Planning setting as Flow
     val enableAiPlanningFlow: Flow<Boolean> =
             context.apiDataStore.data.map { preferences ->
@@ -201,12 +168,6 @@ class ApiPreferences private constructor(private val context: Context) {
     val keepScreenOnFlow: Flow<Boolean> =
             context.apiDataStore.data.map { preferences ->
                 preferences[KEEP_SCREEN_ON] ?: DEFAULT_KEEP_SCREEN_ON
-            }
-
-    // Get Reply Notification setting as Flow
-    val enableReplyNotificationFlow: Flow<Boolean> =
-            context.apiDataStore.data.map { preferences ->
-                preferences[ENABLE_REPLY_NOTIFICATION] ?: DEFAULT_ENABLE_REPLY_NOTIFICATION
             }
 
     // Flow for Thinking Mode
@@ -233,74 +194,16 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[ENABLE_AUTO_READ] ?: DEFAULT_ENABLE_AUTO_READ
         }
 
-    // Flow for Waifu Mode
-    val enableWaifuModeFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[ENABLE_WAIFU_MODE] ?: DEFAULT_ENABLE_WAIFU_MODE
-        }
-
-    val waifuCharDelayFlow: Flow<Int> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_CHAR_DELAY] ?: DEFAULT_WAIFU_CHAR_DELAY
-        }
-
-    val waifuRemovePunctuationFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_REMOVE_PUNCTUATION] ?: DEFAULT_WAIFU_REMOVE_PUNCTUATION
-        }
-
-    val waifuDisableActionsFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_DISABLE_ACTIONS] ?: DEFAULT_WAIFU_DISABLE_ACTIONS
-        }
-
-    val waifuEnableEmoticonsFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_ENABLE_EMOTICONS] ?: DEFAULT_WAIFU_ENABLE_EMOTICONS
-        }
-
-    val waifuEnableSelfieFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_ENABLE_SELFIE] ?: DEFAULT_WAIFU_ENABLE_SELFIE
-        }
-
-    val waifuSelfiePromptFlow: Flow<String> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[WAIFU_SELFIE_PROMPT] ?: DEFAULT_WAIFU_SELFIE_PROMPT
-        }
-
     // Flow for Tools Enable/Disable
     val enableToolsFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
             preferences[ENABLE_TOOLS] ?: DEFAULT_ENABLE_TOOLS
         }
 
-    // Flows for Summary Settings
-    val enableSummaryFlow: Flow<Boolean> =
+    // Flow for Disable Stream Output
+    val disableStreamOutputFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
-            preferences[ENABLE_SUMMARY] ?: DEFAULT_ENABLE_SUMMARY
-        }
-
-    val enableSummaryByMessageCountFlow: Flow<Boolean> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[ENABLE_SUMMARY_BY_MESSAGE_COUNT] ?: DEFAULT_ENABLE_SUMMARY_BY_MESSAGE_COUNT
-        }
-
-    val summaryMessageCountThresholdFlow: Flow<Int> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[SUMMARY_MESSAGE_COUNT_THRESHOLD] ?: DEFAULT_SUMMARY_MESSAGE_COUNT_THRESHOLD
-        }
-
-    // Flow for Context Length
-    val contextLengthFlow: Flow<Float> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[CONTEXT_LENGTH] ?: DEFAULT_CONTEXT_LENGTH
-        }
-
-    // Flow for Summary Token Threshold
-    val summaryTokenThresholdFlow: Flow<Float> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[SUMMARY_TOKEN_THRESHOLD] ?: DEFAULT_SUMMARY_TOKEN_THRESHOLD
+            preferences[DISABLE_STREAM_OUTPUT] ?: DEFAULT_DISABLE_STREAM_OUTPUT
         }
 
     // Custom Prompt Flows
@@ -344,11 +247,6 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[MAX_HTTP_RESPONSE_LENGTH] ?: DEFAULT_MAX_HTTP_RESPONSE_LENGTH
         }
 
-    // Save FPS Counter Display setting
-    suspend fun saveShowFpsCounter(showFpsCounter: Boolean) {
-        context.apiDataStore.edit { preferences -> preferences[SHOW_FPS_COUNTER] = showFpsCounter }
-    }
-
     // Save AI Planning setting
     suspend fun saveEnableAiPlanning(isEnabled: Boolean) {
         context.apiDataStore.edit { preferences -> preferences[ENABLE_AI_PLANNING] = isEnabled }
@@ -359,11 +257,6 @@ class ApiPreferences private constructor(private val context: Context) {
         context.apiDataStore.edit { preferences -> preferences[KEEP_SCREEN_ON] = isEnabled }
     }
 
-    // Save Reply Notification setting
-    suspend fun saveEnableReplyNotification(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences -> preferences[ENABLE_REPLY_NOTIFICATION] = isEnabled }
-    }
-
     // Save Thinking Mode setting
     suspend fun saveEnableThinkingMode(isEnabled: Boolean) {
         context.apiDataStore.edit { preferences -> preferences[ENABLE_THINKING_MODE] = isEnabled }
@@ -371,117 +264,27 @@ class ApiPreferences private constructor(private val context: Context) {
 
     // Save Thinking Guidance setting
     suspend fun saveEnableThinkingGuidance(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_THINKING_GUIDANCE] = isEnabled
-        }
+        context.apiDataStore.edit { preferences -> preferences[ENABLE_THINKING_GUIDANCE] = isEnabled }
     }
 
     // Save Memory Attachment setting
     suspend fun saveEnableMemoryQuery(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_MEMORY_QUERY] = isEnabled
-        }
+        context.apiDataStore.edit { preferences -> preferences[ENABLE_MEMORY_QUERY] = isEnabled }
     }
 
     // Save Auto Read setting
     suspend fun saveEnableAutoRead(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_AUTO_READ] = isEnabled
-        }
-    }
-
-    // Save Waifu Mode setting
-    suspend fun saveEnableWaifuMode(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_WAIFU_MODE] = isEnabled
-        }
-    }
-
-    suspend fun saveWaifuCharDelay(delayMs: Int) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_CHAR_DELAY] = delayMs
-        }
-    }
-
-    suspend fun saveWaifuRemovePunctuation(removePunctuation: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_REMOVE_PUNCTUATION] = removePunctuation
-        }
-    }
-
-    suspend fun saveWaifuDisableActions(disableActions: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_DISABLE_ACTIONS] = disableActions
-        }
-    }
-
-    suspend fun saveWaifuEnableEmoticons(enableEmoticons: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_ENABLE_EMOTICONS] = enableEmoticons
-        }
-    }
-
-    suspend fun saveWaifuEnableSelfie(enableSelfie: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_ENABLE_SELFIE] = enableSelfie
-        }
-    }
-
-    suspend fun saveWaifuSelfiePrompt(selfiePrompt: String) {
-        context.apiDataStore.edit { preferences ->
-            preferences[WAIFU_SELFIE_PROMPT] = selfiePrompt
-        }
+        context.apiDataStore.edit { preferences -> preferences[ENABLE_AUTO_READ] = isEnabled }
     }
 
     // Save Tools Enable/Disable setting
     suspend fun saveEnableTools(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_TOOLS] = isEnabled
-        }
+        context.apiDataStore.edit { preferences -> preferences[ENABLE_TOOLS] = isEnabled }
     }
 
-    // Save Summary Settings
-    suspend fun saveEnableSummary(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_SUMMARY] = isEnabled
-        }
-    }
-
-    suspend fun saveEnableSummaryByMessageCount(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences ->
-            preferences[ENABLE_SUMMARY_BY_MESSAGE_COUNT] = isEnabled
-        }
-    }
-
-    suspend fun saveSummaryMessageCountThreshold(threshold: Int) {
-        context.apiDataStore.edit { preferences ->
-            preferences[SUMMARY_MESSAGE_COUNT_THRESHOLD] = threshold
-        }
-    }
-
-    // Save Context Length
-    suspend fun saveContextLength(length: Float) {
-        context.apiDataStore.edit { preferences ->
-            preferences[CONTEXT_LENGTH] = length
-        }
-    }
-
-    // Save Summary Token Threshold
-    suspend fun saveSummaryTokenThreshold(threshold: Float) {
-        context.apiDataStore.edit { preferences ->
-            preferences[SUMMARY_TOKEN_THRESHOLD] = threshold
-        }
-    }
-
-    // 保存显示和行为设置的方法，不会影响模型参数
-    suspend fun saveDisplaySettings(
-            showFpsCounter: Boolean,
-            keepScreenOn: Boolean
-    ) {
-        context.apiDataStore.edit { preferences ->
-            preferences[SHOW_FPS_COUNTER] = showFpsCounter
-            preferences[KEEP_SCREEN_ON] = keepScreenOn
-        }
+    // Save Disable Stream Output setting
+    suspend fun saveDisableStreamOutput(isDisabled: Boolean) {
+        context.apiDataStore.edit { preferences -> preferences[DISABLE_STREAM_OUTPUT] = isDisabled }
     }
 
     // 保存自定义请求头
@@ -633,7 +436,7 @@ class ApiPreferences private constructor(private val context: Context) {
             val keysToRemove = mutableListOf<Preferences.Key<*>>()
             preferences.asMap().forEach { (key, _) ->
                 val keyName = key.name
-                if (keyName.startsWith("token_input_") || keyName.startsWith("token_output_") || keyName.startsWith("token_cached_input_")) {
+                if (keyName.startsWith("token_input_") || keyName.startsWith("token_output_") || keyName.startsWith("token_cached_input_") || keyName.startsWith("request_count_")) {
                     keysToRemove.add(key)
                 }
             }
@@ -649,6 +452,7 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[getTokenInputKey(providerModel)] = 0
             preferences[getTokenCachedInputKey(providerModel)] = 0
             preferences[getTokenOutputKey(providerModel)] = 0
+            preferences[getRequestCountKey(providerModel)] = 0
         }
     }
 
@@ -688,6 +492,110 @@ class ApiPreferences private constructor(private val context: Context) {
     suspend fun setModelOutputPrice(providerModel: String, price: Double) {
         context.apiDataStore.edit { preferences ->
             preferences[getModelOutputPriceKey(providerModel)] = price.toFloat()
+        }
+    }
+
+    // ===== Request Count Statistics 请求次数统计相关方法 =====
+
+    /**
+     * 增加指定供应商:模型的请求次数
+     * @param providerModel 供应商:模型标识符，格式如"DEEPSEEK:deepseek-chat"
+     */
+    suspend fun incrementRequestCountForProviderModel(providerModel: String) {
+        context.apiDataStore.edit { preferences ->
+            val countKey = getRequestCountKey(providerModel)
+            val currentCount = preferences[countKey] ?: 0
+            preferences[countKey] = currentCount + 1
+        }
+    }
+
+    /**
+     * 获取指定供应商:模型的请求次数
+     * @param providerModel 供应商:模型标识符
+     * @return 请求次数
+     */
+    suspend fun getRequestCountForProviderModel(providerModel: String): Int {
+        val preferences = context.apiDataStore.data.first()
+        return preferences[getRequestCountKey(providerModel)] ?: 0
+    }
+
+    /**
+     * 获取所有供应商:模型的请求次数统计
+     * @return Map<供应商:模型, 请求次数>
+     */
+    suspend fun getAllProviderModelRequestCounts(): Map<String, Int> {
+        val preferences = context.apiDataStore.data.first()
+        val result = mutableMapOf<String, Int>()
+        
+        // 遍历所有preferences，查找请求次数相关的key
+        preferences.asMap().forEach { (key, value) ->
+            val keyName = key.name
+            if (keyName.startsWith("request_count_")) {
+                val providerModel = keyName.removePrefix("request_count_").replace("_", ":")
+                val count = value as? Int ?: 0
+                if (count > 0) {
+                    result[providerModel] = count
+                }
+            }
+        }
+        
+        return result
+    }
+
+    /**
+     * 重置指定供应商:模型的请求次数
+     * @param providerModel 供应商:模型标识符
+     */
+    suspend fun resetProviderModelRequestCount(providerModel: String) {
+        context.apiDataStore.edit { preferences ->
+            preferences[getRequestCountKey(providerModel)] = 0
+        }
+    }
+
+    // ===== Billing Mode 计费方式相关方法 =====
+
+    /**
+     * 获取指定供应商:模型的计费方式
+     * @param providerModel 供应商:模型标识符
+     * @return 计费方式，默认为TOKEN
+     */
+    suspend fun getBillingModeForProviderModel(providerModel: String): com.ai.assistance.operit.data.model.BillingMode {
+        val preferences = context.apiDataStore.data.first()
+        val modeString = preferences[getBillingModeKey(providerModel)]
+        return com.ai.assistance.operit.data.model.BillingMode.fromString(modeString)
+    }
+
+    /**
+     * 设置指定供应商:模型的计费方式
+     * @param providerModel 供应商:模型标识符
+     * @param mode 计费方式
+     */
+    suspend fun setBillingModeForProviderModel(providerModel: String, mode: com.ai.assistance.operit.data.model.BillingMode) {
+        context.apiDataStore.edit { preferences ->
+            preferences[getBillingModeKey(providerModel)] = mode.name
+        }
+    }
+
+    // ===== Price Per Request 按次计费价格相关方法 =====
+
+    /**
+     * 获取指定供应商:模型的按次计费价格（人民币）
+     * @param providerModel 供应商:模型标识符
+     * @return 每次请求的价格，默认为0.01元
+     */
+    suspend fun getPricePerRequestForProviderModel(providerModel: String): Double {
+        val preferences = context.apiDataStore.data.first()
+        return preferences[getPricePerRequestKey(providerModel)]?.toDouble() ?: 0.01
+    }
+
+    /**
+     * 设置指定供应商:模型的按次计费价格（人民币）
+     * @param providerModel 供应商:模型标识符
+     * @param price 每次请求的价格
+     */
+    suspend fun setPricePerRequestForProviderModel(providerModel: String, price: Double) {
+        context.apiDataStore.edit { preferences ->
+            preferences[getPricePerRequestKey(providerModel)] = price.toFloat()
         }
     }
 
@@ -745,19 +653,9 @@ class ApiPreferences private constructor(private val context: Context) {
         return preferences[MAX_HTTP_RESPONSE_LENGTH] ?: DEFAULT_MAX_HTTP_RESPONSE_LENGTH
     }
 
-    // 重置上下文、总结和截断设置为默认值
-    suspend fun resetContextSummaryAndTruncationSettings() {
+    // 重置截断设置为默认值
+    suspend fun resetTruncationSettings() {
         context.apiDataStore.edit { preferences ->
-            // Context Settings
-            preferences[CONTEXT_LENGTH] = DEFAULT_CONTEXT_LENGTH
-
-            // Summary Settings
-            preferences[ENABLE_SUMMARY] = DEFAULT_ENABLE_SUMMARY
-            preferences[ENABLE_SUMMARY_BY_MESSAGE_COUNT] = DEFAULT_ENABLE_SUMMARY_BY_MESSAGE_COUNT
-            preferences[SUMMARY_MESSAGE_COUNT_THRESHOLD] = DEFAULT_SUMMARY_MESSAGE_COUNT_THRESHOLD
-            preferences[SUMMARY_TOKEN_THRESHOLD] = DEFAULT_SUMMARY_TOKEN_THRESHOLD
-
-            // Truncation Settings
             preferences[MAX_FILE_SIZE_BYTES] = DEFAULT_MAX_FILE_SIZE_BYTES
             preferences[PART_SIZE] = DEFAULT_PART_SIZE
             preferences[MAX_TEXT_RESULT_LENGTH] = DEFAULT_MAX_TEXT_RESULT_LENGTH

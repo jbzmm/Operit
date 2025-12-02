@@ -9,7 +9,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -28,7 +35,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
@@ -45,10 +56,10 @@ import com.ai.assistance.operit.ui.features.chat.components.ExportPlatformDialog
 import com.ai.assistance.operit.ui.features.chat.components.ExportProgressDialog
 import com.ai.assistance.operit.ui.features.chat.components.WindowsExportDialog
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceScreen
+import com.ai.assistance.operit.ui.features.chat.webview.WorkspaceFileSelector
 import com.ai.assistance.operit.ui.features.chat.webview.computer.ComputerScreen
 import com.ai.assistance.operit.ui.features.chat.util.ConfigurationStateHolder
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
-import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModelFactory
 import com.ai.assistance.operit.ui.main.LocalTopBarActions
 import com.ai.assistance.operit.ui.main.components.LocalAppBarContentColor
 import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
@@ -63,6 +74,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Constraints
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -87,10 +101,8 @@ fun AIChatScreen(
     val density = LocalDensity.current
     val colorScheme = MaterialTheme.colorScheme
     val focusManager = LocalFocusManager.current
-
-    // Initialize ViewModel without using viewModel() function
-    val factory = ChatViewModelFactory(context)
-    val actualViewModel = viewModel ?: remember { factory.create(ChatViewModel::class.java) }
+// Correctly initialize ViewModel using the viewModel() composable function
+val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(context.applicationContext) }
 
     // 设置权限系统的颜色方案
     LaunchedEffect(colorScheme) { actualViewModel.setPermissionSystemColorScheme(colorScheme) }
@@ -129,7 +141,7 @@ fun AIChatScreen(
             }
 
     // Get background image state
-    val preferencesManager = remember { UserPreferencesManager(context) }
+    val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
     val useBackgroundImage by preferencesManager.useBackgroundImage.collectAsState(initial = false)
     val backgroundImageUri by preferencesManager.backgroundImageUri.collectAsState(initial = null)
     val chatHeaderTransparent by preferencesManager.chatHeaderTransparent.collectAsState(initial = false)
@@ -150,6 +162,9 @@ fun AIChatScreen(
             else -> ChatStyle.CURSOR
         }
     }
+
+    // Collect chat area horizontal padding from preferences
+    val chatAreaHorizontalPadding by preferencesManager.chatAreaHorizontalPadding.collectAsState(initial = 16f)
 
     // 添加编辑按钮和编辑状态
     val editingMessageIndex = remember { mutableStateOf<Int?>(null) }
@@ -174,7 +189,9 @@ fun AIChatScreen(
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
     val enableMemoryQuery by actualViewModel.enableMemoryQuery.collectAsState()
+    val enableMaxContextMode by actualViewModel.enableMaxContextMode.collectAsState()
     val enableTools by actualViewModel.enableTools.collectAsState()
+    val disableStreamOutput by actualViewModel.disableStreamOutput.collectAsState()
     val summaryTokenThreshold by actualViewModel.summaryTokenThreshold.collectAsState()
     val isAutoReadEnabled by actualViewModel.isAutoReadEnabled.collectAsState()
     val showChatHistorySelector by actualViewModel.showChatHistorySelector.collectAsState()
@@ -188,6 +205,8 @@ fun AIChatScreen(
     val scrollToBottomEvent = actualViewModel.scrollToBottomEvent
     // 从ViewModel收集新的状态
     val shouldShowConfigDialog by actualViewModel.shouldShowConfigDialog.collectAsState()
+    val isWorkspaceOpen by actualViewModel.isWorkspaceOpen.collectAsState()
+    val showWorkspaceFileSelector by actualViewModel.showWorkspaceFileSelector.collectAsState()
 
     // 添加模型建议对话框状态
     var showModelSuggestionDialog by remember { mutableStateOf(false) }
@@ -281,40 +300,6 @@ fun AIChatScreen(
     // 滚动状态
     var autoScrollToBottom by remember { mutableStateOf(true) }
     val onAutoScrollToBottomChange = remember { { it: Boolean -> autoScrollToBottom = it } }
-    var showScrollButton by remember { mutableStateOf(false) }
-    val onShowScrollButtonChange = remember { { it: Boolean -> showScrollButton = it } }
-
-    // 核心滚动逻辑
-    // 使用 LaunchedEffect(scrollState) 确保监听器在组件的整个生命周期内持续运行，
-    // 避免因 chatHistory.size 变化而频繁重启，从而解决了 lastPosition 被意外重置的问题。
-    LaunchedEffect(scrollState) {
-        var lastPosition = scrollState.value
-        snapshotFlow { scrollState.value }.collect { currentPosition ->
-            // isScrollInProgress 只在用户手动滚动或程序化动画期间为 true。
-            // 这可以有效过滤掉因内容变化导致的滚动位置"跳变"。
-            if (scrollState.isScrollInProgress) {
-                val scrolledUp = currentPosition < lastPosition
-                if (scrolledUp) {
-                    // 用户向上滚动，禁用自动滚动并显示按钮
-                    if (autoScrollToBottom) {
-                        Log.d("AIChatScreen", "用户向上滚动，禁用自动滚动")
-                        autoScrollToBottom = false
-                        showScrollButton = true
-                    }
-                } else {
-                    // 用户向下滚动，检查是否接近底部
-                    val isNearBottom = scrollState.maxValue - currentPosition < 200
-                    if (isNearBottom && !autoScrollToBottom) {
-                        Log.d("AIChatScreen", "用户滚动到底部，启用自动滚动")
-                        autoScrollToBottom = true
-                        showScrollButton = false
-                    }
-                }
-            }
-            // 持续更新 lastPosition，为下一次滚动事件做准备
-            lastPosition = currentPosition
-        }
-    }
 
     // 处理来自ViewModel的滚动事件（流式输出时）
     LaunchedEffect(Unit) {
@@ -330,7 +315,7 @@ fun AIChatScreen(
     }
 
     // 自动滚动处理 - 仅在消息数量变化时触发
-    LaunchedEffect(chatHistory.size) {
+    LaunchedEffect(chatHistory.size, scrollState.maxValue) {
         if (autoScrollToBottom) {
             try {
                 scrollState.animateScrollTo(scrollState.maxValue)
@@ -472,6 +457,12 @@ fun AIChatScreen(
     var exportErrorMessage by remember { mutableStateOf<String?>(null) }
     var webContentDir by remember { mutableStateOf<File?>(null) }
 
+    var bottomBarHeightPx by remember { mutableStateOf(0) }
+    val inputSurfaceColor = when {
+        chatInputTransparent -> colorScheme.surface.copy(alpha = 0f)
+        hasBackgroundImage -> colorScheme.surface.copy(alpha = 0.85f)
+        else -> colorScheme.surface
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         CustomScaffold(
                 containerColor = Color.Transparent,
@@ -480,70 +471,76 @@ fun AIChatScreen(
                     // 只在不显示配置界面时显示底部输入框
                     if (!showConfig) {
                         // ChatInputSection is back in the bottomBar to reserve space
-                        ChatInputSection(
-                                actualViewModel = actualViewModel,
-                                userMessage = userMessage,
-                                onUserMessageChange = { actualViewModel.updateUserMessage(it) },
-                                onSendMessage = {
-                                    // 清除焦点，收起软键盘
-                                    focusManager.clearFocus()
-                                    
-                                    actualViewModel.sendUserMessage()
-                                    // 在发送消息后重置附件面板状态
-                                    actualViewModel.resetAttachmentPanelState()
-                                    // 发送新问题时，恢复自动滚动到底部
-                                    autoScrollToBottom = true
-                                    showScrollButton = false
-                                },
-                                onCancelMessage = { actualViewModel.cancelCurrentMessage() },
-                                isLoading = isLoading,
-                                inputState = inputProcessingState,
-                                allowTextInputWhileProcessing = true,
-                                onAttachmentRequest = { filePath ->
-                                    // 处理附件 - 现在使用文件路径而不是Uri
-                                    actualViewModel.handleAttachment(filePath)
-                                },
-                                attachments = attachments,
-                                onRemoveAttachment = { filePath ->
-                                    // 删除附件 - 现在使用文件路径而不是Uri
-                                    actualViewModel.removeAttachment(filePath)
-                                },
-                                onInsertAttachment = { attachment: AttachmentInfo ->
-                                    // 在光标位置插入附件引用
-                                    actualViewModel.insertAttachmentReference(attachment)
-                                },
-                                onAttachScreenContent = {
-                                    // 添加屏幕内容附件
-                                    actualViewModel.captureScreenContent()
-                                },
-                                onAttachNotifications = {
-                                    // 添加当前通知附件
-                                    actualViewModel.captureNotifications()
-                                },
-                                onAttachLocation = {
-                                    // 添加当前位置附件
-                                    actualViewModel.captureLocation()
-                                },
-                                onAttachMemory = {
-                                    // 显示记忆文件夹选择对话框
-                                    showMemoryFolderDialog = true
-                                },
-                                onTakePhoto = { uri ->
-                                    // 处理拍摄的照片
-                                    actualViewModel.handleTakenPhoto(uri)
-                                },
-                                hasBackgroundImage = hasBackgroundImage,
-                                chatInputTransparent = chatInputTransparent,
-                                // 传递附件面板状态
-                                externalAttachmentPanelState = attachmentPanelState,
-                                onAttachmentPanelStateChange = { newState ->
-                                    actualViewModel.updateAttachmentPanelState(newState)
-                                },
-                                showInputProcessingStatus = showInputProcessingStatus,
-                                enableTools = enableTools,
-                                replyToMessage = replyToMessage,
-                                onClearReply = { actualViewModel.clearReplyToMessage() }
-                        )
+                        Box(
+                                modifier = Modifier.onGloballyPositioned {
+                                    bottomBarHeightPx = it.size.height
+                                }
+                        ) {
+                            ChatInputSection(
+                                    actualViewModel = actualViewModel,
+                                    userMessage = userMessage,
+                                    onUserMessageChange = { actualViewModel.updateUserMessage(it) },
+                                    onSendMessage = {
+                                        // 清除焦点，收起软键盘
+                                        focusManager.clearFocus()
+
+                                        actualViewModel.sendUserMessage()
+                                        // 在发送消息后重置附件面板状态
+                                        actualViewModel.resetAttachmentPanelState()
+                                        // 发送新问题时，恢复自动滚动到底部
+                                        autoScrollToBottom = true
+                                    },
+                                    onCancelMessage = { actualViewModel.cancelCurrentMessage() },
+                                    isLoading = isLoading,
+                                    inputState = inputProcessingState,
+                                    allowTextInputWhileProcessing = true,
+                                    onAttachmentRequest = { filePath ->
+                                        // 处理附件 - 现在使用文件路径而不是Uri
+                                        actualViewModel.handleAttachment(filePath)
+                                    },
+                                    attachments = attachments,
+                                    onRemoveAttachment = { filePath ->
+                                        // 删除附件 - 现在使用文件路径而不是Uri
+                                        actualViewModel.removeAttachment(filePath)
+                                    },
+                                    onInsertAttachment = { attachment: AttachmentInfo ->
+                                        // 在光标位置插入附件引用
+                                        actualViewModel.insertAttachmentReference(attachment)
+                                    },
+                                    onAttachScreenContent = {
+                                        // 添加屏幕内容附件
+                                        actualViewModel.captureScreenContent()
+                                    },
+                                    onAttachNotifications = {
+                                        // 添加当前通知附件
+                                        actualViewModel.captureNotifications()
+                                    },
+                                    onAttachLocation = {
+                                        // 添加当前位置附件
+                                        actualViewModel.captureLocation()
+                                    },
+                                    onAttachMemory = {
+                                        // 显示记忆文件夹选择对话框
+                                        showMemoryFolderDialog = true
+                                    },
+                                    onTakePhoto = { uri ->
+                                        // 处理拍摄的照片
+                                        actualViewModel.handleTakenPhoto(uri)
+                                    },
+                                    hasBackgroundImage = hasBackgroundImage,
+                                    chatInputTransparent = chatInputTransparent,
+                                    // 传递附件面板状态
+                                    externalAttachmentPanelState = attachmentPanelState,
+                                    onAttachmentPanelStateChange = { newState ->
+                                        actualViewModel.updateAttachmentPanelState(newState)
+                                    },
+                                    showInputProcessingStatus = showInputProcessingStatus,
+                                    enableTools = enableTools,
+                                    replyToMessage = replyToMessage,
+                                    onClearReply = { actualViewModel.clearReplyToMessage() },
+                                    isWorkspaceOpen = isWorkspaceOpen
+                            )
+                        }
                     }
                 }
         ) { paddingValues ->
@@ -592,8 +589,6 @@ fun AIChatScreen(
                 // It respects the padding from the Scaffold's bottomBar.
                 Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                     Box(modifier = Modifier.weight(1f)) {
-                        // ChatScreenContent now fills this Box, and has the overlay on top of
-                        // it.
                         ChatScreenContent(
                                 // modifier = Modifier.weight(1f), // This is no longer needed here
                                 paddingValues =
@@ -622,8 +617,6 @@ fun AIChatScreen(
                                 onVerticalDragChange = onVerticalDragChange,
                                 dragThreshold = dragThreshold,
                                 scrollState = scrollState,
-                                showScrollButton = showScrollButton,
-                                onShowScrollButtonChange = onShowScrollButtonChange,
                                 autoScrollToBottom = autoScrollToBottom,
                                 onAutoScrollToBottomChange = onAutoScrollToBottomChange,
                                 coroutineScope = coroutineScope,
@@ -639,12 +632,10 @@ fun AIChatScreen(
                                     coroutineScope.launch {
                                         characterCardManager.setActiveCharacterCard(characterId)
                                     }
-                                }
+                                },
+                                chatAreaHorizontalPadding = chatAreaHorizontalPadding
                         )
 
-                        // The settings bar is aligned to the bottom-end of the parent Box,
-                        // effectively overlaying the chat content just above the input
-                        // section.
                         ChatSettingsBar(
                                 modifier = Modifier.align(Alignment.BottomEnd),
                                 enableAiPlanning = enableAiPlanning,
@@ -662,12 +653,20 @@ fun AIChatScreen(
                                 },
                                 maxWindowSizeInK =
                                         actualViewModel.maxWindowSizeInK.collectAsState().value,
+                                baseContextLengthInK =
+                                        actualViewModel.baseContextLengthInK.collectAsState().value,
+                                maxContextLengthInK =
+                                        actualViewModel.maxContextLengthInK.collectAsState().value,
                                 onContextLengthChange = {
                                     actualViewModel.updateContextLength(it)
                                 },
                                 enableMemoryQuery = enableMemoryQuery,
                                 onToggleMemoryQuery = {
                                     actualViewModel.toggleMemoryQuery()
+                                },
+                                enableMaxContextMode = enableMaxContextMode,
+                                onToggleEnableMaxContextMode = {
+                                    actualViewModel.toggleEnableMaxContextMode()
                                 },
                                 summaryTokenThreshold = summaryTokenThreshold,
                                 onSummaryTokenThresholdChange = {
@@ -680,15 +679,73 @@ fun AIChatScreen(
                                 onToggleAutoRead = { actualViewModel.toggleAutoRead() },
                                 enableTools = enableTools,
                                 onToggleTools = { actualViewModel.toggleTools() },
-                                onManualMemoryUpdate = { actualViewModel.manuallyUpdateMemory() }
+                                disableStreamOutput = disableStreamOutput,
+                                onToggleDisableStreamOutput = { actualViewModel.toggleDisableStreamOutput() },
+                                onManualMemoryUpdate = { actualViewModel.manuallyUpdateMemory() },
+                                onManualSummarizeConversation = { actualViewModel.manuallySummarizeConversation() }
                         )
                     }
                 }
             }
         }
 
-
-
+        // 文件选择器，现在位于Scaffold外部，作为独立的浮层
+        val bottomPaddingForSelector = with(density) { bottomBarHeightPx.toDp() }
+        AnimatedVisibility(
+            visible = showWorkspaceFileSelector,
+            enter = fadeIn(animationSpec = tween(durationMillis = 180)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 150))
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.2f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { actualViewModel.hideWorkspaceFileSelector() }
+                        )
+                )
+                WorkspaceFileSelector(
+                    modifier = Modifier
+                        .padding(bottom = bottomPaddingForSelector)
+                        .animateEnterExit(
+                            enter = slideInVertically(
+                                animationSpec = tween(durationMillis = 240)
+                            ) { it },
+                            exit = slideOutVertically(
+                                animationSpec = tween(durationMillis = 200)
+                            ) { it }
+                        ),
+                    viewModel = actualViewModel,
+                    onFileSelected = { filePath ->
+                        val currentChat = actualViewModel.chatHistories.value.find { it.id == actualViewModel.currentChatId.value }
+                        val workspacePath = currentChat?.workspace
+                        val relativePath = if (workspacePath != null) {
+                            File(filePath).relativeTo(File(workspacePath)).path
+                        } else {
+                            filePath
+                        }
+                        val currentText = userMessage.text
+                        val newText = currentText.replaceAfterLast('@', "$relativePath ")
+                        val newTextFieldValue = TextFieldValue(
+                            text = newText,
+                            selection = TextRange(newText.length)
+                        )
+                        actualViewModel.updateUserMessage(newTextFieldValue)
+                        actualViewModel.hideWorkspaceFileSelector()
+                    },
+                    onShouldHide = {
+                        actualViewModel.hideWorkspaceFileSelector()
+                    },
+                    backgroundColor = inputSurfaceColor
+                )
+            }
+        }
 
         // Web开发模式作为浮层，现在位于Scaffold外部，可以覆盖整个屏幕
         Layout(
@@ -719,15 +776,16 @@ fun AIChatScreen(
             if (measurables.isEmpty()) {
                 layout(0, 0) {}
             } else {
-                val placeable = measurables.first().measure(constraints)
-                layout(placeable.width, placeable.height) {
-                    if (showWebView) {
-                        // When visible, place it on-screen.
+                if (showWebView) {
+                    val placeable = measurables.first().measure(constraints)
+                    layout(placeable.width, placeable.height) {
                         placeable.placeRelative(0, 0)
-                    } else {
-                        // When not visible, place it off-screen to keep it alive but invisible.
-                        placeable.placeRelative(-placeable.width, -placeable.height)
                     }
+                } else {
+                    // 当不可见时，我们让布局大小为0，并且完全不测量或放置子项。
+                    // 这可以跳过子项昂贵的测量/布局过程，从而解决性能问题，
+                    // 同时由于它仍在组合中，因此可以保持其状态。
+                    layout(0, 0) {}
                 }
             }
         }
@@ -746,14 +804,17 @@ fun AIChatScreen(
             if (measurables.isEmpty()) {
                 layout(0, 0) {}
             } else {
-                val placeable = measurables.first().measure(constraints)
-                layout(placeable.width, placeable.height) {
-                    if (showAiComputer) {
-                        // When visible, place it on-screen.
+                if (showAiComputer) {
+                    val placeable = measurables.first().measure(constraints)
+                    layout(placeable.width, placeable.height) {
                         placeable.placeRelative(0, 0)
-                    } else {
-                        // When not visible, place it off-screen to keep it alive but invisible.
-                        placeable.placeRelative(-placeable.width, -placeable.height)
+                    }
+                } else {
+                    // 当不可见时，我们强制测量为 0x0 并放置
+                    // 这样可以触发底层 View 的 onSizeChanged，从而通知其暂停渲染
+                    val placeable = measurables.first().measure(Constraints.fixed(0, 0))
+                    layout(0, 0) {
+                        placeable.placeRelative(0, 0)
                     }
                 }
             }

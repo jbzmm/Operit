@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.WaifuPreferences
+import com.ai.assistance.operit.data.model.CharacterCard
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.ui.components.CustomScaffold
 
@@ -28,17 +31,45 @@ fun WaifuModeSettingsScreen(
 ) {
     val context = LocalContext.current
     val apiPreferences = remember { ApiPreferences.getInstance(context) }
+    val waifuPreferences = remember { WaifuPreferences.getInstance(context) }
+    val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val scope = rememberCoroutineScope()
     
+    // 获取当前活跃角色卡
+    val activeCharacterCard = characterCardManager.activeCharacterCardFlow.collectAsState(
+        initial = CharacterCard(
+            id = "default_character",
+            name = "默认角色卡",
+            description = "",
+            characterSetting = "",
+            otherContent = "",
+            attachedTagIds = emptyList(),
+            advancedCustomPrompt = "",
+            marks = "",
+            isDefault = true,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+    ).value
+
     // 状态
-    val isWaifuModeEnabled = apiPreferences.enableWaifuModeFlow.collectAsState(initial = false).value
-    val charDelay = apiPreferences.waifuCharDelayFlow.collectAsState(initial = 500).value
-    val removePunctuation = apiPreferences.waifuRemovePunctuationFlow.collectAsState(initial = false).value
-    val disableActions = apiPreferences.waifuDisableActionsFlow.collectAsState(initial = false).value
-    val enableEmoticons = apiPreferences.waifuEnableEmoticonsFlow.collectAsState(initial = false).value
-    val enableSelfie = apiPreferences.waifuEnableSelfieFlow.collectAsState(initial = false).value
-    val selfiePrompt = apiPreferences.waifuSelfiePromptFlow.collectAsState(initial = "").value
     var showSaveSuccess by remember { mutableStateOf(false) }
+    val isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.collectAsState(initial = false).value
+    val charDelay = waifuPreferences.waifuCharDelayFlow.collectAsState(initial = 500).value
+    val removePunctuation = waifuPreferences.waifuRemovePunctuationFlow.collectAsState(initial = false).value
+    val disableActions = waifuPreferences.waifuDisableActionsFlow.collectAsState(initial = false).value
+    val enableEmoticons = waifuPreferences.waifuEnableEmoticonsFlow.collectAsState(initial = false).value
+    val enableSelfie = waifuPreferences.waifuEnableSelfieFlow.collectAsState(initial = false).value
+    val selfiePrompt = waifuPreferences.waifuSelfiePromptFlow.collectAsState(initial = "").value
+    
+    // 辅助保存函数，同时保存到角色卡
+    val saveSettings: (suspend () -> Unit) -> Unit = { saveAction ->
+        scope.launch {
+            saveAction()
+            characterCardManager.saveWaifuSettingsForActiveCharacterCard()
+            showSaveSuccess = true
+        }
+    }
     
     // 显示保存成功的提示
     LaunchedEffect(showSaveSuccess) {
@@ -94,6 +125,43 @@ fun WaifuModeSettingsScreen(
                 }
             }
 
+            // 角色卡绑定提示
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Link,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "配置已绑定到角色卡",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = activeCharacterCard.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
             // Waifu模式开关
             Card(
                 modifier = Modifier.fillMaxWidth()
@@ -125,9 +193,8 @@ fun WaifuModeSettingsScreen(
                         Switch(
                             checked = isWaifuModeEnabled,
                             onCheckedChange = { enabled ->
-                                scope.launch {
-                                    apiPreferences.saveEnableWaifuMode(enabled)
-                                    showSaveSuccess = true
+                                saveSettings {
+                                    waifuPreferences.saveEnableWaifuMode(enabled)
                                 }
                             }
                         )
@@ -180,9 +247,8 @@ fun WaifuModeSettingsScreen(
                             Slider(
                                 value = charDelay.toFloat(),
                                 onValueChange = { newDelay ->
-                                    scope.launch {
-                                        apiPreferences.saveWaifuCharDelay(newDelay.toInt())
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuCharDelay(newDelay.toInt())
                                     }
                                 },
                                 valueRange = 200f..1000f, // 200ms-1000ms per character (5-1字符/秒)
@@ -238,9 +304,8 @@ fun WaifuModeSettingsScreen(
                             Switch(
                                 checked = removePunctuation,
                                 onCheckedChange = { enabled ->
-                                    scope.launch {
-                                        apiPreferences.saveWaifuRemovePunctuation(enabled)
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuRemovePunctuation(enabled)
                                     }
                                 }
                             )
@@ -287,9 +352,8 @@ fun WaifuModeSettingsScreen(
                             Switch(
                                 checked = disableActions,
                                 onCheckedChange = { enabled ->
-                                    scope.launch {
-                                        apiPreferences.saveWaifuDisableActions(enabled)
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuDisableActions(enabled)
                                     }
                                 }
                             )
@@ -336,9 +400,8 @@ fun WaifuModeSettingsScreen(
                             Switch(
                                 checked = enableEmoticons,
                                 onCheckedChange = { enabled ->
-                                    scope.launch {
-                                        apiPreferences.saveWaifuEnableEmoticons(enabled)
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuEnableEmoticons(enabled)
                                     }
                                 }
                             )
@@ -418,9 +481,8 @@ fun WaifuModeSettingsScreen(
                             Switch(
                                 checked = enableSelfie,
                                 onCheckedChange = { enabled ->
-                                    scope.launch {
-                                        apiPreferences.saveWaifuEnableSelfie(enabled)
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuEnableSelfie(enabled)
                                     }
                                 }
                             )
@@ -448,9 +510,8 @@ fun WaifuModeSettingsScreen(
                                 value = promptText,
                                 onValueChange = { newText ->
                                     promptText = newText
-                                    scope.launch {
-                                        apiPreferences.saveWaifuSelfiePrompt(newText)
-                                        showSaveSuccess = true
+                                    saveSettings {
+                                        waifuPreferences.saveWaifuSelfiePrompt(newText)
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),

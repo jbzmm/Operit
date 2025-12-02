@@ -4,7 +4,7 @@
 
 import {
     DirectoryListingData, FileContentData, FileOperationData, FileExistsData,
-    FindFilesResultData, FileInfoData,
+    FindFilesResultData, FileInfoData, FilePartContentData,
     FileApplyResultData, GrepResultData
 } from './results';
 import { FFmpegVideoCodec, FFmpegAudioCodec, FFmpegResolution, FFmpegBitrate } from './ffmpeg';
@@ -31,6 +31,15 @@ export namespace Files {
      * @param environment - Execution environment ("android" or "linux"), default "android"
      */
     function read(path: string, environment?: FileEnvironment): Promise<FileContentData>;
+
+    /**
+     * Read file content by line range
+     * @param path - Path to file
+     * @param startLine - Starting line number (1-indexed, default 1)
+     * @param endLine - Ending line number (1-indexed, inclusive, optional, default startLine + 99)
+     * @param environment - Execution environment ("android" or "linux"), default "android"
+     */
+    function readPart(path: string, startLine?: number, endLine?: number, environment?: FileEnvironment): Promise<FilePartContentData>;
 
     /**
      * Write content to file
@@ -73,13 +82,14 @@ export namespace Files {
     function move(source: string, destination: string, environment?: FileEnvironment): Promise<FileOperationData>;
 
     /**
-     * Copy file from source to destination
+     * Copy file from source to destination. Supports cross-environment copying between Android and Linux.
      * @param source - Source path
      * @param destination - Destination path
      * @param recursive - Copy recursively
-     * @param environment - Execution environment ("android" or "linux"), default "android"
+     * @param sourceEnvironment - Source execution environment ("android" or "linux"), default "android"
+     * @param destEnvironment - Destination execution environment ("android" or "linux"), default "android"
      */
-    function copy(source: string, destination: string, recursive?: boolean, environment?: FileEnvironment): Promise<FileOperationData>;
+    function copy(source: string, destination: string, recursive?: boolean, sourceEnvironment?: FileEnvironment, destEnvironment?: FileEnvironment): Promise<FileOperationData>;
 
     /**
      * Create a directory
@@ -113,6 +123,25 @@ export namespace Files {
         file_pattern?: string;
         case_insensitive?: boolean;
         context_lines?: number;
+        max_results?: number;
+        environment?: FileEnvironment;
+    }): Promise<GrepResultData>;
+
+    /**
+     * Search for relevant content based on intent/context understanding
+     * Supports two modes:
+     * 1) Directory mode: when path is a directory, finds most relevant files
+     * 2) File mode: when path is a file, finds most relevant code segments within that file
+     * Uses semantic relevance scoring
+     * @param path - Directory or file path
+     * @param intent - Intent or context description string
+     * @param options - Search options
+     * @param options.file_pattern - File filter pattern for directory mode (e.g., "*.kt"), default "*"
+     * @param options.max_results - Maximum number of items to return, default 10
+     * @param options.environment - Execution environment ("android" or "linux"), default "android"
+     */
+    function grepContext(path: string, intent: string, options?: {
+        file_pattern?: string;
         max_results?: number;
         environment?: FileEnvironment;
     }): Promise<GrepResultData>;

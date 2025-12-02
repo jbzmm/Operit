@@ -24,8 +24,11 @@ import androidx.navigation.compose.rememberNavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.ChatAnnouncementPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.common.NavItem
+import com.ai.assistance.operit.ui.features.announcement.ChatBindingAnnouncementDialog
 import com.ai.assistance.operit.ui.main.layout.PhoneLayout
 import com.ai.assistance.operit.ui.main.layout.TabletLayout
 import com.ai.assistance.operit.ui.main.screens.OperitRouter
@@ -51,6 +54,7 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val announcementPreferences = remember { ChatAnnouncementPreferences(context) }
 
 
     // Navigation state - using a custom back stack
@@ -151,6 +155,15 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     // - 600dp and above: tablet
     val useTabletLayout = screenWidthDp >= 600
 
+    var showChatBindingAnnouncement by remember {
+        mutableStateOf(announcementPreferences.shouldShowChatBindingAnnouncement())
+    }
+
+    fun dismissChatBindingAnnouncement() {
+        announcementPreferences.setChatBindingAnnouncementAcknowledged()
+        showChatBindingAnnouncement = false
+    }
+
     // Navigation items grouped by category
     val navGroups =
             listOf(
@@ -164,7 +177,14 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                                     NavItem.TokenConfig
                             )
                     ),
-                    NavGroup("工具", listOf(NavItem.Toolbox, NavItem.ShizukuCommands, NavItem.Workflow)),
+                    NavGroup(
+                            "工具",
+                            listOf(
+                                    NavItem.Toolbox,
+                                    NavItem.ShizukuCommands,
+                                    // NavItem.Workflow,
+                            )
+                    ),
                     NavGroup("系统", listOf(NavItem.Settings, NavItem.Help, NavItem.About, NavItem.UpdateHistory))
             )
 
@@ -185,8 +205,8 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     }
 
     // Get FPS counter display setting
-            val apiPreferences = remember { ApiPreferences.getInstance(context) }
-    val showFpsCounter = apiPreferences.showFpsCounterFlow.collectAsState(initial = false).value
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
+    val showFpsCounter = displayPreferencesManager.showFpsCounter.collectAsState(initial = false).value
 
     // Create an instance of MCPRepository
     val mcpRepository = remember { MCPRepository(context) }
@@ -268,6 +288,16 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                         topBarActions = { topBarActions() }
                 )
             }
+        }
+
+        if (showChatBindingAnnouncement) {
+            ChatBindingAnnouncementDialog(
+                onNavigateToChatManagement = {
+                    dismissChatBindingAnnouncement()
+                    navigateTo(Screen.ChatHistorySettings)
+                },
+                onDismiss = { dismissChatBindingAnnouncement() }
+            )
         }
     }
 }

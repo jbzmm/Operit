@@ -4,8 +4,10 @@ import android.util.Log
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
+import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.ParameterCategory
 import com.ai.assistance.operit.util.ChatUtils
+import com.ai.assistance.operit.util.StreamingJsonXmlConverter
 import com.ai.assistance.operit.util.TokenCacheManager
 import com.ai.assistance.operit.util.exceptions.UserCancellationException
 import com.ai.assistance.operit.util.stream.Stream
@@ -30,7 +32,9 @@ class GeminiProvider(
     private val modelName: String,
     private val client: OkHttpClient,
     private val customHeaders: Map<String, String> = emptyMap(),
-    private val providerType: ApiProviderType = ApiProviderType.GOOGLE
+    private val providerType: ApiProviderType = ApiProviderType.GOOGLE,
+    private val enableGoogleSearch: Boolean = false,
+    private val enableToolCall: Boolean = false // 是否启用Tool Call接口（预留，Gemini有原生tool支持）
 ) : AIService {
     companion object {
         private const val TAG = "GeminiProvider"
@@ -93,6 +97,168 @@ class GeminiProvider(
         return tokenCacheManager.calculateInputTokens(message, chatHistory)
     }
 
+    // ==================== Tool Call 支持 ====================
+    
+    /**
+     * XML转义/反转义工具
+     */
+    private object XmlEscaper {
+        fun escape(text: String): String {
+            return text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace("\"", "&quot;")
+                    .replace("'", "&apos;")
+        }
+        
+        fun unescape(text: String): String {
+            return text.replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .replace("&apos;", "'")
+                    .replace("&amp;", "&")
+        }
+    }
+    
+    /**
+     * 解析XML格式的tool调用，转换为Gemini FunctionCall格式
+     * @return Pair<文本内容, functionCall对象>
+     */
+    private fun parseXmlToolCalls(content: String): Pair<String, JSONObject?> {
+        if (!enableToolCall) return Pair(content, null)
+        
+        val toolPattern = Regex("<tool\\s+name=\"([^\"]+)\">([\\s\\S]*?)</tool>", RegexOption.MULTILINE)
+        val match = toolPattern.find(content) // Gemini 一次只能调用一个工具
+        
+        if (match == null) {
+            return Pair(content, null)
+        }
+        
+        val toolName = match.groupValues[1]
+        val toolBody = match.groupValues[2]
+        
+        // 解析参数
+        val paramPattern = Regex("<param\\s+name=\"([^\"]+)\">([\\s\\S]*?)</param>")
+        val args = JSONObject()
+        
+        paramPattern.findAll(toolBody).forEach { paramMatch ->
+            val paramName = paramMatch.groupValues[1]
+            val paramValue = XmlEscaper.unescape(paramMatch.groupValues[2].trim())
+            args.put(paramName, paramValue)
+        }
+        
+        // 构建functionCall对象（Gemini格式）
+        val functionCall = JSONObject().apply {
+            put("name", toolName)
+            put("args", args)
+        }
+        
+        Log.d(TAG, "XML→GeminiFunctionCall: $toolName")
+        
+        // 从文本内容中移除tool标签
+        val textContent = content.replace(match.value, "").trim()
+        
+        return Pair(textContent, functionCall)
+    }
+    
+    /**
+     * 解析XML格式的tool_result，转换为Gemini FunctionResponse格式
+     * @return Pair<文本内容, functionResponse对象>
+     */
+    private fun parseXmlToolResults(content: String): Pair<String, JSONObject?> {
+        if (!enableToolCall) return Pair(content, null)
+        
+        val resultPattern = Regex("<tool_result[^>]*name=\"([^\"]+)\"[^>]*>([\\s\\S]*?)</tool_result>", RegexOption.MULTILINE)
+        val match = resultPattern.find(content)
+        
+        if (match == null) {
+            return Pair(content, null)
+        }
+        
+        val toolName = match.groupValues[1]
+        val fullContent = match.groupValues[2].trim()
+        val contentPattern = Regex("<content>([\\s\\S]*?)</content>", RegexOption.MULTILINE)
+        val contentMatch = contentPattern.find(fullContent)
+        val resultContent = if (contentMatch != null) {
+            contentMatch.groupValues[1].trim()
+        } else {
+            fullContent
+        }
+        
+        // 构建functionResponse对象（Gemini格式）
+        val functionResponse = JSONObject().apply {
+            put("name", toolName)
+            put("response", JSONObject().apply {
+                put("result", resultContent)
+            })
+        }
+        
+        Log.d(TAG, "解析Gemini functionResponse: $toolName, content length=${resultContent.length}")
+        
+        val textContent = content.replace(match.value, "").trim()
+        
+        return Pair(textContent, functionResponse)
+    }
+    
+    /**
+     * 从ToolPrompt列表构建Gemini格式的Function Declarations
+     */
+    private fun buildToolDefinitionsForGemini(toolPrompts: List<ToolPrompt>): JSONArray {
+        val functionDeclarations = JSONArray()
+        
+        for (tool in toolPrompts) {
+            functionDeclarations.put(JSONObject().apply {
+                put("name", tool.name)
+                // 组合description和details作为完整描述
+                val fullDescription = if (tool.details.isNotEmpty()) {
+                    "${tool.description}\n${tool.details}"
+                } else {
+                    tool.description
+                }
+                put("description", fullDescription)
+                
+                // 使用结构化参数构建schema
+                val parametersSchema = buildSchemaFromStructured(tool.parametersStructured ?: emptyList())
+                put("parameters", parametersSchema)
+            })
+        }
+        
+        return functionDeclarations
+    }
+    
+    /**
+     * 从结构化参数构建JSON Schema（Gemini格式）
+     */
+    private fun buildSchemaFromStructured(params: List<com.ai.assistance.operit.data.model.ToolParameterSchema>): JSONObject {
+        val schema = JSONObject().apply {
+            put("type", "object")
+        }
+        
+        val properties = JSONObject()
+        val required = JSONArray()
+        
+        for (param in params) {
+            properties.put(param.name, JSONObject().apply {
+                put("type", param.type)
+                put("description", param.description)
+                if (param.default != null) {
+                    put("default", param.default)
+                }
+            })
+            
+            if (param.required) {
+                required.put(param.name)
+            }
+        }
+        
+        schema.put("properties", properties)
+        if (required.length() > 0) {
+            schema.put("required", required)
+        }
+        
+        return schema
+    }
+    
     /**
      * 构建包含文本和图片的parts数组
      */
@@ -133,18 +299,29 @@ class GeminiProvider(
             message: String,
             chatHistory: List<Pair<String, String>>
     ): Pair<Pair<JSONArray, JSONObject?>, Int> {
-        var tokenCount = 0
         val contentsArray = JSONArray()
         var systemInstruction: JSONObject? = null
 
-        val standardizedHistory = ChatUtils.mapChatHistoryToStandardRoles(chatHistory)
+        // 使用TokenCacheManager计算token数量
+        val tokenCount = tokenCacheManager.calculateInputTokens(message, chatHistory)
+
+        // 检查当前消息是否已经在历史记录的末尾（避免重复）
+        val isMessageInHistory = chatHistory.isNotEmpty() && chatHistory.last().second == message
+        
+        // 如果消息已在历史中，只处理历史；否则需要处理历史+当前消息
+        val effectiveHistory = if (isMessageInHistory) {
+            chatHistory
+        } else {
+            chatHistory + ("user" to message)
+        }
+
+        val standardizedHistory = ChatUtils.mapChatHistoryToStandardRoles(effectiveHistory)
 
         // Find and process system message first
         val systemMessage = standardizedHistory.find { it.first == "system" }
         if (systemMessage != null) {
             val systemContent = systemMessage.second
             logDebug("发现系统消息: ${systemContent.take(50)}...")
-            tokenCount += ChatUtils.estimateTokenCount(systemContent) + 20 // Extra for formatting
 
             systemInstruction = JSONObject().apply {
                 put("parts", JSONArray().apply {
@@ -168,57 +345,73 @@ class GeminiProvider(
         }
 
         for ((role, content) in mergedHistory) {
-            val contentObject =
-                JSONObject().apply {
-                    put("role", if (role == "assistant") "model" else role)
-                    put("parts", buildPartsArray(content))
-                }
-            contentsArray.put(contentObject)
-            tokenCount += ChatUtils.estimateTokenCount(content)
-        }
-
-        // Add current user message (with duplicate prevention like OpenAIProvider)
-        val lastMessageRole = if (contentsArray.length() > 0) {
-            contentsArray.getJSONObject(contentsArray.length() - 1).getString("role")
-        } else null
-
-        if (lastMessageRole != "user") {
-            // Last message is not user, safe to add
-            val userContentObject = JSONObject().apply {
-                put("role", "user")
-                put("parts", buildPartsArray(message))
-            }
-            contentsArray.put(userContentObject)
-            tokenCount += ChatUtils.estimateTokenCount(message)
-        } else {
-            // Last message is already user, try to merge
-            val lastMessage = contentsArray.getJSONObject(contentsArray.length() - 1)
-            val lastParts = lastMessage.getJSONArray("parts")
-
-            // Find the text part by searching backwards from the end of the parts array.
-            // This is because image parts are added first, followed by a single optional text part.
-            val textPart = (lastParts.length() - 1 downTo 0)
-                .map { lastParts.getJSONObject(it) }
-                .find { it.has("text") }
-
-            val lastText = textPart?.optString("text", "") ?: ""
-
-            if (lastText != message) {
-                tokenCount += ChatUtils.estimateTokenCount(message)
-                if (textPart != null) {
-                    // Found an existing text part, so we'll merge the new message into it.
-                    val combinedText = "$lastText\n$message"
-                    textPart.put("text", combinedText)
-                    logDebug("合并连续的user消息")
+            val geminiRole = if (role == "assistant") "model" else role
+            
+            // 当启用Tool Call API时，转换XML格式的工具调用
+            if (enableToolCall) {
+                if (role == "assistant") {
+                    // 解析assistant消息中的XML tool calls
+                    val (textContent, functionCall) = parseXmlToolCalls(content)
+                    
+                    val partsArray = JSONArray()
+                    // 先添加文本内容
+                    if (textContent.isNotEmpty()) {
+                        partsArray.put(JSONObject().apply {
+                            put("text", textContent)
+                        })
+                    }
+                    // 再添加functionCall
+                    if (functionCall != null) {
+                        partsArray.put(JSONObject().apply {
+                            put("functionCall", functionCall)
+                        })
+                        logDebug("历史XML→GeminiFunctionCall: ${functionCall.optString("name")}")
+                    }
+                    
+                    val contentObject = JSONObject().apply {
+                        put("role", geminiRole)
+                        put("parts", partsArray)
+                    }
+                    contentsArray.put(contentObject)
+                } else if (role == "user") {
+                    // 解析user消息中的XML tool_result
+                    val (textContent, functionResponse) = parseXmlToolResults(content)
+                    
+                    val partsArray = JSONArray()
+                    // 先添加functionResponse
+                    if (functionResponse != null) {
+                        partsArray.put(JSONObject().apply {
+                            put("functionResponse", functionResponse)
+                        })
+                        logDebug("历史XML→GeminiFunctionResponse: ${functionResponse.optString("name")}")
+                    }
+                    // 再添加文本内容
+                    if (textContent.isNotEmpty()) {
+                        partsArray.put(JSONObject().apply {
+                            put("text", textContent)
+                        })
+                    }
+                    
+                    val contentObject = JSONObject().apply {
+                        put("role", geminiRole)
+                        put("parts", partsArray)
+                    }
+                    contentsArray.put(contentObject)
                 } else {
-                    // No text part was found in the previous message, so add a new one.
-                    // This handles cases where the last user message contained only an image.
-                    lastParts.put(JSONObject().apply { put("text", message) })
-                    logDebug("为连续的user消息添加新的文本部分")
+                    // system等其他角色正常处理
+                    val contentObject = JSONObject().apply {
+                        put("role", geminiRole)
+                        put("parts", buildPartsArray(content))
+                    }
+                    contentsArray.put(contentObject)
                 }
             } else {
-                // The new message is identical to the last one, so we can skip it.
-                logDebug("跳过重复的user消息")
+                // 不启用Tool Call API时，保持原样
+                val contentObject = JSONObject().apply {
+                    put("role", geminiRole)
+                    put("parts", buildPartsArray(content))
+                }
+                contentsArray.put(contentObject)
             }
         }
 
@@ -270,6 +463,8 @@ class GeminiProvider(
             chatHistory: List<Pair<String, String>>,
             modelParameters: List<ModelParameter<*>>,
             enableThinking: Boolean,
+            stream: Boolean,
+            availableTools: List<ToolPrompt>?,
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
             onNonFatalError: suspend (error: String) -> Unit
     ): Stream<String> = stream {
@@ -320,13 +515,13 @@ class GeminiProvider(
                     currentHistory = chatHistory
                 }
 
-                val requestBody = createRequestBody(currentMessage, currentHistory, modelParameters, enableThinking)
+                val requestBody = createRequestBody(currentMessage, currentHistory, modelParameters, enableThinking, availableTools)
                 onTokensUpdated(
                         tokenCacheManager.totalInputTokenCount,
                         tokenCacheManager.cachedInputTokenCount,
                         tokenCacheManager.outputTokenCount
                 )
-                val request = createRequest(requestBody, true, requestId) // 使用流式请求
+                val request = createRequest(requestBody, stream, requestId) // 根据stream参数决定使用流式还是非流式
 
                 val call = client.newCall(request)
                 activeCall = call
@@ -352,8 +547,14 @@ class GeminiProvider(
                             throw IOException("API请求失败: ${response.code}, $errorBody")
                         }
 
-                        // 处理响应
-                        processStreamingResponse(response, streamCollector, requestId, onTokensUpdated, receivedContent)
+                        // 根据stream参数处理响应
+                        if (stream) {
+                            // 处理流式响应
+                            processStreamingResponse(response, streamCollector, requestId, onTokensUpdated, receivedContent)
+                        } else {
+                            // 处理非流式响应并转换为Stream
+                            processNonStreamingResponse(response, streamCollector, requestId, onTokensUpdated, receivedContent)
+                        }
                     }
                 }
 
@@ -425,7 +626,8 @@ class GeminiProvider(
             message: String,
             chatHistory: List<Pair<String, String>>,
             modelParameters: List<ModelParameter<*>>,
-            enableThinking: Boolean
+            enableThinking: Boolean,
+            availableTools: List<ToolPrompt>? = null
     ): RequestBody {
         val json = JSONObject()
 
@@ -437,6 +639,33 @@ class GeminiProvider(
             json.put("systemInstruction", systemInstruction)
         }
         json.put("contents", contentsArray)
+
+        // 添加工具定义
+        val tools = JSONArray()
+        
+        // 添加 Function Calling 工具（如果启用且有可用工具）
+        if (enableToolCall && availableTools != null && availableTools.isNotEmpty()) {
+            val functionDeclarations = buildToolDefinitionsForGemini(availableTools)
+            if (functionDeclarations.length() > 0) {
+                tools.put(JSONObject().apply {
+                    put("function_declarations", functionDeclarations)
+                })
+                logDebug("已添加 ${functionDeclarations.length()} 个 Function Declarations")
+            }
+        }
+        
+        // 添加 Google Search grounding 工具（如果启用）
+        if (enableGoogleSearch) {
+            tools.put(JSONObject().apply {
+                put("googleSearch", JSONObject())
+            })
+            logDebug("已启用 Google Search Grounding")
+        }
+        
+        // 将 tools 添加到请求中
+        if (tools.length() > 0) {
+            json.put("tools", tools)
+        }
 
         // 添加生成配置
         val generationConfig = JSONObject()
@@ -789,6 +1018,53 @@ class GeminiProvider(
         }
     }
 
+    /** 处理API非流式响应 */
+    private suspend fun processNonStreamingResponse(
+            response: Response,
+            streamCollector: StreamCollector<String>,
+            requestId: String,
+            onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
+            receivedContent: StringBuilder
+    ) {
+        Log.d(TAG, "开始处理非流式响应")
+        val responseBody = response.body ?: throw IOException("响应为空")
+        
+        try {
+            val responseText = responseBody.string()
+            logDebug("收到完整响应，长度: ${responseText.length}")
+            
+            // 解析JSON响应
+            val json = JSONObject(responseText)
+            
+            // 提取内容
+            val content = extractContentFromJson(json, requestId, onTokensUpdated)
+            
+            if (content.isNotEmpty()) {
+                receivedContent.append(content)
+                
+                // 直接发送整个内容块，下游会自己处理
+                streamCollector.emit(content)
+                
+                logDebug("非流式响应处理完成，总长度: ${content.length}")
+            } else {
+                logDebug("未检测到内容，发送空格")
+                streamCollector.emit(" ")
+            }
+            
+            // 确保思考模式正确结束
+            if (isInThinkingMode) {
+                logDebug("非流式响应结束时仍在思考模式，添加结束标签")
+                streamCollector.emit("</think>")
+                isInThinkingMode = false
+            }
+        } catch (e: Exception) {
+            logError("处理非流式响应时发生异常: ${e.message}", e)
+            throw e
+        } finally {
+            activeCall = null
+        }
+    }
+
     /** 从Gemini响应JSON中提取内容 */
     private suspend fun extractContentFromJson(
         json: JSONObject,
@@ -796,6 +1072,7 @@ class GeminiProvider(
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit
     ): String {
         val contentBuilder = StringBuilder()
+        val searchSourcesBuilder = StringBuilder()
 
         try {
             // 检查是否有错误信息
@@ -815,6 +1092,74 @@ class GeminiProvider(
 
             // 处理第一个candidate
             val candidate = candidates.getJSONObject(0)
+            
+            // 提取 Google Search grounding metadata（搜索来源信息）
+            if (enableGoogleSearch) {
+                val groundingMetadata = candidate.optJSONObject("groundingMetadata")
+                if (groundingMetadata != null) {
+                    // 提取搜索查询
+                    val webSearchQueries = groundingMetadata.optJSONArray("webSearchQueries")
+                    if (webSearchQueries != null && webSearchQueries.length() > 0) {
+                        searchSourcesBuilder.append("\n<search>\n\n")
+                        searchSourcesBuilder.append("**🔍 Google 搜索来源：**\n\n")
+                        
+                        for (i in 0 until webSearchQueries.length()) {
+                            val query = webSearchQueries.optString(i)
+                            searchSourcesBuilder.append("- 查询：`${query}`\n")
+                            logDebug("搜索查询 [$i]: $query")
+                        }
+                        
+                        // 提取搜索结果的URL来源
+                        val groundingSupports = groundingMetadata.optJSONArray("groundingSupports")
+                        if (groundingSupports != null && groundingSupports.length() > 0) {
+                            searchSourcesBuilder.append("\n**📄 参考来源：**\n\n")
+                            
+                            for (i in 0 until groundingSupports.length()) {
+                                val support = groundingSupports.getJSONObject(i)
+                                val segment = support.optJSONObject("segment")
+                                val groundingChunkIndices = support.optJSONArray("groundingChunkIndices")
+                                
+                                // 如果有chunk indices，提取对应的URL
+                                if (groundingChunkIndices != null) {
+                                    for (j in 0 until groundingChunkIndices.length()) {
+                                        val chunkIndex = groundingChunkIndices.getInt(j)
+                                        val retrievalMetadata = groundingMetadata.optJSONObject("retrievalMetadata")
+                                        if (retrievalMetadata != null) {
+                                            val webDynamicRetrievalScore = retrievalMetadata.optDouble("webDynamicRetrievalScore", -1.0)
+                                            if (webDynamicRetrievalScore > 0) {
+                                                logDebug("搜索动态检索分数: $webDynamicRetrievalScore")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 提取 grounding chunks（包含URL）
+                            val groundingChunks = groundingMetadata.optJSONArray("groundingChunks")
+                            if (groundingChunks != null && groundingChunks.length() > 0) {
+                                for (i in 0 until groundingChunks.length()) {
+                                    val chunk = groundingChunks.getJSONObject(i)
+                                    val web = chunk.optJSONObject("web")
+                                    if (web != null) {
+                                        val uri = web.optString("uri", "")
+                                        val title = web.optString("title", "")
+                                        if (uri.isNotEmpty()) {
+                                            if (title.isNotEmpty()) {
+                                                searchSourcesBuilder.append("${i + 1}. [${title}](${uri})\n")
+                                            } else {
+                                                searchSourcesBuilder.append("${i + 1}. <${uri}>\n")
+                                            }
+                                            logDebug("搜索来源 [$i]: $title - $uri")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        searchSourcesBuilder.append("\n</search>\n\n")
+                    }
+                }
+            }
 
             // 检查finish_reason
             val finishReason = candidate.optString("finishReason", "")
@@ -836,11 +1181,54 @@ class GeminiProvider(
                 return ""
             }
 
-            // 遍历parts，提取text内容
+            // 遍历parts，提取text内容和functionCall
             for (i in 0 until parts.length()) {
                 val part = parts.getJSONObject(i)
                 val text = part.optString("text", "")
                 val isThought = part.optBoolean("thought", false)
+                val functionCall = part.optJSONObject("functionCall")
+
+                // 处理 functionCall（流式转换为XML）
+                if (functionCall != null && enableToolCall) {
+                    val toolName = functionCall.optString("name", "")
+                    if (toolName.isNotEmpty()) {
+                        // 工具调用必须在思考模式之外，如果当前在思考中，先关闭
+                        if (isInThinkingMode) {
+                            contentBuilder.append("</think>")
+                            isInThinkingMode = false
+                            logDebug("检测到工具调用，提前结束思考模式")
+                        }
+                        
+                        // 输出工具开始标签
+                        contentBuilder.append("\n<tool name=\"$toolName\">")
+                        
+                        // 使用 StreamingJsonXmlConverter 流式转换参数
+                        val args = functionCall.optJSONObject("args")
+                        if (args != null) {
+                            val converter = StreamingJsonXmlConverter()
+                            val argsJson = args.toString()
+                            val events = converter.feed(argsJson)
+                            events.forEach { event ->
+                                when (event) {
+                                    is StreamingJsonXmlConverter.Event.Tag -> contentBuilder.append(event.text)
+                                    is StreamingJsonXmlConverter.Event.Content -> contentBuilder.append(event.text)
+                                }
+                            }
+                            // 刷新剩余内容
+                            val flushEvents = converter.flush()
+                            flushEvents.forEach { event ->
+                                when (event) {
+                                    is StreamingJsonXmlConverter.Event.Tag -> contentBuilder.append(event.text)
+                                    is StreamingJsonXmlConverter.Event.Content -> contentBuilder.append(event.text)
+                                }
+                            }
+                        }
+                        
+                        // 输出工具结束标签
+                        contentBuilder.append("\n</tool>\n")
+                        logDebug("Gemini FunctionCall流式转XML: $toolName")
+                    }
+                }
 
                 if (text.isNotEmpty()) {
                     // 处理思考模式状态切换
@@ -899,7 +1287,14 @@ class GeminiProvider(
                 }
             }
 
-            return contentBuilder.toString()
+            // 将搜索来源拼接到内容最前面
+            val finalContent = if (searchSourcesBuilder.isNotEmpty()) {
+                searchSourcesBuilder.toString() + contentBuilder.toString()
+            } else {
+                contentBuilder.toString()
+            }
+            
+            return finalContent
         } catch (e: Exception) {
             logError("提取内容时发生错误: ${e.message}", e)
             return ""

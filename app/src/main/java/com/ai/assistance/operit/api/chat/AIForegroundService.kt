@@ -17,7 +17,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.application.ActivityLifecycleManager
-import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
+import com.ai.assistance.operit.util.WaifuMessageProcessor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.InputStream
@@ -127,9 +128,9 @@ class AIForegroundService : Service() {
             }
             
             // 检查用户是否启用了回复通知
-            val apiPreferences = ApiPreferences.getInstance(applicationContext)
+            val displayPreferences = DisplayPreferencesManager.getInstance(applicationContext)
             val enableReplyNotification = runBlocking {
-                apiPreferences.enableReplyNotificationFlow.first()
+                displayPreferences.enableReplyNotification.first()
             }
             
             if (!enableReplyNotification) {
@@ -138,6 +139,11 @@ class AIForegroundService : Service() {
             }
             
             Log.d(TAG, "准备发送AI回复通知...")
+            
+            // 清理回复内容，移除思考内容等
+            val cleanedReplyContent = replyContent?.let { 
+                WaifuMessageProcessor.cleanContentForWaifu(it) 
+            } ?: ""
             
             // 创建点击通知后打开应用的Intent
             val intent = packageManager.getLaunchIntentForPackage(packageName)
@@ -156,17 +162,17 @@ class AIForegroundService : Service() {
             val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(characterName ?: getString(R.string.notification_ai_reply_title))
-                .setContentText(replyContent?.take(100) ?: getString(R.string.notification_ai_reply_content))
+                .setContentText(cleanedReplyContent.take(100).ifEmpty { getString(R.string.notification_ai_reply_content) })
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true) // 点击后自动消失
             
             // 如果有完整内容，使用BigTextStyle显示更多文本
-            if (!replyContent.isNullOrEmpty()) {
+            if (cleanedReplyContent.isNotEmpty()) {
                 notificationBuilder.setStyle(
                     NotificationCompat.BigTextStyle()
-                        .bigText(replyContent)
+                        .bigText(cleanedReplyContent)
                         .setBigContentTitle(characterName ?: getString(R.string.notification_ai_reply_title))
                 )
             }

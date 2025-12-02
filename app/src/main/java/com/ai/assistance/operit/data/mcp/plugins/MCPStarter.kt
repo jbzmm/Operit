@@ -178,8 +178,7 @@ class MCPStarter(private val context: Context) {
 
             // For local plugins, check if they are deployed
             if (serviceType == "local") {
-                val serverStatus = mcpLocalServer.getServerStatus(pluginId)
-                val isDeployed = serverStatus?.deploySuccess == true
+                val isDeployed = mcpLocalServer.isPluginDeployed(pluginId)
                 if (!isDeployed) {
                     // 自动部署未部署的插件
                     statusCallback(StartStatus.InProgress("插件未部署，开始自动部署: $pluginId"))
@@ -262,6 +261,10 @@ class MCPStarter(private val context: Context) {
             if (serviceType == "remote") {
                 val endpoint = pluginInfo.endpoint
                 val connectionType = pluginInfo.connectionType
+                val bearerToken = pluginInfo.bearerToken
+                val headers = pluginInfo.headers
+
+                Log.d(TAG, "启动远程服务 $pluginId: endpoint=$endpoint, bearerToken=${bearerToken?.take(10)}..., headers=${headers?.keys}")
 
                 if (endpoint == null) {
                     statusCallback(StartStatus.Error("Remote service is missing endpoint: $pluginId"))
@@ -283,7 +286,9 @@ class MCPStarter(private val context: Context) {
                         type = "remote",
                         endpoint = endpoint,
                         connectionType = connectionType,
-                        description = "Remote MCP Server: $pluginId"
+                        description = "Remote MCP Server: $pluginId",
+                        bearerToken = bearerToken,
+                        headers = headers
                     )
 
                 if (registerResult == null || !registerResult.optBoolean("success", false)) {
@@ -611,7 +616,7 @@ class MCPStarter(private val context: Context) {
             // Auto-deploy if it's a local plugin and not deployed yet
             if (pluginInfo.type == "local") {
                 val mcpLocalServer = MCPLocalServer.getInstance(context)
-                if (mcpLocalServer.getServerStatus(pluginId)?.deploySuccess != true) {
+                if (!mcpLocalServer.isPluginDeployed(pluginId)) {
                     val deployer = MCPDeployer(context)
                     val pluginPath = mcpRepository.getInstalledPluginPath(pluginId) ?: return null
                     val deployCommands =
@@ -655,7 +660,9 @@ class MCPStarter(private val context: Context) {
                             type = "remote",
                             endpoint = pluginInfo.endpoint,
                             connectionType = pluginInfo.connectionType,
-                            description = "Remote MCP Server: $pluginId"
+                            description = "Remote MCP Server: $pluginId",
+                            bearerToken = pluginInfo.bearerToken,
+                            headers = pluginInfo.headers
                         )
                     }
                 }
@@ -888,11 +895,9 @@ class MCPStarter(private val context: Context) {
 
             // Get deployed plugins
             val pluginList = mcpRepository.installedPluginIds.first()
-            val deployedPlugins =
-                pluginList.filter {
-                    val serverStatus = mcpLocalServer.getServerStatus(it)
-                    serverStatus?.deploySuccess == true
-                }
+            val deployedPlugins = pluginList.filter { pluginId ->
+                mcpLocalServer.isPluginDeployed(pluginId)
+            }
 
             // Get registered services
             val bridge = MCPBridge.getInstance(context)

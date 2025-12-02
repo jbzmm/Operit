@@ -3,9 +3,7 @@ package com.ai.assistance.operit.ui.common.markdown
 import android.util.Log
 import android.webkit.WebView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -17,6 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.ai.assistance.operit.R
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -81,8 +83,18 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
     // 缓存已计算过的行，避免重复创建
     val lineCache = remember { mutableMapOf<String, AnnotatedString>() }
 
+    // 无障碍朗读描述：只朗读块类型
+    val accessibilityDesc = if (language.isNotEmpty()) {
+        "$language ${stringResource(R.string.code_block)}"
+    } else {
+        stringResource(R.string.code_block)
+    }
+
     Surface(
-            modifier = modifier.fillMaxWidth().padding(vertical = 2.dp),
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp)
+                .semantics { contentDescription = accessibilityDesc },
             color = codeBlockBackground,
             shape = RoundedCornerShape(4.dp)
     ) {
@@ -176,7 +188,6 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                 ) {
                     Column(
                         modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
                             .padding(end = 8.dp, top = 8.dp)
                     ) {
                         // 使用key为每行建立记忆
@@ -193,10 +204,11 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                                 
                                 // 渲染单行代码，利用行缓存机制
                                 CachedCodeLine(
-                                    line = line, 
-                                    language = language, 
+                                    line = line,
+                                    language = language,
                                     index = index,
-                                    lineCache = lineCache
+                                    lineCache = lineCache,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
@@ -503,7 +515,8 @@ private fun CachedCodeLine(
     line: String, 
     language: String, 
     index: Int,
-    lineCache: MutableMap<String, AnnotatedString>
+    lineCache: MutableMap<String, AnnotatedString>,
+    modifier: Modifier = Modifier
 ) {
     // 计算缓存key
     val cacheKey = "$language:$line"
@@ -526,9 +539,10 @@ private fun CachedCodeLine(
         fontSize = 12.sp,
         lineHeight = 16.sp,
         color = Color.White,
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Visible
+        maxLines = Int.MAX_VALUE,
+        softWrap = true,
+        overflow = TextOverflow.Clip,
+        modifier = modifier
     )
 }
 

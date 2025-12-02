@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.alpha
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
@@ -71,14 +72,30 @@ import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleS
 import com.ai.assistance.operit.util.WaifuMessageProcessor
 
 /**
- * 清理消息中的XML标签，保留纯文本内容和换行格式
+ * 清理消息中的XML标签，保留Markdown格式和纯文本内容
  */
 private fun cleanXmlTags(content: String): String {
     return content
-        .replace(Regex("<[^>]*>"), "") // 移除所有XML/HTML标签
-        .replace(Regex("[ \t]+"), " ") // 将多个空格和制表符替换为单个空格，但保留换行符
-        .replace(Regex("\n+"), "\n") // 将多个连续换行符替换为单个换行符
-        .trim() // 移除首尾空白
+        // 移除状态标签
+        .replace(Regex("<status[^>]*>.*?</status>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<status[^>]*/>"), "")
+        // 移除思考标签（包括 <think> 和 <thinking>）
+        .replace(Regex("<think(?:ing)?[^>]*>.*?</think(?:ing)?>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<think(?:ing)?[^>]*/>"), "")
+        // 移除搜索来源标签
+        .replace(Regex("<search[^>]*>.*?</search>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<search[^>]*/>"), "")
+        // 移除工具标签
+        .replace(Regex("<tool[^>]*>.*?</tool>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<tool[^>]*/>"), "")
+        // 移除工具结果标签
+        .replace(Regex("<tool_result[^>]*>.*?</tool_result>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<tool_result[^>]*/>"), "")
+        // 移除emotion标签
+        .replace(Regex("<emotion[^>]*>.*?</emotion>", RegexOption.DOT_MATCHES_ALL), "")
+        // 移除其他常见的XML标签
+        // .replace(Regex("<[^>]*>"), "")
+        .trim()
 }
 
 enum class ChatStyle {
@@ -109,13 +126,15 @@ fun ChatArea(
     onSpeakMessage: ((String) -> Unit)? = null, // 添加朗读回调参数
     onAutoReadMessage: ((String) -> Unit)? = null, // 添加自动朗读回调参数
     onReplyToMessage: ((ChatMessage) -> Unit)? = null, // 添加回复回调参数
+    onCreateBranch: ((Long) -> Unit)? = null, // 添加创建分支回调参数
     messagesPerPage: Int = 10, // 每页显示的消息数量
     topPadding: Dp = 0.dp,
     chatStyle: ChatStyle = ChatStyle.CURSOR, // 新增参数，默认为CURSOR风格
     isMultiSelectMode: Boolean = false, // 是否处于多选模式
     selectedMessageIndices: Set<Int> = emptySet(), // 已选中的消息索引集合
     onToggleMultiSelectMode: ((Int?) -> Unit)? = null, // 切换多选模式的回调，可传入要初始选中的消息索引
-    onToggleMessageSelection: ((Int) -> Unit)? = null // 切换消息选中状态的回调
+    onToggleMessageSelection: ((Int) -> Unit)? = null, // 切换消息选中状态的回调
+    horizontalPadding: Dp = 16.dp // 水平内边距，可自定义
 ) {
     // 记住当前深度状态，但当chatHistory发生变化时重置为1
     var currentDepth = remember(chatHistory) { mutableStateOf(1) }
@@ -130,7 +149,7 @@ fun ChatArea(
             modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = horizontalPadding)
                 .verticalScroll(scrollState) // 使用从外部传入的scrollState
                 .background(Color.Transparent)
                 .padding(top = topPadding),
@@ -190,6 +209,7 @@ fun ChatArea(
                         onDeleteMessagesFrom = onDeleteMessagesFrom,
                         onSpeakMessage = onSpeakMessage, // 传递朗读回调
                         onReplyToMessage = onReplyToMessage, // 传递回复回调
+                        onCreateBranch = onCreateBranch, // 传递创建分支回调
                         chatStyle = chatStyle, // 传递风格
                         isHidden = shouldHide, // 新增参数控制隐藏
                         isMultiSelectMode = isMultiSelectMode, // 传递多选模式状态
@@ -257,6 +277,7 @@ private fun MessageItem(
     onDeleteMessagesFrom: ((Int) -> Unit)?,
     onSpeakMessage: ((String) -> Unit)? = null, // 添加朗读回调
     onReplyToMessage: ((ChatMessage) -> Unit)? = null, // 添加回复回调
+    onCreateBranch: ((Long) -> Unit)? = null, // 添加创建分支回调
     chatStyle: ChatStyle, // 新增参数
     isHidden: Boolean = false, // 新增参数控制隐藏
     isMultiSelectMode: Boolean = false, // 是否处于多选模式
@@ -476,13 +497,13 @@ private fun MessageItem(
             // 回复选项
             if (message.sender == "ai") {
                 DropdownMenuItem(
-        text = {
+                text = {
                         Text(
                             stringResource(R.string.reply_message),
                             style = MaterialTheme.typography.bodyMedium,
                             fontSize = 13.sp
-            )
-        },
+                       )
+                },
                 onClick = {
                         onReplyToMessage?.invoke(message)
                         showContextMenu = false
@@ -498,6 +519,30 @@ private fun MessageItem(
                     modifier = Modifier.height(36.dp)
                 )
             }
+
+            // 创建分支
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(id = R.string.create_branch),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 13.sp
+                    )
+                },
+                onClick = {
+                    onCreateBranch?.invoke(message.timestamp)
+                    showContextMenu = false
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.AccountTree,
+                        contentDescription = stringResource(id = R.string.create_branch),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                modifier = Modifier.height(36.dp)
+            )
 
             // 多选
             DropdownMenuItem(
@@ -523,9 +568,7 @@ private fun MessageItem(
                 modifier = Modifier.height(36.dp)
             )
         }
-
-
-}
+    }
 }
 
 

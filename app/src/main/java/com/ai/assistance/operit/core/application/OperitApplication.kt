@@ -8,14 +8,21 @@ import android.os.LocaleList
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.work.Configuration as WorkConfiguration
+import androidx.work.WorkManager
 import coil.ImageLoader
+import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.request.CachePolicy
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
+import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.core.config.SystemPromptConfig
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
+import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.core.workflow.WorkflowSchedulerInitializer
 import com.ai.assistance.operit.data.db.AppDatabase
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
@@ -44,7 +51,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 
 /** Application class for Operit */
-class OperitApplication : Application() {
+class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.Provider {
 
     companion object {
         /** Global JSON instance with custom serializers */
@@ -168,8 +175,17 @@ class OperitApplication : Application() {
         }
 
         // 初始化全局图片加载器，设置强大的缓存策略
+        // 创建自定义 OkHttp 客户端，增加超时时间以支持慢速图片服务器
+        val imageOkHttpClient = OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS) // 连接超时：30秒（默认10秒）
+                .readTimeout(60, TimeUnit.SECONDS)    // 读取超时：60秒（默认10秒）
+                .writeTimeout(30, TimeUnit.SECONDS)   // 写入超时：30秒（默认10秒）
+                .retryOnConnectionFailure(true)       // 连接失败时自动重试
+                .build()
+        
         globalImageLoader =
                 ImageLoader.Builder(this)
+                        .okHttpClient(imageOkHttpClient) // 使用自定义 OkHttp 客户端
                         .crossfade(true)
                         .respectCacheHeaders(true)
                         .memoryCachePolicy(CachePolicy.ENABLED)
@@ -185,7 +201,7 @@ class OperitApplication : Application() {
                             coil.memory.MemoryCache.Builder(this).maxSizePercent(0.15).build()
                         }
                         .build()
-        Log.d(TAG, "【启动计时】全局图片加载器初始化完成 - ${System.currentTimeMillis() - startTime}ms")
+        Log.d(TAG, "【启动计时】全局图片加载器初始化完成（超时配置：连接30s/读取60s） - ${System.currentTimeMillis() - startTime}ms")
         
         // 初始化图片池管理器，支持本地持久化缓存
         ImagePoolManager.initialize(filesDir)
@@ -202,10 +218,39 @@ class OperitApplication : Application() {
             WorkflowSchedulerInitializer.initialize(applicationContext)
             Log.d(TAG, "【启动计时】WorkflowScheduler初始化完成（异步） - ${System.currentTimeMillis() - schedulerStartTime}ms")
         }
+
+        // 在应用启动时尝试绑定无障碍服务提供者（解决后台绑定限制问题）
+        applicationScope.launch {
+            Log.d(TAG, "【启动计时】开始预绑定无障碍服务提供者...")
+            val bindStartTime = System.currentTimeMillis()
+            try {
+                val bound = com.ai.assistance.operit.data.repository.UIHierarchyManager.bindToService(this@OperitApplication)
+                Log.d(TAG, "【启动计时】无障碍服务预绑定完成（异步） - 结果: $bound, 耗时: ${System.currentTimeMillis() - bindStartTime}ms")
+            } catch (e: Exception) {
+                Log.e(TAG, "无障碍服务预绑定失败", e)
+            }
+        }
         
         val totalTime = System.currentTimeMillis() - startTime
         Log.d(TAG, "【启动计时】应用启动全部完成 - 总耗时: ${totalTime}ms")
     }
+
+    /**
+     * 实现 ImageLoaderFactory 接口
+     * 让 Coil 使用我们配置的全局 ImageLoader（带有自定义超时设置）
+     */
+    override fun newImageLoader(): ImageLoader {
+        return globalImageLoader
+    }
+
+    /**
+     * 实现 WorkConfiguration.Provider 接口
+     * 提供 WorkManager 的配置，确保 WorkManager 被正确初始化
+     */
+    override val workManagerConfiguration: WorkConfiguration
+        get() = WorkConfiguration.Builder()
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) Log.DEBUG else Log.INFO)
+            .build()
 
     /** 初始化应用语言设置 */
     private fun initializeAppLanguage() {
@@ -286,6 +331,17 @@ class OperitApplication : Application() {
 
     override fun onTerminate() {
         super.onTerminate()
+        
+        // 清理终端管理器和SSH连接
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Terminal.getInstance(applicationContext).destroy()
+                Log.d(TAG, "应用终止，已清理所有终端会话和SSH连接")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "清理终端管理器失败: ${e.message}", e)
+        }
+        
         // 在应用终止时关闭LocalWebServer服务器
         try {
             val webServer = LocalWebServer.getInstance(applicationContext, LocalWebServer.ServerType.WORKSPACE)

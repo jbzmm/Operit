@@ -7,4 +7,4 @@ enum class PromptFunctionType {
     CHAT,
     VOICE,
     DESKTOP_PET
-} 
+}

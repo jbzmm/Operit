@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.core.chat
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import com.ai.assistance.operit.api.chat.EnhancedAIService
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import com.ai.assistance.operit.data.model.InputProcessingState
 
 /**
  * 单例对象，负责管理与 EnhancedAIService 的所有通信。
@@ -35,6 +37,7 @@ import kotlinx.coroutines.withContext
  * - **职责明确**: 仅处理与AI服务的交互，UI更新和数据持久化由调用方负责。
  * - **封装逻辑**: 内部封装了与AI交互的策略，如是否需要总结、如何从历史中提取记忆等。
  */
+@SuppressLint("StaticFieldLeak")
 object AIMessageManager {
     private const val TAG = "AIMessageManager"
     // 聊天总结的消息数量阈值 - 移除硬编码，改用动态设置
@@ -171,6 +174,7 @@ object AIMessageManager {
         maxTokens: Int,
         tokenUsageThreshold: Double,
         onNonFatalError: suspend (error: String) -> Unit,
+        onTokenLimitExceeded: (suspend () -> Unit)? = null, // 新增回调
         characterName: String? = null,
         avatarUri: String? = null
     ): SharedStream<String> {
@@ -194,7 +198,7 @@ object AIMessageManager {
                     
                     // 设置执行计划的特定UI状态
                     enhancedAiService.setInputProcessingState(
-                        com.ai.assistance.operit.data.model.InputProcessingState.ExecutingPlan("正在执行深度搜索...")
+                        InputProcessingState.ExecutingPlan("正在执行深度搜索...")
                     )
                     
                     // 使用深度搜索模式
@@ -214,6 +218,10 @@ object AIMessageManager {
                 activePlanModeManager = null // Clear manager if disabled
             }
             
+            // 获取流式输出设置
+            val disableStreamOutput = apiPreferences.disableStreamOutputFlow.first()
+            val enableStream = !disableStreamOutput
+            
             // 使用普通模式
             enhancedAiService.sendMessage(
                 message = messageContent,
@@ -226,8 +234,10 @@ object AIMessageManager {
                 maxTokens = maxTokens,
                 tokenUsageThreshold = tokenUsageThreshold,
                 onNonFatalError = onNonFatalError,
+                onTokenLimitExceeded = onTokenLimitExceeded, // 传递回调
                 characterName = characterName,
-                avatarUri = avatarUri
+                avatarUri = avatarUri,
+                stream = enableStream
             ).share(scope) // 使用.share()将其转换为共享流
         }
     }
@@ -260,11 +270,13 @@ object AIMessageManager {
      *
      * @param enhancedAiService AI服务实例。
      * @param messages 需要总结的消息列表。
+     * @param autoContinue 是否为自动续写模式，如果是则在总结消息尾部添加续写提示。
      * @return 包含总结内容的ChatMessage对象，如果无需总结或总结失败则返回null。
      */
     suspend fun summarizeMemory(
         enhancedAiService: EnhancedAIService,
-        messages: List<ChatMessage>
+        messages: List<ChatMessage>,
+        autoContinue: Boolean = false
     ): ChatMessage? {
         val lastSummaryIndex = messages.indexOfLast { it.sender == "summary" }
         val previousSummary = if (lastSummaryIndex != -1) messages[lastSummaryIndex].content.trim() else null
@@ -280,14 +292,29 @@ object AIMessageManager {
             return null
         }
 
+        val memoryTagRegex = Regex("<memory>.*?</memory>", RegexOption.DOT_MATCHES_ALL)
+        val conversationReviewEntries = mutableListOf<Pair<String, String>>()
+        fun String.condenseForQuote(): String {
+            val normalized = trim()
+            return if (normalized.length <= 40) {
+                normalized
+            } else {
+                "${normalized.take(20)}...${normalized.takeLast(20)}"
+            }
+        }
         val conversationToSummarize = messagesToSummarize.mapIndexed { index, message ->
             val role = if (message.sender == "user") "user" else "assistant"
-            val content = if (role == "user") {
-                message.content.replace(Regex("<memory>.*?</memory>", RegexOption.DOT_MATCHES_ALL), "").trim()
+            val cleanedContent = if (role == "user") {
+                message.content.replace(memoryTagRegex, "").trim()
             } else {
                 message.content
             }
-            Pair(role, "#${index + 1}: ${content}")
+            if (cleanedContent.isNotBlank()) {
+                val displayContent =
+                    if (role == "assistant") cleanedContent.condenseForQuote() else cleanedContent
+                conversationReviewEntries.add(role to displayContent)
+            }
+            Pair(role, "#${index + 1}: $cleanedContent")
         }
 
         return try {
@@ -299,9 +326,31 @@ object AIMessageManager {
                 Log.e(TAG, "AI生成的总结内容为空，放弃本次总结")
                 null
             } else {
+                // 如果是自动续写，在总结消息尾部添加续写提示
+                val trimmedSummary = summary.trim()
+                val summaryWithQuotes = buildString {
+                    append(trimmedSummary)
+                    if (conversationReviewEntries.isNotEmpty()) {
+                        append("\n\n对话回顾：\n")
+                        conversationReviewEntries.forEach { (role, content) ->
+                            append("- ")
+                            append(if (role == "user") "用户" else "AI")
+                            append(": ")
+                            append(content)
+                            append("\n")
+                        }
+                    }
+                }.trimEnd()
+
+                val finalSummary = if (autoContinue) {
+                    "$summaryWithQuotes\n\n请你继续，如果任务完成，输出总结"
+                } else {
+                    summaryWithQuotes
+                }
+                
                 ChatMessage(
                     sender = "summary",
-                    content = summary.trim(),
+                    content = finalSummary,
                     timestamp = System.currentTimeMillis(),
                     roleName = "system" // 总结消息的角色名
                 )

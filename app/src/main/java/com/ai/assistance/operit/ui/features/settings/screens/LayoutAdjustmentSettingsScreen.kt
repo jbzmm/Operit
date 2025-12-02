@@ -37,12 +37,14 @@ fun LayoutAdjustmentSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val userPreferences = remember { UserPreferencesManager(context) }
+    val userPreferences = remember { UserPreferencesManager.getInstance(context) }
     val scope = rememberCoroutineScope()
 
     // 读取当前设置
     val chatSettingsButtonEndPadding by userPreferences.chatSettingsButtonEndPadding
         .collectAsState(initial = 2f)
+    val chatAreaHorizontalPadding by userPreferences.chatAreaHorizontalPadding
+        .collectAsState(initial = 16f)
 
     CustomScaffold { paddingValues ->
         Column(
@@ -62,6 +64,20 @@ fun LayoutAdjustmentSettingsScreen(
                     }
                 },
                 defaultValue = 2f
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            EditableDpSettingCard(
+                title = stringResource(R.string.chat_area_horizontal_padding),
+                description = stringResource(R.string.chat_area_horizontal_padding_desc),
+                currentValue = chatAreaHorizontalPadding,
+                onSave = { newValue ->
+                    scope.launch {
+                        userPreferences.saveChatAreaHorizontalPadding(newValue)
+                    }
+                },
+                defaultValue = 16f
             )
 
             Spacer(modifier = Modifier.height(16.dp))

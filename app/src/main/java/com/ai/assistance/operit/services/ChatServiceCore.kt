@@ -2,6 +2,7 @@ package com.ai.assistance.operit.services
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.ui.text.input.TextFieldValue
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
@@ -57,6 +58,9 @@ class ChatServiceCore(
     // 回调：当 EnhancedAIService 初始化或更新时
     private var onEnhancedAiServiceReady: ((EnhancedAIService) -> Unit)? = null
     
+    // 额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景）
+    private var additionalOnTurnComplete: (() -> Unit)? = null
+    
     private fun initializeDelegates() {
         // 初始化 UI 状态委托
         uiStateDelegate = UiStateDelegate()
@@ -91,9 +95,6 @@ class ChatServiceCore(
         chatHistoryDelegate = ChatHistoryDelegate(
             context = context,
             coroutineScope = coroutineScope,
-            onChatHistoryLoaded = { messages ->
-                Log.d(TAG, "聊天历史已加载: ${messages.size} 条消息")
-            },
             onTokenStatisticsLoaded = { inputTokens, outputTokens, windowSize ->
                 tokenStatisticsDelegate.setTokenCounts(inputTokens, outputTokens, windowSize)
             },
@@ -141,6 +142,8 @@ class ChatServiceCore(
                 val (inputTokens, outputTokens) = tokenStatisticsDelegate.getCumulativeTokenCounts()
                 val windowSize = tokenStatisticsDelegate.getLastCurrentWindowSize()
                 chatHistoryDelegate.saveCurrentChat(inputTokens, outputTokens, windowSize)
+                // 调用额外的回调（用于悬浮窗通知应用等场景）
+                additionalOnTurnComplete?.invoke()
             },
             getIsAutoReadEnabled = {
                 apiConfigDelegate.enableAutoRead.value
@@ -148,6 +151,9 @@ class ChatServiceCore(
             speakMessage = { text ->
                 // TTS 功能需要在外部实现
                 Log.d(TAG, "朗读消息: $text")
+            },
+            onTokenLimitExceeded = {
+                messageCoordinationDelegate.handleTokenLimitExceeded()
             }
         )
 
@@ -180,6 +186,9 @@ class ChatServiceCore(
 
     /** 取消当前消息 */
     fun cancelCurrentMessage() {
+        // 先取消总结（如果正在进行）
+        messageCoordinationDelegate.cancelSummary()
+        // 然后取消消息处理
         messageProcessingDelegate.cancelCurrentMessage()
     }
 
@@ -265,7 +274,7 @@ class ChatServiceCore(
     // ========== StateFlow 暴露 ==========
 
     // 消息处理相关
-    val userMessage: StateFlow<String>
+    val userMessage: StateFlow<TextFieldValue>
         get() = messageProcessingDelegate.userMessage
 
     val isLoading: StateFlow<Boolean>
@@ -360,6 +369,16 @@ class ChatServiceCore(
         onEnhancedAiServiceReady = callback
         // 如果已经初始化，立即调用回调
         enhancedAiService?.let { callback(it) }
+    }
+    
+    /** 设置额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景） */
+    fun setAdditionalOnTurnComplete(callback: (() -> Unit)?) {
+        additionalOnTurnComplete = callback
+    }
+    
+    /** 重新加载聊天消息（智能合并） */
+    suspend fun reloadChatMessagesSmart(chatId: String) {
+        chatHistoryDelegate.reloadChatMessagesSmart(chatId)
     }
 }
 

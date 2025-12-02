@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.util.markdown
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -31,6 +32,7 @@ enum class MarkdownProcessorType {
     BLOCK_LATEX, // LaTeX块级公式
     TABLE, // 表格支持
     XML_BLOCK, // XML块级元素
+    PLAN_EXECUTION, // 计划执行块
  
     // 内联处理器
     BOLD,
@@ -46,11 +48,21 @@ enum class MarkdownProcessorType {
     PLAIN_TEXT
 }
 
-/** Markdown数据模型 */
+/** 
+ * Markdown数据模型 
+ * 
+ */
 class MarkdownNode(val type: MarkdownProcessorType, initialContent: String = "") {
     val content: SmartString = SmartString(initialContent)
     val children: SnapshotStateList<MarkdownNode> = mutableStateListOf()
 }
+
+@Stable
+data class MarkdownNodeStable(
+    val type: MarkdownProcessorType,
+    val content: String,
+    val children: List<MarkdownNodeStable>
+)
 
 /** 将字符串转换为字符流 */
 fun String.toCharStream(): Stream<Char> {
@@ -89,6 +101,7 @@ object NestedMarkdownProcessor {
     /** 块级插件列表 */
     fun getBlockPlugins(): List<StreamPlugin> =
             listOf(
+                    StreamPlanExecutionPlugin(includeTagsInOutput = true), // 计划执行插件，优先级最高
                     StreamMarkdownHeaderPlugin(),
                     StreamMarkdownFencedCodeBlockPlugin(),
                     StreamMarkdownBlockQuotePlugin(includeMarker = false),
@@ -116,6 +129,7 @@ object NestedMarkdownProcessor {
     /** 根据插件获取对应的Markdown处理器类型 */
     internal fun getTypeForPlugin(plugin: StreamPlugin?): MarkdownProcessorType {
         return when (plugin) {
+            is StreamPlanExecutionPlugin -> MarkdownProcessorType.PLAN_EXECUTION
             is StreamMarkdownHeaderPlugin -> MarkdownProcessorType.HEADER
             is StreamMarkdownBlockQuotePlugin -> MarkdownProcessorType.BLOCK_QUOTE
             is StreamMarkdownFencedCodeBlockPlugin -> MarkdownProcessorType.CODE_BLOCK

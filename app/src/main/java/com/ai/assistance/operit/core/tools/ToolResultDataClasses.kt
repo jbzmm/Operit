@@ -250,13 +250,23 @@ data class FileOperationData(
 /** Represents the result of an 'apply_file' operation, including the AI-generated diff */
 @Serializable
 data class FileApplyResultData(
-    val operation: FileOperationData, 
+    val operation: FileOperationData,
     val aiDiffInstructions: String,
-    val syntaxCheckResult: String? = null
+    val syntaxCheckResult: String? = null,
+    val diffContent: String? = null
 ) : ToolResultData() {
     override fun toString(): String {
         val sb = StringBuilder()
         sb.appendLine(operation.details)
+
+        // If diffContent is available, embed it in a custom XML-like tag for the renderer.
+        if (diffContent != null) {
+            val encodedDiff = diffContent.replace("&", "&").replace("<", "<").replace(">", ">")
+            sb.append("<file-diff path=\"${operation.path}\" details=\"${operation.details}\">")
+            sb.append("<![CDATA[$encodedDiff]]>")
+            sb.append("</file-diff>")
+        }
+
         if (aiDiffInstructions.isNotEmpty() && !aiDiffInstructions.startsWith("Error")) {
             sb.appendLine("\n--- AI-Generated Diff ---")
             sb.appendLine(aiDiffInstructions)
@@ -495,33 +505,27 @@ data class VisitWebResultData(
         val url: String,
         val title: String,
         val content: String,
-        val metadata: Map<String, String> = emptyMap()
+        val metadata: Map<String, String> = emptyMap(),
+        val links: List<LinkData> = emptyList(),
+        val visitKey: String? = null
 ) : ToolResultData() {
+    @Serializable
+    data class LinkData(val url: String, val text: String)
+
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.appendLine("网页内容提取结果:")
-        sb.appendLine("URL: $url")
-        sb.appendLine("标题: $title")
+        visitKey?.let { sb.appendLine("Visit key: $it\n") }
 
-        if (metadata.isNotEmpty()) {
-            sb.appendLine("\n元数据:")
-            metadata.entries.take(5).forEach { (key, value) -> sb.appendLine("$key: $value") }
-            if (metadata.size > 5) {
-                sb.appendLine("... 以及 ${metadata.size - 5} 个其他元数据项")
+        if (links.isNotEmpty()) {
+            sb.appendLine("Results:")
+            links.forEachIndexed { index, link ->
+                sb.appendLine("[${index + 1}] ${link.text}")
             }
             sb.appendLine()
         }
 
-        sb.appendLine("\n页面内容:")
-
-        // 如果内容太长，只显示部分
-        val maxContentLength = 1000
-        if (content.length > maxContentLength) {
-            sb.append(content.substring(0, maxContentLength))
-            sb.appendLine("\n...(内容已截断，共 ${content.length} 字符)")
-        } else {
-            sb.append(content)
-        }
+        sb.appendLine("Content:")
+        sb.append(content)
 
         return sb.toString()
     }
@@ -1055,9 +1059,25 @@ data class GrepResultData(
         if (matches.isEmpty()) {
             sb.appendLine("未找到匹配项")
         } else {
-            matches.forEach { fileMatch ->
+            // 设置显示上限 - 最多显示30个匹配组
+            val maxDisplayMatches = 30
+            var displayedMatches = 0
+            var collapsedMatches = 0
+            
+            for (fileMatch in matches) {
+                val remainingSlots = maxDisplayMatches - displayedMatches
+                if (remainingSlots <= 0) {
+                    // 统计剩余被折叠的匹配数
+                    collapsedMatches += fileMatch.lineMatches.size
+                    continue
+                }
+                
                 sb.appendLine("文件: ${fileMatch.filePath}")
-                fileMatch.lineMatches.forEach { lineMatch ->
+                
+                val matchesToShow = fileMatch.lineMatches.take(remainingSlots)
+                val matchesCollapsedInFile = fileMatch.lineMatches.size - matchesToShow.size
+                
+                matchesToShow.forEach { lineMatch ->
                     // 如果有上下文，显示完整的上下文
                     if (lineMatch.matchContext != null && lineMatch.matchContext.isNotBlank()) {
                         val contextLines = lineMatch.matchContext.lines()
@@ -1081,12 +1101,21 @@ data class GrepResultData(
                         val lineNumStr = String.format("%6d", lineMatch.lineNumber)
                         sb.appendLine("$lineNumStr| ${lineMatch.lineContent}")
                     }
+                    displayedMatches++
                 }
+                
+                if (matchesCollapsedInFile > 0) {
+                    sb.appendLine("  ... (此文件中还有 $matchesCollapsedInFile 个匹配组被折叠)")
+                    collapsedMatches += matchesCollapsedInFile
+                }
+                
                 sb.appendLine()
             }
             
-            if (matches.size > 20) {
-                sb.appendLine("... 结果过多，仅显示前20个文件的匹配")
+            if (collapsedMatches > 0) {
+                sb.appendLine("=" .repeat(60))
+                sb.appendLine("为节省空间，共有 $collapsedMatches 个匹配组被折叠")
+                sb.appendLine("显示了 $displayedMatches 个匹配组，总共 $totalMatches 个匹配")
             }
         }
         

@@ -12,6 +12,8 @@ data class ChatMessage(
         var content: String = "",
         val timestamp: Long = System.currentTimeMillis(),
         val roleName: String = "", // 角色名字字段
+        val provider: String = "", // 供应商
+        val modelName: String = "", // 模型名称
         @Transient
         var contentStream: Stream<String>? =
                 null // 修改为Stream<String>类型，与EnhancedAIService.sendMessage返回类型匹配
@@ -22,6 +24,8 @@ data class ChatMessage(
         parcel.readString() ?: "", 
         parcel.readString() ?: "", 
         parcel.readLong(),
+        parcel.readString() ?: "",
+        parcel.readString() ?: "",
         parcel.readString() ?: ""
     )
 
@@ -30,6 +34,8 @@ data class ChatMessage(
         parcel.writeString(content)
         parcel.writeLong(timestamp)
         parcel.writeString(roleName)
+        parcel.writeString(provider)
+        parcel.writeString(modelName)
         // 不需要序列化contentStream，因为它是暂时性的
     }
 

@@ -8,6 +8,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -46,6 +47,8 @@ import com.ai.assistance.operit.core.tools.VisitWebResultData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
@@ -62,7 +65,10 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
     companion object {
         private const val TAG = "WebVisitTool"
         private const val USER_AGENT =
-                "Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+        
+        // Cache to store visit results
+        private val visitCache = ConcurrentHashMap<String, VisitWebResultData>()
     }
 
     // 创建OkHttpClient实例，配置超时
@@ -76,19 +82,41 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
     private var webViewReference: WebView? = null
 
     override fun invoke(tool: AITool): ToolResult {
-        val url = tool.parameters.find { it.name == "url" }?.value ?: ""
+        val url = tool.parameters.find { it.name == "url" }?.value
+        val visitKey = tool.parameters.find { it.name == "visit_key" }?.value
+        val linkNumberStr = tool.parameters.find { it.name == "link_number" }?.value
 
-        if (url.isBlank()) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "URL parameter cannot be empty"
-            )
+        val targetUrl = when {
+            !visitKey.isNullOrBlank() && !linkNumberStr.isNullOrBlank() -> {
+                val linkNumber = linkNumberStr.toIntOrNull()
+                if (linkNumber == null) {
+                    return ToolResult(tool.name, false, StringResultData(""), "Invalid link number.")
+                }
+                
+                val cachedVisit = visitCache[visitKey]
+                if (cachedVisit == null) {
+                    return ToolResult(tool.name, false, StringResultData(""), "Invalid visit key.")
+                }
+
+                val link = cachedVisit.links.getOrNull(linkNumber - 1)
+                if (link == null) {
+                    return ToolResult(tool.name, false, StringResultData(""), "Link number out of bounds.")
+                }
+                link.url
+            }
+            !url.isNullOrBlank() -> url
+            else -> {
+                return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Either 'url' or both 'visit_key' and 'link_number' must be provided."
+                )
+            }
         }
 
         return try {
-            val pageContent = visitWebPage(url)
+            val pageContent = visitWebPage(targetUrl)
             ToolResult(toolName = tool.name, success = true, result = pageContent, error = null)
         } catch (e: Exception) {
             Log.e(TAG, "Error visiting web page", e)
@@ -104,77 +132,100 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
 
     override fun validateParameters(tool: AITool): ToolValidationResult {
         val url = tool.parameters.find { it.name == "url" }?.value
+        val visitKey = tool.parameters.find { it.name == "visit_key" }?.value
+        val linkNumber = tool.parameters.find { it.name == "link_number" }?.value
 
-        return if (url.isNullOrBlank()) {
-            ToolValidationResult(valid = false, errorMessage = "URL parameter is required")
-        } else {
+        val isUrlVisit = !url.isNullOrBlank()
+        val isKeyVisit = !visitKey.isNullOrBlank() && !linkNumber.isNullOrBlank()
+
+        return if (isUrlVisit || isKeyVisit) {
             ToolValidationResult(valid = true)
+        } else {
+            ToolValidationResult(valid = false, errorMessage = "Either 'url' or both 'visit_key' and 'link_number' must be provided.")
         }
     }
 
     /** Visit web page and extract content */
     private fun visitWebPage(url: String): VisitWebResultData {
         // Use WebView to visit the page and extract content
-        val pageContent = runBlocking { loadWebPageAndExtractContent(url) }
+        val extractedJson = runBlocking { loadWebPageAndExtractContent(url) }
 
-        // 将内容解析为结构化数据
-        // 在这里，我们从完整内容中提取标题和元数据
-        val lines = pageContent.split("\n")
-        var title = "无标题"
-        val metadata = mutableMapOf<String, String>()
-        var contentStartIndex = 0
+        return try {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val result = json.decodeFromString<ExtractedWebData>(extractedJson)
 
-        // 寻找标题，假设格式是"# 标题"
-        for (i in lines.indices) {
-            val line = lines[i].trim()
-            if (line.startsWith("# ")) {
-                title = line.substring(2).trim()
-                contentStartIndex = i + 1
-                break
-            }
-        }
+            // 将内容解析为结构化数据
+            val lines = result.content.split("\n")
+            var title = result.title
+            val metadata = mutableMapOf<String, String>()
+            var contentStartIndex = 0
 
-        // 寻找元数据部分
-        var inMetadata = false
-        var metadataEndIndex = contentStartIndex
-
-        for (i in contentStartIndex until lines.size) {
-            val line = lines[i].trim()
-
-            if (line == "---METADATA---") {
-                inMetadata = true
-                metadataEndIndex = i + 1
-                continue
-            }
-
-            if (inMetadata) {
-                if (line == "---CONTENT---") {
-                    metadataEndIndex = i + 1
+            // 寻找标题，假设格式是"# 标题"
+            for (i in lines.indices) {
+                val line = lines[i].trim()
+                if (line.startsWith("# ")) {
+                    title = line.substring(2).trim()
+                    contentStartIndex = i + 1
                     break
                 }
+            }
 
-                // 解析元数据，格式为"key: value"
-                val parts = line.split(":", limit = 2)
-                if (parts.size == 2) {
-                    val key = parts[0].trim()
-                    val value = parts[1].trim()
-                    if (key.isNotEmpty() && value.isNotEmpty()) {
-                        metadata[key] = value
+            // 寻找元数据部分
+            var inMetadata = false
+            var metadataEndIndex = contentStartIndex
+
+            for (i in contentStartIndex until lines.size) {
+                val line = lines[i].trim()
+
+                if (line == "---METADATA---") {
+                    inMetadata = true
+                    metadataEndIndex = i + 1
+                    continue
+                }
+
+                if (inMetadata) {
+                    if (line == "---CONTENT---") {
+                        metadataEndIndex = i + 1
+                        break
+                    }
+
+                    // 解析元数据，格式为"key: value"
+                    val parts = line.split(":", limit = 2)
+                    if (parts.size == 2) {
+                        val key = parts[0].trim()
+                        val value = parts[1].trim()
+                        if (key.isNotEmpty() && value.isNotEmpty()) {
+                            metadata[key] = value
+                        }
                     }
                 }
             }
+
+            // 提取实际内容
+            val content =
+                    if (metadataEndIndex < lines.size) {
+                        lines.subList(metadataEndIndex, lines.size).joinToString("\n")
+                    } else {
+                        // 如果没有找到元数据/内容分隔符，使用整个内容
+                        result.content
+                    }
+
+            val visitKey = UUID.randomUUID().toString()
+            val resultData = VisitWebResultData(
+                    url = url,
+                    title = title,
+                    content = content,
+                    metadata = metadata,
+                    links = result.links.map { VisitWebResultData.LinkData(it.url, it.text) },
+                    visitKey = visitKey
+            )
+            visitCache[visitKey] = resultData
+            resultData
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing extracted web content", e)
+            // Fallback for old format or error
+            VisitWebResultData(url = url, title = "Error", content = extractedJson)
         }
-
-        // 提取实际内容
-        val content =
-                if (metadataEndIndex < lines.size) {
-                    lines.subList(metadataEndIndex, lines.size).joinToString("\n")
-                } else {
-                    // 如果没有找到元数据/内容分隔符，使用整个内容
-                    pageContent
-                }
-
-        return VisitWebResultData(url = url, title = title, content = content, metadata = metadata)
     }
 
     /** 使用WebView加载页面并提取内容 */
@@ -385,28 +436,27 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
         // 自动模式状态
         val autoModeEnabled = remember { mutableStateOf(true) } // 是否启用自动模式
         val autoCountdownActive = remember { mutableStateOf(false) } // 倒计时是否激活
-        val autoCountdownSeconds = remember { mutableStateOf(4) } // 倒计时秒数
+        val autoCountdownSeconds = remember { mutableStateOf(5) } // 倒计时秒数
+        val isCaptchaVerification = remember { mutableStateOf(false) } // 是否需要人机验证
 
         // 修改LaunchedEffect部分，使滚动和倒计时同时进行
-        LaunchedEffect(autoCountdownActive.value) {
+        LaunchedEffect(autoCountdownActive.value, isCaptchaVerification.value) {
             if (autoCountdownActive.value) {
-                autoCountdownSeconds.value = 4
-                
-                // 开始4秒倒计时
-                for (i in 4 downTo 1) {
+                val countdownDuration = if (isCaptchaVerification.value) 60 else 5
+                autoCountdownSeconds.value = countdownDuration
+
+                for (i in countdownDuration downTo 1) {
                     autoCountdownSeconds.value = i
-                    delay(1000) // 延迟1秒
-                    
-                    // 如果倒计时被取消，中断倒计时
+                    delay(1000)
+
                     if (!autoCountdownActive.value) {
                         break
                     }
                 }
-                
-                // 倒计时结束且未被取消，自动继续
+
                 if (autoCountdownActive.value) {
                     autoCountdownActive.value = false
-                    if (pageContent.value.isNotEmpty()) {
+                    if (pageContent.value.isNotEmpty() && !isCaptchaVerification.value) {
                         onContentExtracted(pageContent.value)
                     }
                 }
@@ -468,8 +518,8 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                         when {
                                             !pageLoaded.value -> "正在加载页面..."
                                             isLoading.value -> "等待页面完全加载..."
-                                            autoCountdownActive.value ->
-                                                    "正在提取内容，${autoCountdownSeconds.value}秒后自动继续..."
+                                            isCaptchaVerification.value -> "请在${autoCountdownSeconds.value}秒内完成人机验证..."
+                                            autoCountdownActive.value -> "正在提取内容，${autoCountdownSeconds.value}秒后自动继续..."
                                             hasExtractedContent.value -> "内容已提取，等待手动继续..."
                                             else -> "页面已加载，等待提取内容..."
                                         }
@@ -525,59 +575,63 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                                             isLoading.value = true
                                                             hasExtractedContent.value = false
                                                             pageContent.value = ""
-                                                            // 重置自动状态
                                                             autoCountdownActive.value = false
                                                             autoModeEnabled.value = true
+                                                            isCaptchaVerification.value = false
                                                         }
 
-                                                        // 页面加载完成后，延迟自动提取内容
-                                                        if (autoModeEnabled.value) {
-                                                            Handler(Looper.getMainLooper())
-                                                                    .postDelayed(
-                                                                            {
-                                                                                if (!view.isAttachedToWindow
-                                                                                ) {
-                                                                                    Log.d(
-                                                                                            TAG,
-                                                                                            "WebView不再附加到窗口，跳过提取"
-                                                                                    )
-                                                                                    return@postDelayed
-                                                                                }
-                                                                                
-                                                                                // 直接提取内容，不先滚动
-                                                                                Log.d(
-                                                                                        TAG,
-                                                                                        "页面加载完成，开始提取内容"
-                                                                                )
-                                                                                
-                                                                                if (!hasExtractedContent.value && 
-                                                                                        autoModeEnabled.value
-                                                                                ) {
-                                                                                    isLoading.value = true
-                                                                                    
-                                                                                    extractPageContent(
-                                                                                            view
-                                                                                    ) { content ->
-                                                                                        isLoading.value = false
-                                                                                        hasExtractedContent.value = true
-                                                                                        pageContent.value = content
-                                                                                        
-                                                                                        // 如果仍处于自动模式，自动开始倒计时
-                                                                                        if (autoModeEnabled.value) {
-                                                                                            autoCountdownActive.value = true
-                                                                                            
-                                                                                            // 在开始倒计时的同时滚动页面
-                                                                                            Log.d(TAG, "开始倒计时，同时滚动页面")
-                                                                                            autoScrollToBottom(view) {
-                                                                                                Log.d(TAG, "页面滚动完成")
-                                                                                            }
-                                                                                        }
-                                                                                    }
-                                                                                }
-                                                                            },
-                                                                            800
-                                                                    ) // 缩短延迟到800毫秒
+                                                        // 检查是否是Google人机验证页面
+                                                        if (loadedUrl.contains("google.com/sorry/index")) {
+                                                            Log.d(TAG, "Google CAPTCHA page detected, returning error.")
+                                                            onContentExtracted("{\"error\":\"Google CAPTCHA detected. Please try again later or solve it in a browser.\"}")
+                                                            return@onPageFinished
                                                         }
+
+                                                        // 检查是否需要人机验证
+                                                        view.evaluateJavascript("(function() { return document.body.innerText.includes('人机验证') || document.body.innerHTML.includes('captcha'); })();") { result ->
+                                                            val isCaptcha = result?.toBoolean() ?: false
+                                                            if (isCaptcha && !isCaptchaVerification.value) {
+                                                                isCaptchaVerification.value = true
+                                                                autoModeEnabled.value = false // 需要手动验证，禁用自动模式
+                                                                autoCountdownActive.value = true // 开始60秒倒计时
+                                                            } else if (!isCaptcha && isCaptchaVerification.value) {
+                                                                // 用户完成了验证
+                                                                isCaptchaVerification.value = false
+                                                                autoModeEnabled.value = true
+                                                                // 重新触发内容提取和5秒倒计时
+                                                                triggerContentExtraction(view)
+                                                            }
+                                                        }
+
+                                                        // 页面加载完成后，如果不是人机验证模式，则延迟自动提取内容
+                                                        if (autoModeEnabled.value && !isCaptchaVerification.value) {
+                                                            triggerContentExtraction(view)
+                                                        }
+                                                    }
+
+                                                    private fun triggerContentExtraction(view: WebView) {
+                                                        Handler(Looper.getMainLooper()).postDelayed({
+                                                            if (!view.isAttachedToWindow) {
+                                                                Log.d(TAG, "WebView不再附加到窗口，跳过提取")
+                                                                return@postDelayed
+                                                            }
+
+                                                            if (!hasExtractedContent.value && autoModeEnabled.value) {
+                                                                isLoading.value = true
+                                                                extractPageContent(view) { content ->
+                                                                    isLoading.value = false
+                                                                    hasExtractedContent.value = true
+                                                                    pageContent.value = content
+
+                                                                    if (autoModeEnabled.value) {
+                                                                        autoCountdownActive.value = true
+                                                                        autoScrollToBottom(view) {
+                                                                            Log.d(TAG, "页面滚动完成")
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }, 800)
                                                     }
 
                                                     override fun shouldOverrideUrlLoading(
@@ -761,23 +815,51 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
             with(settings) {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                databaseEnabled = true
                 useWideViewPort = true
                 loadWithOverviewMode = true
-                javaScriptCanOpenWindowsAutomatically = true
-                setSupportMultipleWindows(true)
                 builtInZoomControls = true
                 displayZoomControls = false
                 userAgentString = USER_AGENT
 
-                // 添加额外的设置以帮助内存管理
-                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                mediaPlaybackRequiresUserGesture = true // 减少自动媒体加载
+                // 启用App Cache
+//                try {
+//                    val enableMethod = this::class.java.getMethod("setAppCacheEnabled", Boolean::class.javaPrimitiveType)
+//                    enableMethod.invoke(this, true)
+//                } catch (_: Exception) {
+//                    // AppCache API removed on newer Android versions
+//                }
+//                try {
+//                    val pathMethod = this::class.java.getMethod("setAppCachePath", String::class.java)
+//                    pathMethod.invoke(this, context.cacheDir.absolutePath)
+//                } catch (_: Exception) {
+//                    // AppCache API removed on newer Android versions
+//                }
+                allowFileAccess = true
+
+                // 设置默认缓存模式，而不是完全禁用
+                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+
+                // 减少自动媒体加载
+                mediaPlaybackRequiresUserGesture = true
+
+                // 在Android 5.0及以上版本，默认阻止混合内容，这里明确设置
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                }
             }
 
             // 启用交互
             isFocusable = true
             isFocusableInTouchMode = true
             requestFocus()
+
+            // 配置Cookie策略，确保第三方Cookie也被接受
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                cookieManager.setAcceptThirdPartyCookies(this, true)
+            }
 
             // 改善内存管理
             setWillNotDraw(false)
@@ -808,12 +890,25 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
             (function() {
                 try {
                     console.log("Starting content extraction script");
+
+                    // 提取链接
+                    var links = [];
+                    var linkNodes = document.querySelectorAll('a');
+                    for (var i = 0; i < linkNodes.length; i++) {
+                        var node = linkNodes[i];
+                        var href = node.href;
+                        var text = node.innerText.trim();
+                        if (href && text) {
+                            links.push({url: href, text: text});
+                        }
+                    }
                     
                     // 页面基本信息
                     var result = {
                         title: document.title || "No Title",
                         url: window.location.href,
-                        content: ""
+                        content: "",
+                        links: links
                     };
                     
                     // 直接获取整个文档的HTML和文本内容
@@ -838,23 +933,23 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                     
                     // 添加特别关注的元数据
                     var importantMetadata = ['description', 'keywords', 'author', 'og:title', 'og:description'];
-                    var metaStr = "---METADATA---\\n";
+                    var metaStr = "---METADATA---\n";
                     importantMetadata.forEach(function(key) {
                         if (metadata[key]) {
-                            metaStr += key + ": " + metadata[key] + "\\n";
+                            metaStr += key + ": " + metadata[key] + "\n";
                         }
                     });
                     
                     // 组合最终结果
-                    var finalResult = "# " + result.title + "\\n\\n" +
-                                      metaStr + "\\n" +
-                                      "---CONTENT---\\n" +
+                    result.content = "# " + result.title + "\n\n" +
+                                      metaStr + "\n" +
+                                      "---CONTENT---\n" +
                                       fullText;
                                       
-                    console.log("Content extraction complete, length: " + finalResult.length);
-                    return finalResult;
+                    console.log("Content extraction complete");
+                    return JSON.stringify(result);
                 } catch(e) {
-                    return "Error extracting content: " + e.toString();
+                    return JSON.stringify({error: "Error extracting content: " + e.toString()});
                 }
             })();
         """.trimIndent()
@@ -1003,6 +1098,18 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
             onScrollComplete()
         }
     }
+}
+
+@kotlinx.serialization.Serializable
+private data class ExtractedWebData(
+    val title: String,
+    val url: String,
+    val content: String,
+    val links: List<LinkInfo> = emptyList(),
+    val error: String? = null
+) {
+    @kotlinx.serialization.Serializable
+    data class LinkInfo(val url: String, val text: String)
 }
 
 /** 服务生命周期所有者 - 为Compose UI提供生命周期支持 必须在主线程上初始化 */

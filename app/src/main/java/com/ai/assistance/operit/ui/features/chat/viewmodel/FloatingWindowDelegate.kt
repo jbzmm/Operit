@@ -13,8 +13,8 @@ import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.toSerializable
 import com.ai.assistance.operit.services.FloatingChatService
+import com.ai.assistance.operit.services.core.ChatHistoryDelegate
 import com.ai.assistance.operit.ui.floating.FloatingMode
-import com.ai.assistance.operit.ui.permissions.ToolCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +26,8 @@ class FloatingWindowDelegate(
     private val context: Context,
     private val coroutineScope: CoroutineScope,
     private val inputProcessingState: StateFlow<InputProcessingState>,
-    private val chatHistoryFlow: StateFlow<List<ChatMessage>>? = null
+    private val chatHistoryFlow: StateFlow<List<ChatMessage>>? = null,
+    private val chatHistoryDelegate: ChatHistoryDelegate? = null
 ) {
     companion object {
         private const val TAG = "FloatingWindowDelegate"
@@ -41,22 +42,38 @@ class FloatingWindowDelegate(
 
     // 服务连接
     private val serviceConnection =
-            object : ServiceConnection {
-                override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                    val binder = service as FloatingChatService.LocalBinder
-                    floatingService = binder.getService()
-                    // 设置回调，允许服务通知委托关闭
-                    binder.setCloseCallback {
-                        closeFloatingWindow()
+        object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                val binder = service as FloatingChatService.LocalBinder
+                floatingService = binder.getService()
+                // 设置回调，允许服务通知委托关闭
+                binder.setCloseCallback {
+                    closeFloatingWindow()
+                }
+                // 设置反向通信回调，允许悬浮窗通知应用重新加载消息
+                binder.setReloadCallback {
+                    coroutineScope.launch {
+                        try {
+                            val chatId = chatHistoryDelegate?.currentChatId?.value
+                            if (chatId != null) {
+                                Log.d(TAG, "收到悬浮窗重新加载请求，chatId: $chatId")
+                                chatHistoryDelegate?.reloadChatMessagesSmart(chatId)
+                            } else {
+                                Log.w(TAG, "当前没有活跃对话，无法重新加载消息")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "重新加载消息失败", e)
+                        }
                     }
-                    // 订阅聊天历史更新
-                    setupChatHistoryCollection()
                 }
-
-                override fun onServiceDisconnected(name: ComponentName?) {
-                    floatingService = null
-                }
+                // 订阅聊天历史更新
+                setupChatHistoryCollection()
             }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                floatingService = null
+            }
+        }
 
     init {
         // 不再需要注册广播接收器
@@ -69,7 +86,8 @@ class FloatingWindowDelegate(
 
         if (newMode) {
             _isFloatingMode.value = true
-            // 启动并绑定服务
+
+            // 先启动并绑定服务
             val intent = Intent(context, FloatingChatService::class.java)
             colorScheme?.let {
                 intent.putExtra("COLOR_SCHEME", it.toSerializable())
@@ -93,9 +111,9 @@ class FloatingWindowDelegate(
      * 启动悬浮窗并指定一个初始模式
      */
     fun launchInMode(
-            mode: FloatingMode,
-            colorScheme: ColorScheme? = null,
-            typography: Typography? = null
+        mode: FloatingMode,
+        colorScheme: ColorScheme? = null,
+        typography: Typography? = null
     ) {
         if (_isFloatingMode.value && floatingService != null) {
             // 如果服务已在运行，直接切换模式
@@ -106,6 +124,7 @@ class FloatingWindowDelegate(
 
         _isFloatingMode.value = true
 
+        // 先启动并绑定服务
         val intent = Intent(context, FloatingChatService::class.java)
         // 添加初始模式参数
         intent.putExtra("INITIAL_MODE", mode.name)
@@ -143,8 +162,7 @@ class FloatingWindowDelegate(
     private fun setupInputStateCollection() {
         coroutineScope.launch {
             inputProcessingState.collect { state ->
-                val isUiToolExecuting = state is InputProcessingState.ExecutingTool &&
-                        state.category == ToolCategory.UI_AUTOMATION
+                val isUiToolExecuting = state is InputProcessingState.ExecutingTool
 
                 // Update UI busy state directly on the window state
                 // floatingService?.windowState?.isUiBusy?.value = isUiToolExecuting
@@ -171,7 +189,7 @@ class FloatingWindowDelegate(
                         Log.d(TAG, "悬浮窗服务连接，立即同步当前消息: ${currentMessages.size} 条")
                         floatingService?.updateChatMessages(currentMessages)
                     }
-                    
+
                     // 然后订阅后续的更新
                     flow.collect { messages ->
                         // 只在悬浮窗模式激活时同步消息
@@ -185,6 +203,14 @@ class FloatingWindowDelegate(
                 }
             }
         } ?: Log.w(TAG, "chatHistoryFlow为空，无法订阅聊天历史更新")
+    }
+
+    /** 通知悬浮窗服务重新加载消息 */
+    fun notifyFloatingServiceReload() {
+        if (_isFloatingMode.value && floatingService != null) {
+            Log.d(TAG, "通知悬浮窗服务重新加载消息")
+            floatingService?.reloadChatMessages()
+        }
     }
 
     /** 清理资源 */

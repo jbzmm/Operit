@@ -43,40 +43,13 @@ class AnrMonitor(
 ) {
     companion object {
         // 默认阈值设置
-        private const val ANR_THRESHOLD_MS = 5000L     // 5秒，标准ANR阈值
-        private const val WARNING_THRESHOLD_MS = 1000L // 1秒，警告阈值
+        private const val ANR_THRESHOLD_MS = 1000L     // 5秒，标准ANR阈值
+        private const val WARNING_THRESHOLD_MS = 500L // 1秒，警告阈值
         private const val SAMPLING_INTERVAL_MS = 100L  // 100毫秒采样间隔
         private const val MAX_STACK_TRACES = 10        // 最大堆栈跟踪数
         
         // 主线程名称
         private const val MAIN_THREAD_NAME = "main"
-        
-        // ANR可能的原因
-        private val ANR_PATTERNS = arrayOf(
-            "synchronized",
-            "lock",
-            "runblocking",
-            "thread.join",
-            "wait(",
-            "textsegmenter",
-            "initialize",
-            "problemlibrary",
-            "read",
-            "write",
-            "socket",
-            "io",
-            "database",
-            "exec"
-        )
-        
-        // ANR相关关键包路径
-        private val IMPORTANT_PACKAGES = arrayOf(
-            "com.ai.assistance.operit.",
-            "java.io.",
-            "kotlinx.coroutines.",
-            "android.os.",
-            "java.util.concurrent."
-        )
     }
     
     private val running = AtomicBoolean(false)
@@ -100,6 +73,9 @@ class AnrMonitor(
     
     // 最后一次获取到的主线程引用
     private var mainThread: Thread? = null
+    
+    // 上次ANR的分析结果，用于去重
+    private var lastAnrAnalysis: String? = null
     
     /**
      * 开始ANR监控
@@ -323,6 +299,16 @@ class AnrMonitor(
             
             // 添加主线程分析
             val analysis = analyzeStackTrace(mainThreadStack)
+            
+            // 检查是否和上次ANR相同，如果相同则不输出
+            if (analysis == lastAnrAnalysis) {
+                Log.w(tag, "检测到重复的ANR，跳过输出")
+                return
+            }
+            
+            // 更新上次ANR分析结果
+            lastAnrAnalysis = analysis
+            
             sbDump.append("【分析】\n$analysis\n\n")
             
             // 获取并添加调用者信息
@@ -355,49 +341,36 @@ class AnrMonitor(
     }
     
     /**
-     * 分析堆栈跟踪，尝试找出ANR的可能原因
+     * 分析堆栈跟踪，提取并列出堆栈中的包名（仅保留com.ai.assistance.operit包）
      */
     private fun analyzeStackTrace(stackTrace: String): String {
         val analysis = StringBuilder()
+        val targetPackage = "com.ai.assistance.operit"
+        val lines = mutableListOf<String>()
         
-        // 查找关键词
-        ANR_PATTERNS.forEach { pattern ->
-            if (stackTrace.contains(pattern, ignoreCase = true)) {
-                analysis.append("【发现关键字】$pattern\n")
-            }
-        }
-        
-        // 查找重要包
-        var importantLineFound = false
         for (line in stackTrace.lines()) {
-            for (packageName in IMPORTANT_PACKAGES) {
-                if (line.contains(packageName)) {
-                    if (!importantLineFound) {
-                        analysis.append("【重要调用】\n")
-                        importantLineFound = true
-                    }
-                    analysis.append("$line\n")
-                    break
+            // 匹配堆栈行格式: at package.Class.method(File.java:line)
+            val atIndex = line.indexOf("at ")
+            if (atIndex >= 0) {
+                val stackPart = line.substring(atIndex + 3).trim()
+                // 只保留com.ai.assistance.operit包的堆栈
+                if (stackPart.startsWith(targetPackage)) {
+                    lines.add(line.trim())
                 }
             }
         }
         
-        // 分析可能的ANR原因
-        if (stackTrace.contains("runBlocking", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到主线程中使用runBlocking，这会阻塞主线程直到协程完成\n")
-        } else if (stackTrace.contains("synchronized", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到同步块锁定，可能由于竞争条件导致主线程长时间等待\n")
-        } else if (stackTrace.contains("TextSegmenter", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到TextSegmenter在主线程上执行，可能导致耗时操作阻塞主线程\n")
-        } else if (stackTrace.contains("ProblemLibrary", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到ProblemLibrary初始化或操作在主线程上执行\n")
-        } else if (stackTrace.contains("load", ignoreCase = true) || stackTrace.contains("initialize", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到初始化或加载操作，可能是耗时的资源加载阻塞了主线程\n")
-        } else if (stackTrace.contains("io", ignoreCase = true) || stackTrace.contains("read", ignoreCase = true) || stackTrace.contains("write", ignoreCase = true)) {
-            analysis.append("【可能原因】检测到I/O操作，在主线程上执行文件或网络操作会导致ANR\n")
+        // 输出捕捉到的堆栈行
+        if (lines.isNotEmpty()) {
+            analysis.append("【$targetPackage (${lines.size}次调用)】\n")
+            lines.forEach { line ->
+                analysis.append("$line\n")
+            }
+        } else {
+            analysis.append("未能提取到$targetPackage 包信息")
         }
         
-        return if (analysis.isNotEmpty()) analysis.toString() else "无法确定具体原因，请检查堆栈中的耗时操作"
+        return analysis.toString()
     }
     
     /**

@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.services.floating.FloatingWindowState
@@ -45,71 +46,83 @@ fun rememberFloatContext(
         onRemoveAttachment: ((String) -> Unit)? = null,
         onInputFocusRequest: ((Boolean) -> Unit)? = null,
         chatService: FloatingChatService? = null,
-        windowState: FloatingWindowState? = null
+        windowState: FloatingWindowState? = null,
+        inputProcessingState: State<InputProcessingState> = mutableStateOf(InputProcessingState.Idle)
 ): FloatContext {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
 
+    // 创建稳定的 FloatContext 实例，只依赖真正不会改变的架构性参数
+    // 这样可以避免不必要的实例重建，提高性能
     val floatContext = remember(
-            messages,
-            width,
-            height,
-            onClose,
-            onResize,
-            ballSize,
-            windowScale,
-            onScaleChange,
-            currentMode, // <-- 添加 currentMode
-            previousMode, // <-- 添加 previousMode
-            onModeChange,
-            onMove,
-            snapToEdge,
-            isAtEdge,
-            screenWidth,
-            screenHeight,
-            currentX,
-            currentY,
-            saveWindowState,
-            onSendMessage,
-            onCancelMessage,
-            onAttachmentRequest,
-            attachments,
-            onRemoveAttachment,
-            onInputFocusRequest,
-            chatService,
-            windowState
+            chatService,      // 服务实例通常是稳定的
+            windowState,      // 窗口状态实例是稳定的
+            density,          // Density 在配置改变前是稳定的
+            scope             // CoroutineScope 是稳定的
     ) {
         FloatContext(
-                messages = messages,
-                windowWidthState = width,
-                windowHeightState = height,
-                onClose = onClose,
-                onResize = onResize,
+                initialMessages = messages,
+                initialWidth = width,
+                initialHeight = height,
                 ballSize = ballSize,
-                windowScale = windowScale,
-                onScaleChange = onScaleChange,
-                currentMode = currentMode,
-                previousMode = previousMode,
-                onModeChange = onModeChange,
-                onMove = onMove,
-                snapToEdge = snapToEdge,
-                isAtEdge = isAtEdge,
+                initialWindowScale = windowScale,
+                initialMode = currentMode,
+                initialPreviousMode = previousMode,
+                initialIsAtEdge = isAtEdge,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                currentX = currentX,
-                currentY = currentY,
-                saveWindowState = saveWindowState,
-                onSendMessage = onSendMessage,
-                onCancelMessage = onCancelMessage,
-                onAttachmentRequest = onAttachmentRequest,
-                attachments = attachments,
-                onRemoveAttachment = onRemoveAttachment,
-                onInputFocusRequest = onInputFocusRequest,
+                initialX = currentX,
+                initialY = currentY,
+                initialAttachments = attachments,
                 density = density,
                 coroutineScope = scope,
                 chatService = chatService,
-                windowState = windowState
+                windowState = windowState,
+                inputProcessingState = inputProcessingState
         )
+    }
+
+    // 使用 rememberUpdatedState 来持有最新的回调函数，避免作为 remember 的 key
+    val currentOnClose by rememberUpdatedState(onClose)
+    val currentOnResize by rememberUpdatedState(onResize)
+    val currentOnScaleChange by rememberUpdatedState(onScaleChange)
+    val currentOnModeChange by rememberUpdatedState(onModeChange)
+    val currentOnMove by rememberUpdatedState(onMove)
+    val currentSnapToEdge by rememberUpdatedState(snapToEdge)
+    val currentSaveWindowState by rememberUpdatedState(saveWindowState)
+    val currentOnSendMessage by rememberUpdatedState(onSendMessage)
+    val currentOnCancelMessage by rememberUpdatedState(onCancelMessage)
+    val currentOnAttachmentRequest by rememberUpdatedState(onAttachmentRequest)
+    val currentOnRemoveAttachment by rememberUpdatedState(onRemoveAttachment)
+    val currentOnInputFocusRequest by rememberUpdatedState(onInputFocusRequest)
+
+    // 使用 SideEffect 更新回调函数和频繁变化的状态
+    SideEffect {
+        // 更新回调函数
+        floatContext.onClose = currentOnClose
+        floatContext.onResize = currentOnResize
+        floatContext.onScaleChange = currentOnScaleChange
+        floatContext.onModeChange = currentOnModeChange
+        floatContext.onMove = currentOnMove
+        floatContext.snapToEdge = currentSnapToEdge
+        floatContext.saveWindowState = currentSaveWindowState
+        floatContext.onSendMessage = currentOnSendMessage
+        floatContext.onCancelMessage = currentOnCancelMessage
+        floatContext.onAttachmentRequest = currentOnAttachmentRequest
+        floatContext.onRemoveAttachment = currentOnRemoveAttachment
+        floatContext.onInputFocusRequest = currentOnInputFocusRequest
+        
+        // 更新频繁变化的数据
+        floatContext.messages = messages
+        floatContext.windowWidthState = width
+        floatContext.windowHeightState = height
+        floatContext.windowScale = windowScale
+        floatContext.currentMode = currentMode
+        floatContext.previousMode = previousMode
+        floatContext.isAtEdge = isAtEdge
+        floatContext.currentX = currentX
+        floatContext.currentY = currentY
+        floatContext.attachments = attachments
     }
 
     return floatContext
@@ -117,36 +130,52 @@ fun rememberFloatContext(
 
 /** 简化的悬浮窗状态与回调上下文 */
 class FloatContext(
-        val messages: List<ChatMessage>,
-        var windowWidthState: Dp,
-        var windowHeightState: Dp,
-        val onClose: () -> Unit,
-        val onResize: (Dp, Dp) -> Unit,
+        initialMessages: List<ChatMessage>,
+        initialWidth: Dp,
+        initialHeight: Dp,
         val ballSize: Dp,
-        val windowScale: Float,
-        val onScaleChange: (Float) -> Unit,
-        var currentMode: FloatingMode,
-        var previousMode: FloatingMode,
-        val onModeChange: (FloatingMode) -> Unit,
-        val onMove: (Float, Float, Float) -> Unit,
-        val snapToEdge: (Boolean) -> Unit,
-        val isAtEdge: Boolean,
+        initialWindowScale: Float,
+        initialMode: FloatingMode,
+        initialPreviousMode: FloatingMode,
+        initialIsAtEdge: Boolean,
         val screenWidth: Dp,
         val screenHeight: Dp,
-        val currentX: Float,
-        val currentY: Float,
-        val saveWindowState: (() -> Unit)?,
-        val onSendMessage: ((String, PromptFunctionType) -> Unit)?,
-        val onCancelMessage: (() -> Unit)?,
-        val onAttachmentRequest: ((String) -> Unit)?,
-        val attachments: List<AttachmentInfo>,
-        val onRemoveAttachment: ((String) -> Unit)?,
-        val onInputFocusRequest: ((Boolean) -> Unit)?,
+        initialX: Float,
+        initialY: Float,
+        initialAttachments: List<AttachmentInfo>,
         val density: Density,
         val coroutineScope: CoroutineScope,
         val chatService: FloatingChatService? = null,
-        val windowState: FloatingWindowState? = null
+        val windowState: FloatingWindowState? = null,
+        val inputProcessingState: State<InputProcessingState>
 ) {
+    // 回调函数使用 var 以便通过 SideEffect 更新
+    var onClose: () -> Unit = {}
+    var onResize: (Dp, Dp) -> Unit = { _, _ -> }
+    var onScaleChange: (Float) -> Unit = {}
+    var onModeChange: (FloatingMode) -> Unit = {}
+    var onMove: (Float, Float, Float) -> Unit = { _, _, _ -> }
+    var snapToEdge: (Boolean) -> Unit = {}
+    var saveWindowState: (() -> Unit)? = null
+    var onSendMessage by mutableStateOf<((String, PromptFunctionType) -> Unit)?>(null)
+    var onCancelMessage: (() -> Unit)? = null
+    var onAttachmentRequest: ((String) -> Unit)? = null
+    var onRemoveAttachment: ((String) -> Unit)? = null
+    var onInputFocusRequest: ((Boolean) -> Unit)? = null
+
+    // 使用 mutableStateOf 让 Compose 能感知变化
+    var messages by mutableStateOf(initialMessages)
+    var windowWidthState by mutableStateOf(initialWidth)
+    var windowHeightState by mutableStateOf(initialHeight)
+    var windowScale by mutableStateOf(initialWindowScale)
+    var currentMode by mutableStateOf(initialMode)
+    var previousMode by mutableStateOf(initialPreviousMode)
+    var isAtEdge by mutableStateOf(initialIsAtEdge)
+    var currentX by mutableStateOf(initialX)
+    var currentY by mutableStateOf(initialY)
+    var attachments by mutableStateOf(initialAttachments)
+    // inputProcessingState is a State object, accessed directly
+
     // 动画与转换相关状态
     val animatedAlpha = Animatable(1f)
     val transitionFeedback = Animatable(0f)

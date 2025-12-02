@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -29,6 +30,8 @@ import java.io.StringReader
 import kotlin.coroutines.resume
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * UI层次结构管理器
@@ -47,11 +50,15 @@ object UIHierarchyManager {
     // TODO: 如果你不在Google Play上发布，可以将其更改为直接下载的URL
     private const val PROVIDER_MARKET_URL = "market://details?id=$PROVIDER_PACKAGE_NAME"
 
+    @Volatile
     private var accessibilityProvider: IAccessibilityProvider? = null
 
     private val _isBound = MutableStateFlow(false)
     val isBound = _isBound.asStateFlow()
 
+    private val bindingMutex = Mutex()
+
+    @Volatile
     private var connectionContinuation: ((Boolean) -> Unit)? = null
 
     private val serviceConnection = object : ServiceConnection {
@@ -188,54 +195,94 @@ object UIHierarchyManager {
      * @return a boolean indicating if the binding was successful.
      */
     suspend fun bindToService(context: Context): Boolean {
-        if (_isBound.value || !isProviderAppInstalled(context)) {
-            if (!_isBound.value) Log.w(TAG, "无法绑定：服务已绑定或提供者应用未安装")
-            return _isBound.value
-        }
+        return bindingMutex.withLock {
+            Log.d(TAG, "bindToService invoked. Thread: ${Thread.currentThread().name}, Context: ${context.javaClass.name}")
 
-        val intent = Intent(PROVIDER_ACTION).apply {
-            setPackage(PROVIDER_PACKAGE_NAME)
-        }
+            // 只有在已完全绑定（bound且provider不为空）或者应用未安装的情况下才直接返回
+            // 如果 _isBound 为 true 但 provider 为 null，则认为是状态不一致，需要重新绑定
+            if ((_isBound.value && accessibilityProvider != null) || !isProviderAppInstalled(context)) {
+                if (!_isBound.value) Log.w(TAG, "无法绑定：服务已绑定或提供者应用未安装")
+                return@withLock _isBound.value
+            }
 
-        val result = withTimeoutOrNull(BIND_SERVICE_TIMEOUT_MS) {
-            suspendCancellableCoroutine { continuation ->
-                connectionContinuation = { success ->
-                    if (continuation.isActive) {
-                        continuation.resume(success)
+            val implicitIntent = Intent(PROVIDER_ACTION).setPackage(PROVIDER_PACKAGE_NAME)
+            val resolveInfo: ResolveInfo? = context.packageManager.resolveService(implicitIntent, PackageManager.MATCH_ALL)
+
+            if (resolveInfo == null) {
+                Log.e(TAG, "无法解析服务: $PROVIDER_ACTION. 请确认提供者应用已正确安装。")
+                return@withLock false
+            }
+
+            Log.d(TAG, "服务解析成功: ${resolveInfo.serviceInfo.packageName}/${resolveInfo.serviceInfo.name}")
+
+            val explicitIntent = Intent(PROVIDER_ACTION).apply {
+                component = ComponentName(resolveInfo.serviceInfo.packageName, resolveInfo.serviceInfo.name)
+                addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+            }
+
+            val result = withTimeoutOrNull(BIND_SERVICE_TIMEOUT_MS) {
+                suspendCancellableCoroutine { continuation ->
+                    connectionContinuation = { success ->
+                        Log.d(TAG, "connectionContinuation called with success=$success")
+                        if (continuation.isActive) {
+                            continuation.resume(success)
+                        }
                     }
-                }
-                try {
-                    val bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-                    if (!bound) {
-                        Log.e(TAG, "bindService返回false，绑定失败")
+                    try {
+                        Log.d(TAG, "尝试使用 ApplicationContext 绑定...")
+                        var bound = context.applicationContext.bindService(explicitIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+                        Log.d(TAG, "ApplicationContext 绑定结果: $bound")
+
+                        if (!bound) {
+                            Log.w(TAG, "ApplicationContext绑定失败，尝试使用原始Context (${context.javaClass.simpleName}) ...")
+                            bound = context.bindService(explicitIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+                            Log.d(TAG, "原始 Context 绑定结果: $bound")
+                        }
+
+                        if (!bound) {
+                            Log.e(TAG, "bindService返回false，绑定失败。可能是权限问题或后台启动限制。")
+                            if (continuation.isActive) {
+                                continuation.resume(false)
+                            }
+                            connectionContinuation = null
+                        }
+                    } catch (e: SecurityException) {
+                        Log.e(TAG, "绑定服务时出现安全异常", e)
+                        if (continuation.isActive) {
+                            continuation.resume(false)
+                        }
+                        connectionContinuation = null
+                    } catch (e: Exception) {
+                        Log.e(TAG, "绑定服务时出现未知异常", e)
                         if (continuation.isActive) {
                             continuation.resume(false)
                         }
                         connectionContinuation = null
                     }
-                } catch (e: SecurityException) {
-                    Log.e(TAG, "绑定服务时出现安全异常", e)
-                    if (continuation.isActive) {
-                        continuation.resume(false)
-                    }
-                    connectionContinuation = null
                 }
             }
-        }
 
-        if (result == null) {
-            Log.e(TAG, "绑定服务超时 (${BIND_SERVICE_TIMEOUT_MS}ms). 无障碍服务提供者可能未响应或崩溃.")
-            connectionContinuation = null
-            _isBound.value = false
-            try {
-                context.unbindService(serviceConnection)
-            } catch (e: Exception) {
-                // Ignore: service was likely not bound anyway
+            if (result == null) {
+                Log.e(TAG, "绑定服务超时 (${BIND_SERVICE_TIMEOUT_MS}ms). 无障碍服务提供者可能未响应或崩溃.")
+                connectionContinuation = null
+                _isBound.value = false
+                try {
+                    context.applicationContext.unbindService(serviceConnection)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+                // 尝试解绑原始 context 以防万一
+                try {
+                    if (context != context.applicationContext) {
+                        context.unbindService(serviceConnection)
+                    }
+                } catch (e: Exception) {}
+                return@withLock false
             }
-            return false
-        }
 
-        return result
+            Log.d(TAG, "bindToService 成功完成")
+            result
+        }
     }
 
     /**
@@ -243,7 +290,11 @@ object UIHierarchyManager {
      */
     fun unbindFromService(context: Context) {
         if (_isBound.value) {
-            context.unbindService(serviceConnection)
+            try {
+                context.applicationContext.unbindService(serviceConnection)
+            } catch (e: Exception) {
+                Log.e(TAG, "解绑服务失败", e)
+            }
             _isBound.value = false
             accessibilityProvider = null
             Log.d(TAG, "服务已解绑")

@@ -35,8 +35,8 @@ android {
         applicationId = "com.ai.assistance.operit"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "1.6.0"
+        versionCode = 29
+        versionName = "1.6.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -66,6 +66,24 @@ android {
         }
         debug {
             signingConfig = signingConfigs.getByName("release")
+        }
+        create("nightly") {
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
+            matchingFallbacks += listOf("release")
+        }
+    }
+    applicationVariants.all {
+        if (buildType.name == "nightly") {
+            outputs.all {
+                val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+                output.outputFileName = "app-nightly.apk"
+            }
         }
     }
     compileOptions {
@@ -366,11 +384,21 @@ dependencies {
             force("io.ktor:ktor-client-core:2.3.5") 
             force("io.ktor:ktor-client-cio:2.3.5")
             force("io.ktor:ktor-serialization-kotlinx-json:2.3.5")
+            // Force BouncyCastle to use jdk18on version to avoid duplicate classes
+            force("org.bouncycastle:bcprov-jdk18on:1.78")
         }
+    }
+    
+    // Exclude bcprov-jdk15to18 from all configurations to avoid duplicate classes
+    configurations.all {
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
     }
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    
+    // BouncyCastle - explicitly include jdk18on version to avoid conflicts
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78")
 
     // Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

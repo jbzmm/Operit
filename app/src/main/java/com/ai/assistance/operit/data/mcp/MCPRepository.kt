@@ -12,7 +12,6 @@ import com.ai.assistance.operit.core.tools.mcp.MCPServerConfig
 import com.ai.assistance.operit.core.tools.mcp.MCPToolExecutor
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
-import com.ai.assistance.operit.ui.permissions.ToolCategory
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
@@ -857,12 +856,13 @@ class MCPRepository(private val context: Context) {
                 installedTime = System.currentTimeMillis()
             )
             
+            Log.d(TAG, "添加远程服务器: ${server.id}, bearerToken: ${server.bearerToken?.take(10)}..., headers: ${server.headers?.keys}")
+            
             mcpLocalServer.addOrUpdatePluginMetadata(metadata)
 
             mcpLocalServer.updateServerStatus(
                 server.id,
-                active = false, // The bridge will report the active status
-                deploySuccess = true
+                active = false // The bridge will report the active status
             )
 
             // 重新加载插件状态
@@ -888,7 +888,9 @@ class MCPRepository(private val context: Context) {
                 longDescription = server.longDescription,
                 author = server.author,
                 endpoint = if (server.type == "remote") server.endpoint else metadata.endpoint,
-                connectionType = if (server.type == "remote") server.connectionType else metadata.connectionType
+                connectionType = if (server.type == "remote") server.connectionType else metadata.connectionType,
+                bearerToken = if (server.type == "remote") server.bearerToken else metadata.bearerToken,
+                headers = if (server.type == "remote") server.headers else metadata.headers
             )
             mcpLocalServer.addOrUpdatePluginMetadata(updatedMetadata)
 
@@ -1081,7 +1083,6 @@ class MCPRepository(private val context: Context) {
                     runBlocking {
                         toolHandler.registerTool(
                             name = prefixedToolName,
-                            category = ToolCategory.FILE_READ,
                             executor = mcpToolExecutor,
                             descriptionGenerator = { tool ->
                                 val baseDescription = toolInfo.description

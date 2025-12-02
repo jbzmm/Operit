@@ -16,10 +16,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.services.floating.FloatingWindowState
 import com.ai.assistance.operit.ui.floating.ui.ball.FloatingChatBallMode
+import com.ai.assistance.operit.ui.floating.ui.ball.FloatingResultDisplay
 import com.ai.assistance.operit.ui.floating.ui.ball.FloatingVoiceBallMode
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.FloatingFullscreenMode
 import com.ai.assistance.operit.ui.floating.ui.window.screen.FloatingChatWindowMode
@@ -83,7 +85,8 @@ fun FloatingChatWindow(
         onRemoveAttachment: ((String) -> Unit)? = null,
         onInputFocusRequest: ((Boolean) -> Unit)? = null,
         chatService: FloatingChatService? = null,
-        windowState: FloatingWindowState? = null
+        windowState: FloatingWindowState? = null,
+        inputProcessingState: State<InputProcessingState> = mutableStateOf(InputProcessingState.Idle)
 ) {
     val floatContext =
             rememberFloatContext(
@@ -113,7 +116,8 @@ fun FloatingChatWindow(
                     onRemoveAttachment = onRemoveAttachment,
                     onInputFocusRequest = onInputFocusRequest,
                     chatService = chatService,
-                    windowState = windowState
+                    windowState = windowState,
+                    inputProcessingState = inputProcessingState
             )
 
     // 将窗口缩放限制在合理范围内 - 已通过回调和状态源头处理，不再需要
@@ -186,6 +190,7 @@ fun FloatingChatWindow(
             }
             FloatingMode.VOICE_BALL -> FloatingVoiceBallMode(floatContext = floatContext)
             FloatingMode.FULLSCREEN -> FloatingFullscreenMode(floatContext = floatContext)
+            FloatingMode.RESULT_DISPLAY -> FloatingResultDisplay(floatContext = floatContext)
         }
     }
 }

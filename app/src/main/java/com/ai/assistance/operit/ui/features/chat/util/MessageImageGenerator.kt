@@ -3,8 +3,11 @@ package com.ai.assistance.operit.ui.features.chat.util
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -12,10 +15,13 @@ import android.widget.ScrollView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,31 +99,44 @@ object MessageImageGenerator {
             
             // 在主线程上创建、附加和捕获 Composable 内容
             val bitmap = withContext(Dispatchers.Main) {
-                // 创建专门用于软件渲染的 ImageLoader，禁用硬件位图
-                val softwareImageLoader = ImageLoader.Builder(context)
-                    .allowHardware(false) // 关键：禁用硬件位图
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .build()
+                // 检查当前是否为暗色模式
+                val isDarkTheme = (context.resources.configuration.uiMode and 
+                    Configuration.UI_MODE_NIGHT_MASK) == 
+                    Configuration.UI_MODE_NIGHT_YES
+                
+                // 根据暗色模式选择颜色方案
+                val colorScheme = if (isDarkTheme) {
+                    darkColorScheme()
+                } else {
+                    lightColorScheme()
+                }
                 
                 // 创建 ComposeView，包含所有消息内容
                 val composeView = ComposeView(context).apply {
                     setContent {
-                        // 提供自定义的 ImageLoader
+                        // 为截图渲染提供只使用软件 Bitmap 的 ImageLoader，避免
+                        // "Software rendering doesn't support hardware bitmaps" 崩溃
+                        val softwareImageLoader = ImageLoader.Builder(context)
+                            .allowHardware(false)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .build()
+
                         androidx.compose.runtime.CompositionLocalProvider(
                             LocalImageLoader provides softwareImageLoader
                         ) {
-                            MaterialTheme {
+                        MaterialTheme(colorScheme = colorScheme) {
                             // 不再使用 Capturable，直接渲染内容
                             val density = LocalDensity.current
                             val widthDp = with(density) { width.toDp() }
+                            val colorScheme = MaterialTheme.colorScheme
                             
-                            // 外层容器：白色背景 + 内边距
+                            // 外层容器：使用主题背景色 + 内边距
                             Column(
                                 modifier = Modifier
                                     .width(widthDp)
                                     .wrapContentHeight()
-                                    .background(Color.White)
+                                    .background(colorScheme.background)
                                     .padding(12.dp) // 减少外层边距：24dp -> 12dp
                             ) {
                                 // 内容卡片：圆角边框 + 阴影效果
@@ -127,16 +146,16 @@ object MessageImageGenerator {
                                         .clip(RoundedCornerShape(12.dp)) // 减少圆角：16dp -> 12dp
                                         .border(
                                             width = 1.5.dp, // 减少边框宽度：2dp -> 1.5dp
-                                            color = Color(0xFFE0E0E0),
+                                            color = colorScheme.outlineVariant,
                                             shape = RoundedCornerShape(12.dp)
                                         )
-                                        .background(Color.White)
+                                        .background(colorScheme.surface)
                                 ) {
                                     // 顶部品牌栏：Logo + "Operit AI"
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(Color(0xFFF5F5F5))
+                                            .background(colorScheme.surfaceVariant)
                                             .padding(horizontal = 12.dp, vertical = 8.dp), // 减少品牌栏边距
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center
@@ -153,7 +172,7 @@ object MessageImageGenerator {
                                             text = "Operit AI",
                                             fontSize = 16.sp, // 减少字体大小：18sp -> 16sp
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF333333)
+                                            color = colorScheme.onSurface
                                         )
                                     }
                                     
@@ -162,7 +181,7 @@ object MessageImageGenerator {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(1.dp)
-                                            .background(Color(0xFFE0E0E0))
+                                            .background(colorScheme.outlineVariant)
                                     )
                                     
                                     // 消息内容区域
@@ -170,7 +189,7 @@ object MessageImageGenerator {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .wrapContentHeight()
-                                            .background(Color.White)
+                                            .background(colorScheme.surface)
                                             .padding(12.dp), // 减少内容区域边距：16dp -> 12dp
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
@@ -214,7 +233,7 @@ object MessageImageGenerator {
                                     }
                                 }
                             }
-                            }
+                        }
                         }
                     }
                 }
@@ -258,13 +277,33 @@ object MessageImageGenerator {
                     val contentHeight = scrollView.getChildAt(0).height
                     Log.d(TAG, "内容完整高度: $contentHeight")
                     
-                    capturedBitmap = Bitmap.createBitmap(
+                    var tempBitmap = Bitmap.createBitmap(
                         scrollView.width,
                         contentHeight,
                         Bitmap.Config.ARGB_8888
                     )
-                    val canvas = Canvas(capturedBitmap)
+                    val canvas = Canvas(tempBitmap)
+                    
+                    // 根据当前主题填充背景色
+                    val backgroundColor = if (isDarkTheme) {
+                        AndroidColor.rgb(18, 18, 18) // Material3 暗色模式背景
+                    } else {
+                        AndroidColor.WHITE // 亮色模式背景
+                    }
+                    canvas.drawColor(backgroundColor)
+                    
                     scrollView.draw(canvas)
+                    
+                    // 检查是否为硬件 Bitmap，如果是则转换为软件 Bitmap
+                    // 软件渲染不支持硬件 Bitmap，需要转换为软件 Bitmap
+                    capturedBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && tempBitmap.config == Bitmap.Config.HARDWARE) {
+                        Log.d(TAG, "检测到硬件 Bitmap，转换为软件 Bitmap")
+                        val softwareBitmap = tempBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                        tempBitmap.recycle()
+                        softwareBitmap
+                    } else {
+                        tempBitmap
+                    }
                     
                     Log.d(TAG, "捕获成功，图片尺寸: ${capturedBitmap.width}x${capturedBitmap.height}")
                 } catch (e: Throwable) {

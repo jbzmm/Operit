@@ -179,6 +179,7 @@ fun MCPConfigScreen(
     var remoteEndpointInput by remember { mutableStateOf("") }
     var remoteConnectionType by remember { mutableStateOf("httpStream") }
     var remoteConnectionTypeExpanded by remember { mutableStateOf(false) }
+    var remoteBearerToken by remember { mutableStateOf("") }
     
     // 新增：配置导入相关状态
     var configJsonInput by remember { mutableStateOf("") }
@@ -636,6 +637,17 @@ fun MCPConfigScreen(
                                     }
                                 }
                             }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            OutlinedTextField(
+                                value = remoteBearerToken,
+                                onValueChange = { remoteBearerToken = it },
+                                label = { Text("Bearer Token (Optional)") },
+                                placeholder = { Text("Enter bearer token for authentication") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
                         }
                         3 -> {
                             // 配置导入
@@ -766,7 +778,8 @@ fun MCPConfigScreen(
                                 repoUrl = if (importTabIndex == 0) repoUrlInput else "",
                                 type = if(isRemote) "remote" else "local",
                                 endpoint = if(isRemote) remoteEndpointInput else null,
-                                connectionType = if(isRemote) remoteConnectionType else "httpStream"
+                                connectionType = if(isRemote) remoteConnectionType else "httpStream",
+                                bearerToken = if(isRemote && remoteBearerToken.isNotBlank()) remoteBearerToken else null
                             )
                             
                             if(isRemote){
@@ -789,6 +802,7 @@ fun MCPConfigScreen(
                             remoteEndpointInput = ""
                             remoteConnectionType = "httpStream"
                             remoteConnectionTypeExpanded = false
+                            remoteBearerToken = ""
                             showImportDialog = false
                             isImporting = false
                         } else {
@@ -828,6 +842,7 @@ fun MCPConfigScreen(
                     remoteEndpointInput = ""
                     remoteConnectionType = "httpStream"
                     remoteConnectionTypeExpanded = false
+                    remoteBearerToken = ""
                     configJsonInput = ""
                     showImportDialog = false 
                 }) {
@@ -1022,9 +1037,9 @@ fun MCPConfigScreen(
                         // 获取插件服务器状态
                         val serverStatus = mcpLocalServer.getServerStatus(pluginId)
 
-                        // 获取插件部署成功状态
+                        // 获取插件部署状态（通过检查Linux文件系统）
                         val deploySuccessState = remember(pluginId) {
-                            mutableStateOf(serverStatus?.deploySuccess == true)
+                            mutableStateOf(false)
                         }
 
                         // 获取插件启用状态 - 从配置读取
@@ -1036,19 +1051,19 @@ fun MCPConfigScreen(
                         val pluginRunningState = remember(pluginId) {
                             mutableStateOf(serverStatus?.active == true)
                         }
-
-                        // 获取插件最后部署时间
-                        val lastDeployTimeState = remember(pluginId) {
-                            mutableStateOf(serverStatus?.lastDeployTime ?: 0L)
+                        
+                        // 检查部署状态
+                        LaunchedEffect(pluginId) {
+                            deploySuccessState.value = mcpLocalServer.isPluginDeployed(pluginId)
                         }
                         
                         // 监听服务器状态变化
                         LaunchedEffect(pluginId) {
                             mcpLocalServer.serverStatus.collect { statusMap ->
                                 val status = statusMap[pluginId]
-                                deploySuccessState.value = status?.deploySuccess == true
                                 pluginRunningState.value = status?.active == true
-                                lastDeployTimeState.value = status?.lastDeployTime ?: 0L
+                                // 重新检查部署状态
+                                deploySuccessState.value = mcpLocalServer.isPluginDeployed(pluginId)
                             }
                         }
                         
@@ -1089,8 +1104,7 @@ fun MCPConfigScreen(
                                     }
                                 },
                                 isRunning = pluginRunningState.value,
-                                isDeployed = deploySuccessState.value,
-                                lastDeployTime = lastDeployTimeState.value
+                                isDeployed = deploySuccessState.value
                         )
                         Divider(modifier = Modifier.padding(horizontal = 4.dp))
                     }
@@ -1205,8 +1219,7 @@ private fun PluginListItem(
     isEnabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     isRunning: Boolean = false,
-    isDeployed: Boolean = false,
-    lastDeployTime: Long = 0L
+    isDeployed: Boolean = false
 ) {
     Card(
         modifier = Modifier
@@ -1324,20 +1337,6 @@ private fun PluginListItem(
                             }
                         }
                     }
-                    
-                    // 部署时间（如果有）
-                    if (lastDeployTime > 0 && !isRemote) {
-                        val dateStr = java.text.SimpleDateFormat(
-                            "MM-dd HH:mm",
-                            java.util.Locale.getDefault()
-                        ).format(java.util.Date(lastDeployTime))
-                        Text(
-                            text = stringResource(R.string.deploy_date, dateStr),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontSize = 10.sp
-                        )
-                    }
                 }
 
                 // 紧凑的开关
@@ -1451,6 +1450,7 @@ fun RemoteServerEditDialog(
     var description by remember { mutableStateOf(server.description) }
     var endpoint by remember { mutableStateOf(server.endpoint ?: "") }
     var connectionType by remember { mutableStateOf(server.connectionType ?: "httpStream") }
+    var bearerToken by remember { mutableStateOf(server.bearerToken ?: "") }
     val connectionTypes = listOf("httpStream", "sse")
     var expanded by remember { mutableStateOf(false) }
     val isRemote = server.type == "remote"
@@ -1514,6 +1514,14 @@ fun RemoteServerEditDialog(
                             }
                         }
                     }
+                    
+                    OutlinedTextField(
+                        value = bearerToken,
+                        onValueChange = { bearerToken = it },
+                        label = { Text("Bearer Token (Optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Enter bearer token for authentication") }
+                    )
                 }
             }
         },
@@ -1524,7 +1532,8 @@ fun RemoteServerEditDialog(
                         name = name,
                         description = description,
                         endpoint = if(isRemote) endpoint else server.endpoint,
-                        connectionType = if(isRemote) connectionType else server.connectionType
+                        connectionType = if(isRemote) connectionType else server.connectionType,
+                        bearerToken = if(isRemote && bearerToken.isNotBlank()) bearerToken else null
                     )
                     onSave(updatedServer)
                 },

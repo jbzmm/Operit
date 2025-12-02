@@ -2,6 +2,7 @@ package com.ai.assistance.operit.api.chat.llmprovider
 
 import android.util.Log
 import com.ai.assistance.operit.data.model.ModelParameter
+import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.util.stream.Stream
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -19,8 +20,9 @@ class QwenAIProvider(
     client: OkHttpClient,
     customHeaders: Map<String, String> = emptyMap(),
     providerType: com.ai.assistance.operit.data.model.ApiProviderType = com.ai.assistance.operit.data.model.ApiProviderType.ALIYUN,
-    supportsVision: Boolean = false
-) : OpenAIProvider(apiEndpoint, apiKeyProvider, modelName, client, customHeaders, providerType, supportsVision) {
+    supportsVision: Boolean = false,
+    enableToolCall: Boolean = false
+) : OpenAIProvider(apiEndpoint, apiKeyProvider, modelName, client, customHeaders, providerType, supportsVision, enableToolCall) {
 
     /**
      * 重写创建请求体的方法，以支持Qwen的`enable_thinking`参数。
@@ -29,10 +31,12 @@ class QwenAIProvider(
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>>,
-        enableThinking: Boolean
+        enableThinking: Boolean,
+        stream: Boolean,
+        availableTools: List<ToolPrompt>?
     ): RequestBody {
         // 首先，调用父类的实现来获取一个标准的OpenAI格式的请求体JSON对象
-        val baseRequestBodyJson = super.createRequestBodyInternal(message, chatHistory, modelParameters)
+        val baseRequestBodyJson = super.createRequestBodyInternal(message, chatHistory, modelParameters, stream, availableTools)
         val jsonObject = JSONObject(baseRequestBodyJson)
 
         // 如果启用了思考模式，则为Qwen模型添加特定的`enable_thinking`参数
@@ -53,10 +57,12 @@ class QwenAIProvider(
             chatHistory: List<Pair<String, String>>,
             modelParameters: List<ModelParameter<*>>,
             enableThinking: Boolean,
+            stream: Boolean,
+            availableTools: List<ToolPrompt>?,
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
             onNonFatalError: suspend (error: String) -> Unit
     ): Stream<String> {
-        // 直接调用父类的sendMessage实现，它已经包含了续写逻辑
-        return super.sendMessage(message, chatHistory, modelParameters, enableThinking, onTokensUpdated, onNonFatalError)
+        // 直接调用父类的sendMessage实现，它已经包含了续写逻辑和stream参数处理
+        return super.sendMessage(message, chatHistory, modelParameters, enableThinking, stream, availableTools, onTokensUpdated, onNonFatalError)
     }
-} 
+}

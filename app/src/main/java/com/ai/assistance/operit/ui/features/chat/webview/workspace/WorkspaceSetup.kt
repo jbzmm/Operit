@@ -17,9 +17,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.chat.webview.createAndGetDefaultWorkspace
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 /**
  * VSCode风格的工作区设置组件
@@ -29,10 +33,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
     val context = LocalContext.current
     var showFileBrowser by remember { mutableStateOf(false) }
+    var showProjectTypeDialog by remember { mutableStateOf(false) }
 
     if (showFileBrowser) {
         FileBrowser(
-            initialPath = "/sdcard/Download/", // 默认下载目录
+            initialPath = context.filesDir.absolutePath, // 默认应用内部目录
             onBindWorkspace = onBindWorkspace,
             onCancel = { showFileBrowser = false }
         )
@@ -51,6 +56,136 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (showProjectTypeDialog) {
+                AlertDialog(
+                    onDismissRequest = { showProjectTypeDialog = false },
+                    title = {
+                        Text(
+                            text = "选择项目类型",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "请选择要创建的默认工作区类型",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Office 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Description,
+                                title = "办公文档",
+                                description = "用于文档编辑、文件处理和通用办公任务",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "office")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Web 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Language,
+                                title = "Web 项目",
+                                description = "适用于网页开发，支持 HTML/CSS/JavaScript，自动启动本地服务器",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId)
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Node.js 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Terminal,
+                                title = "Node.js 项目",
+                                description = "适用于 Node.js 后端开发，提供 npm 命令快捷按钮",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "node")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // TypeScript 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Code,
+                                title = "TypeScript 项目",
+                                description = "TypeScript + pnpm，支持类型安全开发和 tsc watch 实时编译",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "typescript")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Python 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Code,
+                                title = "Python 项目",
+                                description = "适用于 Python 开发，支持 pip 和 HTTP 服务器",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "python")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Java 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Settings,
+                                title = "Java 项目",
+                                description = "适用于 Java 开发，支持 Gradle 和 Maven 构建",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "java")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Go 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Build,
+                                title = "Go 项目",
+                                description = "适用于 Go 开发，提供 go mod 和 build 命令",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "go")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Android 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Android,
+                                title = "Android 项目",
+                                description = "Android 应用开发，使用 Gradle 构建系统",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "android")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = { showProjectTypeDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
+
             // VSCode风格的图标
             Icon(
                 imageVector = Icons.Default.Widgets, // 使用更通用的图标
@@ -62,7 +197,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
             Spacer(modifier = Modifier.height(24.dp))
             
             Text(
-                text = "设置工作区", // 更改标题
+                text = context.getString(R.string.setup_workspace),
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -70,7 +205,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
             
             Text(
-                text = "为您的AI项目提供一个专属的文件环境",
+                text = context.getString(R.string.workspace_description),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -87,21 +222,94 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
             ) {
                 WorkspaceOption(
                     icon = Icons.Default.CreateNewFolder,
-                    title = "创建默认",
-                    description = "在应用内创建新工作区",
+                    title = context.getString(R.string.create_default_workspace),
+                    description = context.getString(R.string.create_new_workspace_in_app),
                     onClick = {
-                        val workspaceDir = createAndGetDefaultWorkspace(context, chatId)
-                        onBindWorkspace(workspaceDir.absolutePath)
+                        showProjectTypeDialog = true
                     }
                 )
                 
                 WorkspaceOption(
                     icon = Icons.Default.FolderOpen,
-                    title = "选择现有",
-                    description = "从设备中选择一个文件夹",
+                    title = context.getString(R.string.select_existing_workspace),
+                    description = context.getString(R.string.select_folder_from_device),
                     onClick = { showFileBrowser = true }
                 )
             }
+        }
+    }
+}
+
+/**
+ * 项目类型卡片组件（IDE风格）
+ */
+@Composable
+fun ProjectTypeCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 图标
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            
+            // 文字内容
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            // 箭头指示
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

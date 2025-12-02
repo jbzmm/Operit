@@ -6,6 +6,8 @@ import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
+import com.ai.assistance.operit.data.model.getModelByIndex
+import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.ApiPreferences
@@ -44,10 +46,10 @@ class MultiServiceManager(private val context: Context) {
             }
 
             // 否则，创建新的服务实例
-            val configId = functionalConfigManager.getConfigIdForFunction(functionType)
-            val config = modelConfigManager.getModelConfigFlow(configId).first()
+            val configMapping = functionalConfigManager.getConfigMappingForFunction(functionType)
+            val config = modelConfigManager.getModelConfigFlow(configMapping.configId).first()
 
-            val service = createServiceFromConfig(config)
+            val service = createServiceFromConfig(config, configMapping.modelIndex)
             serviceInstances[functionType] = service
 
             // 如果是CHAT功能类型，也设置为默认服务
@@ -55,7 +57,7 @@ class MultiServiceManager(private val context: Context) {
                 defaultService = service
             }
 
-            Log.d(TAG, "已为功能${functionType}创建服务实例，使用配置${config.name}")
+            Log.d(TAG, "已为功能${functionType}创建服务实例，使用配置${config.name}，模型索引${configMapping.modelIndex}")
             service
         }
     }
@@ -112,13 +114,30 @@ class MultiServiceManager(private val context: Context) {
     }
 
     /** 根据配置创建AIService实例 */
-    private suspend fun createServiceFromConfig(config: ModelConfigData): AIService {
+    private suspend fun createServiceFromConfig(config: ModelConfigData, modelIndex: Int): AIService {
         // 从ApiPreferences中异步获取自定义请求头
         val apiPreferences = ApiPreferences.getInstance(context)
         val customHeadersJson = apiPreferences.getCustomHeaders()
 
+        // 使用公共函数计算有效索引
+        val actualIndex = getValidModelIndex(config.modelName, modelIndex)
+        
+        // 记录越界警告
+        if (actualIndex != modelIndex && modelIndex != 0) {
+            val modelList = config.modelName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            Log.w(TAG, "模型索引 $modelIndex 超出范围(0-${modelList.size - 1})，自动使用第一个模型")
+        }
+        
+        // 根据实际索引选择具体模型
+        val selectedModelName = getModelByIndex(config.modelName, actualIndex)
+        
+        // 创建一个临时配置，使用选中的模型名称
+        val configWithSelectedModel = config.copy(modelName = selectedModelName)
+        
+        Log.d(TAG, "创建服务: 原始模型='${config.modelName}', 选中模型='$selectedModelName' (请求索引=$modelIndex, 实际索引=$actualIndex)")
+
         return AIServiceFactory.createService(
-            config = config,
+            config = configWithSelectedModel,
             customHeadersJson = customHeadersJson,
             modelConfigManager = modelConfigManager,
             context = context
@@ -133,8 +152,18 @@ class MultiServiceManager(private val context: Context) {
     suspend fun getModelParametersForFunction(
             functionType: FunctionType
     ): List<com.ai.assistance.operit.data.model.ModelParameter<*>> {
-        val configId = functionalConfigManager.getConfigIdForFunction(functionType)
-        return modelConfigManager.getModelParametersForConfig(configId)
+        val configMapping = functionalConfigManager.getConfigMappingForFunction(functionType)
+        return modelConfigManager.getModelParametersForConfig(configMapping.configId)
+    }
+
+    /**
+     * 获取指定功能类型的模型配置
+     * @param functionType 功能类型
+     * @return 模型配置数据
+     */
+    suspend fun getModelConfigForFunction(functionType: FunctionType): ModelConfigData {
+        val configMapping = functionalConfigManager.getConfigMappingForFunction(functionType)
+        return modelConfigManager.getModelConfigFlow(configMapping.configId).first()
     }
 
     /**
@@ -142,8 +171,8 @@ class MultiServiceManager(private val context: Context) {
      * @return 如果识图功能配置启用了直接图片处理则返回true
      */
     suspend fun hasImageRecognitionConfigured(): Boolean {
-        val configId = functionalConfigManager.getConfigIdForFunction(FunctionType.IMAGE_RECOGNITION)
-        val config = modelConfigManager.getModelConfigFlow(configId).first()
+        val configMapping = functionalConfigManager.getConfigMappingForFunction(FunctionType.IMAGE_RECOGNITION)
+        val config = modelConfigManager.getModelConfigFlow(configMapping.configId).first()
         
         // 检查模型配置是否启用了直接图片处理
         return config.enableDirectImageProcessing

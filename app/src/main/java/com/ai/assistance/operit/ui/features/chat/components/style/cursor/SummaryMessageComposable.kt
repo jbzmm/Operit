@@ -13,13 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatMessage
-import com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable
 
 /**
  * A composable function for rendering memory summarization messages as a compact divider. This
@@ -34,6 +35,7 @@ fun SummaryMessageComposable(
     onDelete: () -> Unit,
     enableDialog: Boolean = true  // 新增参数：是否启用弹窗功能，默认启用
 ) {
+    val context = LocalContext.current
     // 记住展开状态
     var showSummaryDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -74,13 +76,13 @@ fun SummaryMessageComposable(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Info,
-                        contentDescription = "历史对话摘要",
+                        contentDescription = context.getString(R.string.history_dialog_summary),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "历史对话摘要",
+                        text = context.getString(R.string.history_dialog_summary),
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium
@@ -106,7 +108,7 @@ fun SummaryMessageComposable(
             ) {
                 Column(modifier = Modifier.padding(16.dp).widthIn(max = 480.dp)) {
                     Text(
-                        text = "历史对话摘要",
+                        text = context.getString(R.string.history_dialog_summary),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
@@ -133,11 +135,10 @@ fun SummaryMessageComposable(
                                 .heightIn(max = 400.dp)
                                 .verticalScroll(scrollState)
                     ) {
-                        MarkdownTextComposable(
+                        Text(
                             text = message.content,
-                            textColor =
-                                MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -153,11 +154,11 @@ fun SummaryMessageComposable(
                                 showDeleteConfirmDialog = true
                             }
                         ) {
-                            Text("删除", color = MaterialTheme.colorScheme.error)
+                            Text(context.getString(R.string.delete), color = MaterialTheme.colorScheme.error)
                         }
                         Button(
                             onClick = { showSummaryDialog = false },
-                        ) { Text("关闭") }
+                        ) { Text(context.getString(R.string.close)) }
                     }
                 }
             }
@@ -168,8 +169,8 @@ fun SummaryMessageComposable(
     if (showDeleteConfirmDialog && enableDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("确认删除摘要") },
-            text = { Text("你确定要删除这条摘要吗？此操作无法撤销。") },
+            title = { Text(context.getString(R.string.confirm_delete_summary)) },
+            text = { Text(context.getString(R.string.confirm_delete_summary_message)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -178,12 +179,12 @@ fun SummaryMessageComposable(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("确认删除")
+                    Text(context.getString(R.string.confirm_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("取消")
+                    Text(context.getString(R.string.cancel))
                 }
             }
         )

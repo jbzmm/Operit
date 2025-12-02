@@ -13,6 +13,8 @@ import com.ai.assistance.operit.core.tools.UIPageResultData
 import com.ai.assistance.operit.core.tools.SimplifiedUINode
 import com.ai.assistance.operit.core.config.FunctionalPrompts
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
+import com.ai.assistance.operit.data.preferences.WaifuPreferences
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.preferences.PromptTagManager
@@ -50,6 +52,8 @@ class ConversationService(
     }
 
     private val apiPreferences = ApiPreferences.getInstance(context)
+    private val displayPreferencesManager = DisplayPreferencesManager.getInstance(context)
+    private val waifuPreferences = WaifuPreferences.getInstance(context)
     private val characterCardManager = CharacterCardManager.getInstance(context)
     private val userPreferencesManager = preferencesManager
     private val conversationMutex = Mutex()
@@ -132,6 +136,10 @@ class ConversationService(
             try {
                 Log.d(TAG, "总结生成使用了输入token: $inputTokens, 缓存token: $cachedInputTokens, 输出token: $outputTokens")
                 apiPreferences.updateTokensForProviderModel(summaryService.providerModel, inputTokens, outputTokens, cachedInputTokens)
+                
+                // Update request count for summary generation
+                apiPreferences.incrementRequestCountForProviderModel(summaryService.providerModel)
+                
                 Log.d(TAG, "已将总结token统计添加到用户偏好分析token计数中")
             } catch (e: Exception) {
                 Log.e(TAG, "更新token统计失败", e)
@@ -166,7 +174,8 @@ class ConversationService(
             thinkingGuidance: Boolean = false,
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean = true,
-            hasImageRecognition: Boolean = false
+            hasImageRecognition: Boolean = false,
+            useToolCallApi: Boolean = false
     ): List<Pair<String, String>> {
         val preparedHistory = mutableListOf<Pair<String, String>>()
         conversationMutex.withLock {
@@ -207,11 +216,12 @@ class ConversationService(
                                 finalCustomSystemPromptTemplate,
                                 enableTools,
                                 enableMemoryQuery,
-                                hasImageRecognition
+                                hasImageRecognition,
+                                useToolCallApi
                 )
 
                 // 构建waifu特殊规则
-                val waifuRulesText = if(apiPreferences.enableWaifuModeFlow.first()) buildWaifuRulesText() else ""
+                val waifuRulesText = if(waifuPreferences.enableWaifuModeFlow.first()) buildWaifuRulesText() else ""
                 // 桌宠模式：添加<mood>标签协议（仅桌宠环境生效）
                 val desktopPetRulesText = if (promptFunctionType == PromptFunctionType.DESKTOP_PET) buildDesktopPetMoodRulesText() else ""
                 Log.d("petRules", desktopPetRulesText)
@@ -593,10 +603,10 @@ class ConversationService(
      * @return 格式化的waifu规则文本，如果没有规则则返回空字符串
      */
     private suspend fun buildWaifuRulesText(): String {
-        val waifuDisableActions = apiPreferences.waifuDisableActionsFlow.first()
-        val waifuEnableEmoticons = apiPreferences.waifuEnableEmoticonsFlow.first()
-        val waifuEnableSelfie = apiPreferences.waifuEnableSelfieFlow.first()
-        val waifuSelfiePrompt = apiPreferences.waifuSelfiePromptFlow.first()
+        val waifuDisableActions = waifuPreferences.waifuDisableActionsFlow.first()
+        val waifuEnableEmoticons = waifuPreferences.waifuEnableEmoticonsFlow.first()
+        val waifuEnableSelfie = waifuPreferences.waifuEnableSelfieFlow.first()
+        val waifuSelfiePrompt = waifuPreferences.waifuSelfiePromptFlow.first()
         val waifuRules = mutableListOf<String>()
         
         if (waifuDisableActions) {
@@ -757,7 +767,7 @@ cry：同理+缓解 → “听起来真的很难受。我在这儿，慢慢来�
         var finalPrompt = prompt
         
         // 获取全局用户名
-        val globalUserName = userPreferencesManager.globalUserName.first() ?: "User"
+        val globalUserName = displayPreferencesManager.globalUserName.first() ?: "User"
         
         // 替换占位符
         finalPrompt = finalPrompt.replace("{{user}}", globalUserName)

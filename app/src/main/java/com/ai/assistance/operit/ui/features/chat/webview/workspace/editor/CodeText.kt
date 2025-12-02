@@ -317,6 +317,16 @@ class CodeText : ColorsText {
     }
 
     /**
+     * 手动触发完整代码解析（用于文件加载后初始化高亮）
+     */
+    fun triggerParse() {
+        val textLength = text?.length ?: 0
+        if (textLength > 0) {
+            codeParser.parse(0, 0, textLength)
+        }
+    }
+
+    /**
      * 设置语法检查
      */
     fun setCheckGrammar(c: GrammarCheck.Check) {
@@ -448,7 +458,7 @@ class CodeText : ColorsText {
             val start = selectionStart
             val end = selectionEnd
             if (start == end) {
-                text?.insert(start, "  ")
+                text?.insert(start, "    ")
             }
             return true
         }
@@ -478,7 +488,7 @@ class CodeText : ColorsText {
                     val c = text?.get(start - 1)
                     if (c == '{' || c == '[' || c == '(') {
                         val newStart = selectionStart
-                        text?.insert(newStart, "  ")
+                        text?.insert(newStart, "    ")
                         val afterIndentStart = selectionStart
                         text?.insert(afterIndentStart, "\n$space")
                         setSelection(afterIndentStart)
@@ -489,4 +499,4 @@ class CodeText : ColorsText {
         }
         return super.onKeyDown(keyCode, event)
     }
-} 
+}

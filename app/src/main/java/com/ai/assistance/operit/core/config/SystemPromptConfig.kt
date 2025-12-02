@@ -31,6 +31,8 @@ BEHAVIOR GUIDELINES:
     private const val TOOL_USAGE_GUIDELINES_EN = """
 When calling a tool, the user will see your response, and then will automatically send the tool results back to you in a follow-up message.
 
+Before calling a tool, briefly describe what you are about to do.
+
 To use a tool, use this format in your response:
 
 <tool name="tool_name">
@@ -42,6 +44,8 @@ When outputting XML (e.g., <tool>, <status>), insert a newline before it and ens
 Based on user needs, proactively select the most appropriate tool or combination of tools. For complex tasks, you can break down the problem and use different tools step by step to solve it. After using each tool, clearly explain the execution results and suggest the next steps."""
     private const val TOOL_USAGE_GUIDELINES_CN = """
 调用工具时，用户会看到你的响应，然后会自动将工具结果发送回给你。
+
+调用工具前，请简要说明你要做什么。
 
 使用工具时，请使用以下格式：
 
@@ -72,197 +76,39 @@ PACKAGE SYSTEM
 - 这将显示包中的所有工具及其使用方法
 - 只有在激活包后，才能直接使用其工具"""
 
+    // Tool Call API 模式下的包系统说明（不使用XML格式）
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_EN = """
+PACKAGE SYSTEM
+- Some additional functionality is available through packages
+- To use a package, call the use_package function with the package_name parameter
+- This will show you all the tools in the package and how to use them
+- Only after activating a package, you can use its tools directly"""
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_CN = """
+包系统：
+- 一些额外功能通过包提供
+- 要使用包，调用 use_package 函数并传入 package_name 参数
+- 这将显示包中的所有工具及其使用方法
+- 只有在激活包后，才能直接使用其工具"""
+
     private fun getAvailableToolsEn(hasImageRecognition: Boolean): String {
-        val readFileDescription = if (hasImageRecognition) {
-            "- read_file: Read the content of a file. For image files (jpg, jpeg, png, gif, bmp), it automatically extracts text using OCR, or you can provide an 'intent' parameter to use vision model for analysis. Parameters: path (file path), intent (optional, user's question about the image, e.g., \"What's in this image?\", \"Extract formulas from this image\")"
-        } else {
-            "- read_file: Read the content of a file. For image files (jpg, jpeg, png, gif, bmp), it automatically extracts text using OCR. Parameters: path (file path)"
-        }
-        
-        return """
-Available tools:
-- sleep: Demonstration tool that pauses briefly. Parameters: duration_ms (milliseconds, default 1000, max 10000)
-- use_package: Activate a package for use in the current session. Parameters: package_name (name of the package to activate)
-
-File System Tools:
-**IMPORTANT: All file tools support an optional 'environment' parameter:**
-- environment (optional): Specifies the execution environment. Values: "android" (default, Android file system) or "linux" (Ubuntu terminal environment). 
-  - When "linux" is specified, paths use Linux format (e.g., "/home/user/file.txt", "/etc/hosts") and are automatically mapped to the actual location in the Android filesystem.
-
-- list_files: List files in a directory. Parameters: path (e.g. "/sdcard/Download")
-$readFileDescription
-- read_file_part: Read the content of a file by parts (200 lines per part). Parameters: path (file path), partIndex (part number, starts from 0)
-- apply_file: Applies precise, line-number-based edits to a file.
-  - **How it works**: You will be given files with line numbers (e.g., "123| code"). You must generate a patch using the structured format below to modify the file.
-  - **CRITICAL RULE 1: CONTEXT BLOCK MUST CONTAIN VERBATIM CODE**: For every `REPLACE`, `INSERT`, or `DELETE` block, you **MUST** provide a `[CONTEXT]` block. Its **sole** purpose is to provide a code "anchor" for the system to locate the target precisely, even if line numbers have shifted.
-    - **Strict Requirement**: The `[CONTEXT]` block **MUST** only contain **verbatim, character-for-character identical lines of code** from the source file.
-    - **Forbidden**: **DO NOT** include any descriptive text, comments, or explanations inside the `[CONTEXT]` block. Any non-source-code content will cause the operation to fail.
-    - **Targeting Logic**:
-        - For `REPLACE` and `DELETE`, the context should contain the **first line (or first few lines)** of the code block defined by `start-end`. This serves as a precise anchor. The system will then operate on the full line range you provide. Providing just enough lines to make the anchor unique is the best practice.
-        - For `INSERT`, the context **is the single line of code at the line number specified** (i.e., line `N` for `after_line=N`).
-  - **CRITICAL RULE 2: SYNTAX**: Control tags like `[START-REPLACE]`, `[CONTEXT]`, etc., must be commented out (e.g., `// [START-REPLACE:1-5]`). The code you provide for insertion or replacement, however, must be the raw, pure code without any line numbers or comment prefixes.
-
-  - **Operations**:
-    - **Replace**: `// [START-REPLACE:start-end]` (Inclusive range. Replaces the code specified in `[CONTEXT]`).
-    // [CONTEXT]
-    const container = document.getElementById('profile');
-    // [/CONTEXT]
-    ... new code ...
-    // [END-REPLACE]
-    - **Insert**: `// [START-INSERT:after_line=N]` (Inserts new code *after* line N).
-    // [CONTEXT]
-    const user = { name, email };
-    // [/CONTEXT]
-    ... new code to insert ...
-    // [END-INSERT]
-    - **Delete**: `// [START-DELETE:start-end]` (Inclusive range. Deletes the code specified in `[CONTEXT]`).
-    // [CONTEXT]
-    function calculateLegacyReport(data) {
-      // ... all lines of the function to be deleted ...
-      return report;
-    }
-    // [/CONTEXT]
-    // [END-DELETE]
-
-  - **Best Practices & Common Pitfalls**:
-    - **Inserting at the Start of a File**: To insert code at the very beginning of a file, use `// [START-INSERT:after_line=0]`. The `[CONTEXT]` block should then contain the file's current first line of code.
-    - **Appending to the End of a File**: To append code to the end of a file that has `L` lines, use `// [START-INSERT:after_line=L]`. The `[CONTEXT]` block should contain the file's current last line of code (line `L`).
-    - **Uniqueness**: The context you provide must be unique within the source file. If it's not, expand the context by including more surrounding lines until it becomes unique.
-    - **Handling Whitespace**: Be extremely precise with whitespace and blank lines. When deleting a function or a code block, it's often necessary to include the surrounding blank lines in your `DELETE` range to avoid leaving awkward double blank lines or squashing code together.
-    - **Combining Edits**: You can and should provide multiple edit blocks in a single `apply_file` call for efficiency. The system processes them in a way that handles shifting line numbers.
-    - **Full Content**: For full replacement, provide the full file content without any special blocks.
-
-  - Parameters: path (file path), content (the string containing all your edit blocks)
-- delete_file: Delete a file or directory. Parameters: path (target path), recursive (boolean, default false)
-- file_exists: Check if a file or directory exists. Parameters: path (target path)
-- move_file: Move or rename a file or directory. Parameters: source (source path), destination (destination path)
-- copy_file: Copy a file or directory. Parameters: source (source path), destination (destination path), recursive (boolean, default false)
-- make_directory: Create a directory. Parameters: path (directory path), create_parents (boolean, default false)
-- find_files: Search for files matching a pattern. Parameters: path (search path, for Android use /sdcard/..., for Linux use /home/... or /etc/...), pattern (search pattern, e.g. "*.jpg"), max_depth (optional, controls depth of subdirectory search, -1=unlimited), use_path_pattern (boolean, default false), case_insensitive (boolean, default false)
-- grep_code: Search code content matching a regex pattern in files. Returns matches with surrounding context lines. Parameters: path (search path), pattern (regex pattern), file_pattern (file filter, default "*"), case_insensitive (boolean, default false), context_lines (lines of context before/after match, default 3), max_results (max matches, default 100)
-- file_info: Get detailed information about a file or directory including type, size, permissions, owner, group, and last modified time. Parameters: path (target path)
-- zip_files: Compress files or directories. Parameters: source (path to compress), destination (output zip file)
-- unzip_files: Extract a zip file. Parameters: source (zip file path), destination (extract path)
-- open_file: Open a file using the system's default application. Parameters: path (file path)
-- share_file: Share a file with other applications. Parameters: path (file path), title (optional share title, default "Share File")
-- download_file: Download a file from the internet. Parameters: url (file URL), destination (save path)
-
-HTTP Tools:
-- http_request: Send HTTP request. Parameters: url, method (GET/POST/PUT/DELETE), headers, body, body_type (json/form/text/xml)
-- multipart_request: Upload files. Parameters: url, method (POST/PUT), headers, form_data, files (file array)
-- manage_cookies: Manage cookies. Parameters: action (get/set/clear), domain, cookies
-- visit_web: Visit webpage and extract its content. Parameters: url (webpage URL to visit)"""
+        return SystemToolPrompts.generateToolsPromptEn(
+            hasImageRecognition = hasImageRecognition,
+            includeMemoryTools = false
+        )
     }
     
-    private const val MEMORY_TOOLS_EN = """
-Memory and Memory Library Tools:
-- query_memory: Searches the memory library for relevant memories using hybrid search (keyword matching + semantic understanding). Use this when you need to recall past knowledge, look up specific information, or require context. Keywords can be separated by '|' or spaces - each keyword will be independently matched semantically and the results will be combined with weighted scoring. When the user attaches a memory folder, a `<memory_context>` will be provided in the prompt. You MUST use the `folder_path` parameter to restrict the search to that folder. **IMPORTANT**: For document nodes (uploaded files), this tool uses vector search to return ONLY the most relevant chunks matching your query, NOT the entire document. Results show "Document: [name], Chunk X/Y: [content]" format. To read the complete document or specific parts, use `get_memory_by_title` instead. Parameters: query (string, the keyword or question to search for), folder_path (optional, string, the specific folder path to search within), threshold (optional, float 0.0-1.0, semantic similarity threshold, default 0.25, lower values return more results), limit (optional, int 1-20, maximum number of results to return, default 5)
-- get_memory_by_title: Retrieves a memory by exact title. For regular memories, returns full content. For document nodes (uploaded files), you can: 1) Read entire document (no parameters), 2) Read specific chunk(s) via `chunk_index` (e.g., "3") or `chunk_range` (e.g., "3-7"), 3) Search within document via `query`. Use this when query_memory returns partial results and you need more complete content. Parameters: title (required, string, the exact title of the memory), chunk_index (optional, int, read a specific chunk by its number, e.g., 3 for the 3rd chunk), chunk_range (optional, string, read a range of chunks in "start-end" format, e.g., "3-7" for chunks 3 through 7), query (optional, string, search for matching chunks within the document using keywords or semantic search)
-- create_memory: Creates a new memory node in the library. Use this when you want to save important information for future reference. Parameters: title (required, string), content (required, string), content_type (optional, default "text/plain"), source (optional, default "ai_created"), folder_path (optional, default "")
-- update_memory: Updates an existing memory node by title. Use this to modify an existing memory's content or metadata. Parameters: old_title (required, string to identify the memory), new_title (optional, string, new title if renaming), content (optional, string), content_type (optional, string), source (optional, string), credibility (optional, float 0-1), importance (optional, float 0-1), folder_path (optional, string), tags (optional, comma-separated string)
-- delete_memory: Deletes a memory node from the library by title. Use with caution as this operation is irreversible. Parameters: title (required, string to identify the memory)
-- link_memories: Creates a semantic link between two memories in the library. Use this to establish relationships between related concepts, facts, or pieces of information. This helps build a knowledge graph structure for better memory retrieval and understanding. Parameters: source_title (required, string, the title of the source memory), target_title (required, string, the title of the target memory), link_type (optional, string, the type of relationship such as "related", "causes", "explains", "part_of", "contradicts", etc., default "related"), weight (optional, float 0.0-1.0, the strength of the link with 1.0 being strongest, default 0.7), description (optional, string, additional context about the relationship, default "")
-- update_user_preferences: Updates user preference information directly. Use this when you learn new information about the user that should be remembered (e.g., their birthday, gender, personality traits, identity, occupation, or preferred AI interaction style). This allows immediate updates without waiting for the automatic system. Parameters: birth_date (optional, Unix timestamp in milliseconds), gender (optional, string), personality (optional, string describing personality traits), identity (optional, string describing identity/role), occupation (optional, string), ai_style (optional, string describing preferred AI interaction style). At least one parameter must be provided.
-
-Note: The memory library and user personality profile are automatically updated by a separate system after you output the task completion marker. However, if you need to manage memories immediately or update user preferences, use the appropriate tools directly.
-
-"""
+    private val MEMORY_TOOLS_EN: String
+        get() = SystemToolPrompts.memoryTools.toString()
 
     private fun getAvailableToolsCn(hasImageRecognition: Boolean): String {
-        val readFileDescription = if (hasImageRecognition) {
-            "- read_file: 读取文件内容。对于图片文件(jpg, jpeg, png, gif, bmp)，默认使用OCR提取文本，也可提供'intent'参数使用视觉模型分析。参数：path（文件路径），intent（可选，用户对图片的问题，如\"这个图片里面有什么\"、\"提取图片中的公式\"）"
-        } else {
-            "- read_file: 读取文件内容。对于图片文件(jpg, jpeg, png, gif, bmp)，自动使用OCR提取文本。参数：path（文件路径）"
-        }
-        
-        return """
-可用工具：
-- sleep: 演示工具，短暂暂停。参数：duration_ms（毫秒，默认1000，最大10000）
-- use_package: 在当前会话中激活包。参数：package_name（要激活的包名）
-
-文件系统工具：
-**重要：所有文件工具都支持可选的'environment'参数：**
-- environment（可选）：指定执行环境。取值："android"（默认，Android文件系统）或"linux"（Ubuntu终端环境）。
-  - 当指定"linux"时，路径使用Linux格式（如"/home/user/file.txt"、"/etc/hosts"），系统会自动映射到Android文件系统中的实际位置。
-
-- list_files: 列出目录中的文件。参数：path（例如"/sdcard/Download"）
-$readFileDescription
-- read_file_part: 分部分读取文件内容（每部分200行）。参数：path（文件路径），partIndex（部分编号，从0开始）
-- apply_file: 对文件进行精确的、基于行号的编辑。
-  - **工作原理**: 你会收到带行号的文件内容 (例如 "123| code")。你必须使用下述结构化格式生成补丁来修改文件。
-  - **关键规则1: 上下文块必须包含逐字代码**: 对于每一个 `REPLACE`, `INSERT`, 或 `DELETE` 操作块，你**必须**提供一个 `[CONTEXT]` 块。此块的**唯一**目的，是为系统提供一个代码“锚点”，以便在行号变化时也能精确定位。
-    - **严格要求**: `[CONTEXT]` 块内部**必须**只包含源文件中**逐字逐句、完全相同**的代码行。
-    - **禁止**: **严禁**在 `[CONTEXT]` 块中加入任何描述性文字、注释、或者对代码的解释。任何非源代码内容都会导致定位失败。
-    - **定位逻辑**:
-        - 对于 `REPLACE` 和 `DELETE` 操作，上下文应包含由 `起始-结束` 行号定义的**代码块的开头一行（或几行）**。这是一个精确定位锚点。系统随后将按你提供的完整行号范围执行操作。通常提供足以保证锚点唯一性的代码行即可。
-        - 对于 `INSERT` 操作，上下文**就是指定行号上的那一行代码**（即 `after_line=N` 中的第 `N` 行）。
-  - **关键规则2: 语法**: 像 `[START-REPLACE]`, `[CONTEXT]` 这样的控制标签必须以注释形式出现 (例如 `// [START-REPLACE:1-5]`)。然而，你在标签之间提供的用于插入或替换的代码，必须是**不带行号或注释前缀的纯粹的原始代码**。
-
-  - **操作指令**:
-    - **替换**: `// [START-REPLACE:起始-结束]` (范围是闭区间。替换 `[CONTEXT]` 中指定的代码)。
-    // [CONTEXT]
-    const container = document.getElementById('profile');
-    // [/CONTEXT]
-    ... 新代码 ...
-    // [END-REPLACE]
-    - **插入**: `// [START-INSERT:after_line=N]` (在第 N 行*之后*插入新代码)。
-    // [CONTEXT]
-    const user = { name, email };
-    // [/CONTEXT]
-    ... 要插入的新代码 ...
-    // [END-INSERT]
-    - **删除**: `// [START-DELETE:起始-结束]` (范围是闭区间。删除 `[CONTEXT]` 中指定的代码)。
-    // [CONTEXT]
-    function calculateLegacyReport(data) {
-      // ... all lines of the function to be deleted ...
-      return report;
-    }
-    // [/CONTEXT]
-    // [END-DELETE]
-
-  - **最佳实践与常见陷阱**:
-    - **文件开头插入**: 要在文件最开头插入代码，使用 `// [START-INSERT:after_line=0]`。`[CONTEXT]` 块应包含文件当前的第一行代码。
-    - **文件末尾追加**: 要在文件末尾追加代码，假设文件共有 `L` 行，使用 `// [START-INSERT:after_line=L]`。`[CONTEXT]` 块应包含文件当前的最后一行（即第 `L` 行）代码。
-    - **唯一性**: 你提供的上下文必须在源文件中是唯一的。如果不是，请扩大上下文范围（增加更多行），直到它变得唯一为止。
-    - **处理空白行**: 对待空白行和缩进必须极其精确。当删除一个函数或一个代码块时，通常需要将周围的空行也包含在 `DELETE` 的范围内，以避免留下尴尬的双重空行或导致代码紧贴在一起，破坏格式。
-    - **合并编辑**: 为了效率，你应该在单次 `apply_file` 调用中提供多个编辑块。系统会处理行号动态变化的问题。
-    - **完整内容**: 若要完整替换，直接提供完整文件内容，不要使用特殊块。
-
-  - 参数: path (文件路径), content (包含所有编辑块的字符串)
-- delete_file: 删除文件或目录。参数：path（目标路径），recursive（布尔值，默认false）
-- file_exists: 检查文件或目录是否存在。参数：path（目标路径）
-- move_file: 移动或重命名文件或目录。参数：source（源路径），destination（目标路径）
-- copy_file: 复制文件或目录。参数：source（源路径），destination（目标路径），recursive（布尔值，默认false）
-- make_directory: 创建目录。参数：path（目录路径），create_parents（布尔值，默认false）
-- find_files: 搜索匹配模式的文件。参数：path（搜索路径，Android用/sdcard/...，Linux用/home/...或/etc/...），pattern（搜索模式，例如"*.jpg"），max_depth（可选，控制子目录搜索深度，-1=无限），use_path_pattern（布尔值，默认false），case_insensitive（布尔值，默认false）
-- grep_code: 在文件中搜索匹配正则表达式的代码内容，返回带上下文的匹配结果。参数：path（搜索路径），pattern（正则表达式模式），file_pattern（文件过滤，默认"*"），case_insensitive（布尔值，默认false），context_lines（匹配行前后的上下文行数，默认3），max_results（最大匹配数，默认100）
-- file_info: 获取文件或目录的详细信息，包括类型、大小、权限、所有者、组和最后修改时间。参数：path（目标路径）
-- zip_files: 压缩文件或目录。参数：source（要压缩的路径），destination（输出zip文件）
-- unzip_files: 解压zip文件。参数：source（zip文件路径），destination（解压路径）
-- open_file: 使用系统默认应用程序打开文件。参数：path（文件路径）
-- share_file: 与其他应用程序共享文件。参数：path（文件路径），title（可选的共享标题，默认"Share File"）
-- download_file: 从互联网下载文件。参数：url（文件URL），destination（保存路径）
-
-HTTP工具：
-- http_request: 发送HTTP请求。参数：url, method (GET/POST/PUT/DELETE), headers, body, body_type (json/form/text/xml)
-- multipart_request: 上传文件。参数：url, method (POST/PUT), headers, form_data, files (文件数组)
-- manage_cookies: 管理cookies。参数：action (get/set/clear), domain, cookies
-- visit_web: 访问网页并提取内容。参数：url (要访问的网页URL)"""
+        return SystemToolPrompts.generateToolsPromptCn(
+            hasImageRecognition = hasImageRecognition,
+            includeMemoryTools = false
+        )
     }
     
-    private const val MEMORY_TOOLS_CN = """
-记忆与记忆库工具：
-- query_memory: 使用混合搜索（关键词匹配 + 语义理解）从记忆库中搜索相关记忆。当需要回忆过去的知识、查找特定信息或需要上下文时使用。关键词可以使用"|"或空格分隔 - 每个关键词都会独立进行语义匹配，结果将通过加权评分合并。当用户附加记忆文件夹时，提示中会提供`<memory_context>`。你必须使用 `folder_path` 参数将搜索限制在该文件夹内。**重要**：对于文档节点（上传的文件），此工具使用向量搜索只返回与查询最相关的分块，而不是整个文档。结果显示"Document: [文档名], Chunk X/Y: [内容]"格式。如需阅读完整文档或特定部分，请改用 `get_memory_by_title` 工具。参数：query (string, 搜索的关键词或问题), folder_path (可选, string, 要搜索的特定文件夹路径), threshold (可选, float 0.0-1.0, 语义相似度阈值, 默认0.25, 较低的值返回更多结果), limit (可选, int 1-20, 返回结果的最大数量, 默认5)
-- get_memory_by_title: 通过精确标题检索记忆。对于普通记忆，返回完整内容。对于文档节点（上传的文件），可以：1) 读取整个文档（不提供参数），2) 通过 `chunk_index`（如"3"）或 `chunk_range`（如"3-7"）读取特定分块，3) 通过 `query` 在文档内搜索。当 query_memory 返回部分结果而你需要更完整内容时使用。参数：title (必需, 字符串, 记忆的精确标题), chunk_index (可选, 整数, 读取特定编号的分块, 例如3表示第3块), chunk_range (可选, 字符串, 读取分块范围，格式为"起始-结束"，例如"3-7"表示第3到第7块), query (可选, 字符串, 使用关键词或语义搜索在文档内查找匹配的分块)
-- create_memory: 在记忆库中创建新的记忆节点。当你想保存重要信息供将来参考时使用。参数：title (必需, 字符串), content (必需, 字符串), content_type (可选, 默认"text/plain"), source (可选, 默认"ai_created"), folder_path (可选, 默认"")
-- update_memory: 通过标题更新现有的记忆节点。用于修改现有记忆的内容或元数据。参数：old_title (必需, 字符串，用于识别记忆), new_title (可选, 字符串, 重命名时的新标题), content (可选, 字符串), content_type (可选, 字符串), source (可选, 字符串), credibility (可选, 浮点数 0-1), importance (可选, 浮点数 0-1), folder_path (可选, 字符串), tags (可选, 逗号分隔的字符串)
-- delete_memory: 通过标题从记忆库中删除记忆节点。谨慎使用，此操作不可逆。参数：title (必需, 字符串，用于识别记忆)
-- link_memories: 在记忆库中的两个记忆之间创建语义链接。用于建立相关概念、事实或信息片段之间的关系。这有助于构建知识图谱结构，以便更好地检索和理解记忆。参数：source_title (必需, 字符串, 源记忆的标题), target_title (必需, 字符串, 目标记忆的标题), link_type (可选, 字符串, 关系类型，如"related"（相关）、"causes"（导致）、"explains"（解释）、"part_of"（部分）、"contradicts"（矛盾）等, 默认"related"), weight (可选, 浮点数 0.0-1.0, 链接强度，1.0表示最强, 默认0.7), description (可选, 字符串, 关于关系的额外上下文, 默认"")
-- update_user_preferences: 直接更新用户偏好信息。当你了解到用户的新信息时使用（例如生日、性别、性格特征、身份、职业或首选AI交互风格）。这允许立即更新而无需等待自动系统。参数：birth_date (可选, Unix时间戳，毫秒), gender (可选, 字符串), personality (可选, 描述性格特征的字符串), identity (可选, 描述身份/角色的字符串), occupation (可选, 字符串), ai_style (可选, 描述首选AI交互风格的字符串)。必须提供至少一个参数。
-
-注意：记忆库和用户性格档案会在你输出任务完成标志后由独立的系统自动更新。但是，如果需要立即管理记忆或更新用户偏好，请直接使用相应的工具。
-
-"""
+    private val MEMORY_TOOLS_CN: String
+        get() = SystemToolPrompts.memoryToolsCn.toString()
 
 
     /** Base system prompt template used by the enhanced AI service */
@@ -406,7 +252,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
           enableMemoryQuery: Boolean = true,
-          hasImageRecognition: Boolean = false
+          hasImageRecognition: Boolean = false,
+          useToolCallApi: Boolean = false
   ): String {
     val importedPackages = packageManager.getImportedPackages()
     val mcpServers = packageManager.getAvailableServerPackages()
@@ -473,15 +320,28 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
             }
 
     // Determine the available tools string based on memory query setting and image recognition
-    val availableToolsEn = if (enableMemoryQuery) MEMORY_TOOLS_EN + getAvailableToolsEn(hasImageRecognition) else getAvailableToolsEn(hasImageRecognition)
-    val availableToolsCn = if (enableMemoryQuery) MEMORY_TOOLS_CN + getAvailableToolsCn(hasImageRecognition) else getAvailableToolsCn(hasImageRecognition)
+    // 当使用Tool Call API时，不在系统提示词中包含工具描述（工具已通过API的tools字段发送）
+    val availableToolsEn = if (useToolCallApi) "" else (
+        if (enableMemoryQuery) MEMORY_TOOLS_EN + getAvailableToolsEn(hasImageRecognition) else getAvailableToolsEn(hasImageRecognition)
+    )
+    val availableToolsCn = if (useToolCallApi) "" else (
+        if (enableMemoryQuery) MEMORY_TOOLS_CN + getAvailableToolsCn(hasImageRecognition) else getAvailableToolsCn(hasImageRecognition)
+    )
 
     // Handle tools disable/enable
     if (enableTools) {
-        prompt = prompt
-            .replace("TOOL_USAGE_GUIDELINES_SECTION", if (useEnglish) TOOL_USAGE_GUIDELINES_EN else TOOL_USAGE_GUIDELINES_CN)
-            .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", if (useEnglish) PACKAGE_SYSTEM_GUIDELINES_EN else PACKAGE_SYSTEM_GUIDELINES_CN)
-            .replace("AVAILABLE_TOOLS_SECTION", if (useEnglish) availableToolsEn else availableToolsCn)
+        // 当使用Tool Call API时，移除XML格式的工具使用指南，但保留包系统说明
+        if (useToolCallApi) {
+            prompt = prompt
+                .replace("TOOL_USAGE_GUIDELINES_SECTION", "")
+                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", if (useEnglish) PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_EN else PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_CN)
+                .replace("AVAILABLE_TOOLS_SECTION", "")
+        } else {
+            prompt = prompt
+                .replace("TOOL_USAGE_GUIDELINES_SECTION", if (useEnglish) TOOL_USAGE_GUIDELINES_EN else TOOL_USAGE_GUIDELINES_CN)
+                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", if (useEnglish) PACKAGE_SYSTEM_GUIDELINES_EN else PACKAGE_SYSTEM_GUIDELINES_CN)
+                .replace("AVAILABLE_TOOLS_SECTION", if (useEnglish) availableToolsEn else availableToolsCn)
+        }
     } else {
         if (enableMemoryQuery) {
             // Only memory tools are available, package system is disabled
@@ -524,6 +384,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
               - Use the `apply_file` tool to create web files (HTML/CSS/JS).
               - The main file must be `index.html` for user previews.
               - It's recommended to split code into multiple files for better stability and maintainability.
+              - For more complex projects, consider creating `js` and `css` folders and organizing files accordingly.
               - Always use relative paths for file references.
               - **Best Practice for Code Modifications**: Before modifying any file, use `grep_code` to search for relevant code patterns and `read_file_part` to read the specific sections with context. This ensures you understand the surrounding code structure before making changes.
               """.trimIndent()
@@ -534,6 +395,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
               - 使用 apply_file 工具创建网页文件 (HTML/CSS/JS)。
               - 主文件必须是 index.html，用户可直接预览。
               - 建议将代码拆分到不同文件，以提高稳定性和可维护性。
+              - 如果项目较为复杂，可以考虑新建js文件夹和css文件夹并创建多个文件。
               - 文件引用请使用相对路径。
               - **代码修改最佳实践**：修改任何文件之前，建议组合使用 `grep_code` 搜索相关代码模式和 `read_file_part` 读取对应部分的上下文。这样可以确保你在修改前充分理解周围的代码结构。
               """.trimIndent()
@@ -574,10 +436,11 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
           enableMemoryQuery: Boolean = true,
-          hasImageRecognition: Boolean = false
+          hasImageRecognition: Boolean = false,
+          useToolCallApi: Boolean = false
   ): String {
     // Get the base system prompt
-    val basePrompt = getSystemPrompt(packageManager, workspacePath, false, thinkingGuidance, customSystemPromptTemplate, enableTools, enableMemoryQuery, hasImageRecognition)
+    val basePrompt = getSystemPrompt(packageManager, workspacePath, false, thinkingGuidance, customSystemPromptTemplate, enableTools, enableMemoryQuery, hasImageRecognition, useToolCallApi)
 
     // Apply custom prompts
     return applyCustomPrompts(basePrompt, customIntroPrompt)

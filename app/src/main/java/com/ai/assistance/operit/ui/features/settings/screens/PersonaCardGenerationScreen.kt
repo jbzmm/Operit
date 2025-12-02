@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -12,11 +13,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.FunctionType
@@ -25,6 +28,7 @@ import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.PromptTagManager
+import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.data.preferences.PersonaCardChatHistoryManager
 import kotlinx.coroutines.*
@@ -310,7 +314,7 @@ fun PersonaCardGenerationScreen(
             - field 取值："name" | "description" | "characterSetting" | "openingStatement" | "otherContent" | "advancedCustomPrompt" | "marks"
             - 工具调用格式为: <tool name="save_character_info"><param name="field">字段名</param><param name="content">内容</param></tool>
             - 例如，如果角色名称确认是“奶糖”，则必须在回答的末尾调用: <tool name="save_character_info"><param name="field">name</param><param name="content">奶糖</param></tool>
-        """.trimIndent()
+            """.trimIndent()
     }
     
     // 检查是否所有字段都已完成
@@ -333,7 +337,7 @@ fun PersonaCardGenerationScreen(
         prompt: String,
         historyPairs: List<Pair<String, String>>,
         systemPrompt: String? = null
-    ): Stream<String> = withContext(Dispatchers.IO) {
+    ): Pair<Stream<String>, AIService> = withContext(Dispatchers.IO) {
         val aiService = EnhancedAIService
             .getInstance(context)
             .getAIServiceForFunction(FunctionType.CHAT)
@@ -346,10 +350,11 @@ fun PersonaCardGenerationScreen(
         }
         fullHistory.addAll(historyPairs)
 
-        aiService.sendMessage(
+        val stream = aiService.sendMessage(
             message = prompt,
             chatHistory = fullHistory
         )
+        Pair(stream, aiService)
     }
 
     // 解析并执行工具调用
@@ -436,7 +441,7 @@ fun PersonaCardGenerationScreen(
                 chatMessages.map { it.role to it.content }
             }
 
-            val stream = requestFromDefaultService(input, historyPairs, systemPrompt)
+            val (stream, aiService) = requestFromDefaultService(input, historyPairs, systemPrompt)
 
             // 提前插入占位的"生成中…"助手消息
             val generatingText = context.getString(R.string.generating)
@@ -469,6 +474,18 @@ fun PersonaCardGenerationScreen(
                             scope.launch { listState.animateScrollToItem(chatMessages.lastIndex) }
                         }
                     }
+                }
+
+                // Update token and request count statistics
+                withContext(Dispatchers.IO) {
+                    val apiPreferences = ApiPreferences.getInstance(context)
+                    apiPreferences.updateTokensForProviderModel(
+                        aiService.providerModel,
+                        aiService.inputTokenCount,
+                        aiService.outputTokenCount,
+                        aiService.cachedInputTokenCount
+                    )
+                    apiPreferences.incrementRequestCountForProviderModel(aiService.providerModel)
                 }
 
                 // 流结束后解析并执行工具
@@ -845,7 +862,9 @@ fun PersonaCardGenerationScreen(
                         if (!isUser) {
                             Card(colors = CardDefaults.cardColors(containerColor = bubbleContainer)) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(msg.content, color = bubbleTextColor)
+                                    SelectionContainer {
+                                        Text(msg.content, color = bubbleTextColor)
+                                    }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         timeFormatter.format(Date(msg.timestamp)),
@@ -859,7 +878,9 @@ fun PersonaCardGenerationScreen(
                             Spacer(Modifier.weight(1f))
                             Card(colors = CardDefaults.cardColors(containerColor = bubbleContainer)) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(msg.content, color = bubbleTextColor)
+                                    SelectionContainer {
+                                        Text(msg.content, color = bubbleTextColor)
+                                    }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         timeFormatter.format(Date(msg.timestamp)),
@@ -876,7 +897,7 @@ fun PersonaCardGenerationScreen(
             }
 
             // 底部输入栏
-            Surface(color = MaterialTheme.colorScheme.surface) {
+            Surface(color = Color.Transparent) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -892,7 +913,13 @@ fun PersonaCardGenerationScreen(
                                 .heightIn(min = 48.dp),
                             placeholder = { Text(if (isGenerating) context.getString(R.string.currently_generating) else context.getString(R.string.describe_character_hint)) },
                             enabled = !isGenerating && chatMessages.size < MESSAGE_LIMIT,
-                            maxLines = 4
+                            maxLines = 4,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                errorContainerColor = Color.Transparent
+                            )
                         )
                         // 对话计数器 - 右上角小标签
                         Text(
