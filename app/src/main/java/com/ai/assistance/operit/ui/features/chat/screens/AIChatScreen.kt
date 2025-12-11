@@ -3,7 +3,7 @@ package com.ai.assistance.operit.ui.features.chat.screens
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -308,7 +308,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                 try {
                     scrollState.animateScrollTo(scrollState.maxValue)
                 } catch (e: Exception) {
-                    // Log.e("AIChatScreen", "自动滚动失败", e)
+                    // AppLogger.e("AIChatScreen", "自动滚动失败", e)
                 }
             }
         }
@@ -320,7 +320,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             try {
                 scrollState.animateScrollTo(scrollState.maxValue)
             } catch (e: Exception) {
-                // Log.e("AIChatScreen", "自动滚动失败", e)
+                // AppLogger.e("AIChatScreen", "自动滚动失败", e)
             }
         }
     }
@@ -763,7 +763,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         isVisible = showWebView, // Pass visibility state
                         onExportClick = { workDir ->
                             webContentDir = workDir
-                            Log.d(
+                            AppLogger.d(
                                 "AIChatScreen",
                                 "正在导出工作区: ${workDir.absolutePath}, 聊天ID: $currentChatId"
                             )
@@ -840,7 +840,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             AndroidExportDialog(
                     workDir = webContentDir!!,
                     onDismiss = { showAndroidExportDialog = false },
-                    onExport = { packageName, appName, iconUri ->
+                    onExport = { packageName, appName, iconUri, versionName, versionCode ->
                         showAndroidExportDialog = false
                         showExportProgressDialog = true
                         exportProgress = 0f
@@ -852,6 +852,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     context = context,
                                     packageName = packageName,
                                     appName = appName,
+                                    versionName = versionName,
+                                    versionCode = versionCode,
                                     iconUri = iconUri,
                                     webContentDir = webContentDir!!,
                                     onProgress = { progress, status ->

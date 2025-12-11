@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Typography
@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ai.assistance.operit.ui.floating.ui.pet.AvatarEmotionManager
 import com.ai.assistance.operit.api.voice.VoiceService
 import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
@@ -131,7 +132,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         enhancedAiService = service
                         // API配置变更后，异步设置服务收集器
                         viewModelScope.launch {
-                            Log.d(TAG, "API配置变更，设置 token 统计收集器")
+                            AppLogger.d(TAG, "API配置变更，设置 token 统计收集器")
                             tokenStatsDelegate.setupCollectors()
                         }
                         // 设置输入处理状态监听
@@ -479,7 +480,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
      * 当 EnhancedAIService 初始化或更新时调用
      */
     private fun setupInputProcessingStateListener(service: EnhancedAIService) {
-        Log.d(TAG, "EnhancedAIService 已就绪，开始监听输入处理状态")
+        AppLogger.d(TAG, "EnhancedAIService 已就绪，开始监听输入处理状态")
         viewModelScope.launch {
             try {
                 service.inputProcessingState.collect { state ->
@@ -493,7 +494,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "输入处理状态收集出错: ${e.message}", e)
+                AppLogger.e(TAG, "输入处理状态收集出错: ${e.message}", e)
                 uiStateDelegate.showErrorMessage("输入处理状态收集失败: ${e.message}")
             }
         }
@@ -618,7 +619,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 characterCardManager.setActiveCharacterCard(targetCard.id)
             }
         }.onFailure { throwable ->
-            Log.w(TAG, "Auto switch character card failed: ${throwable.message}")
+            AppLogger.w(TAG, "Auto switch character card failed: ${throwable.message}")
         }
     }
 
@@ -628,16 +629,90 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         uiStateDelegate.showToast("已创建对话分支")
     }
 
+    /** 插入总结 */
+    fun insertSummary(index: Int, message: ChatMessage) {
+        viewModelScope.launch {
+            try {
+                // 获取当前会话ID并绑定
+                val currentChatId = chatHistoryDelegate.currentChatId.value
+                if (currentChatId == null) {
+                    uiStateDelegate.showToast("当前没有活跃的对话")
+                    return@launch
+                }
+                
+                // 先设置activeStreamingChatId，确保UI能显示状态
+                messageProcessingDelegate.setActiveStreamingChatId(currentChatId)
+                // 设置输入处理状态
+                messageProcessingDelegate.setInputProcessingState(true, "正在生成总结...")
+                
+                val currentHistory = chatHistoryDelegate.chatHistory.value
+                
+                // 确定插入位置：用户消息插入在上面（index），AI消息插入在下面（index+1）
+                val insertPosition = if (message.sender == "user") {
+                    index
+                } else {
+                    index + 1
+                }
+                
+                // 获取要总结的消息：从开始到插入位置的消息
+                val messagesToSummarize = currentHistory.subList(0, insertPosition)
+                    .filter { it.sender == "user" || it.sender == "ai" }
+                
+                if (messagesToSummarize.isEmpty()) {
+                    uiStateDelegate.showToast("没有可总结的消息")
+                    messageProcessingDelegate.setInputProcessingState(false, "")
+                    messageProcessingDelegate.setActiveStreamingChatId(null)
+                    return@launch
+                }
+                
+                // 显示生成中提示
+                uiStateDelegate.showToast("正在生成总结...")
+                
+                // 调用AI生成总结
+                if (enhancedAiService == null) {
+                    uiStateDelegate.showToast("AI服务未初始化")
+                    messageProcessingDelegate.setInputProcessingState(false, "")
+                    messageProcessingDelegate.setActiveStreamingChatId(null)
+                    return@launch
+                }
+                
+                val summaryMessage = AIMessageManager.summarizeMemory(
+                    enhancedAiService!!,
+                    messagesToSummarize,
+                    autoContinue = false
+                )
+                
+                if (summaryMessage != null) {
+                    // 插入总结消息
+                    chatHistoryDelegate.addSummaryMessage(summaryMessage, insertPosition)
+                    uiStateDelegate.showToast("总结已插入")
+                } else {
+                    uiStateDelegate.showToast("生成总结失败")
+                }
+                
+                // 清除输入处理状态
+                messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "插入总结时发生错误", e)
+                uiStateDelegate.showToast("插入总结失败: ${e.message}")
+                // 发生错误时也需要清除状态
+                messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
+            }
+        }
+    }
+
     /** 删除单条消息 */
     fun deleteMessage(index: Int) {
-        Log.d(TAG, "准备删除消息，索引: $index")
+        AppLogger.d(TAG, "准备删除消息，索引: $index")
         chatHistoryDelegate.deleteMessage(index)
     }
 
     /** 从指定索引删除后续所有消息 */
     fun deleteMessagesFrom(index: Int) {
         viewModelScope.launch {
-            Log.d(TAG, "准备从索引 $index 开始删除后续消息")
+            AppLogger.d(TAG, "准备从索引 $index 开始删除后续消息")
             chatHistoryDelegate.deleteMessagesFrom(index)
         }
     }
@@ -645,13 +720,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     /** 批量删除消息 */
     fun deleteMessages(indices: Set<Int>) {
         viewModelScope.launch {
-            Log.d(TAG, "准备批量删除消息，索引: $indices")
+            AppLogger.d(TAG, "准备批量删除消息，索引: $indices")
             // 按降序排列索引后依次删除，避免索引偏移问题
             val sortedIndices = indices.sortedDescending()
             sortedIndices.forEach { index ->
                 chatHistoryDelegate.deleteMessage(index)
             }
-            Log.d(TAG, "批量删除完成")
+            AppLogger.d(TAG, "批量删除完成")
         }
     }
 
@@ -673,7 +748,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "开始生成分享图片，消息索引: $messageIndices")
+                AppLogger.d(TAG, "开始生成分享图片，消息索引: $messageIndices")
                 
                 // 获取当前聊天历史
                 val currentHistory = chatHistoryDelegate.chatHistory.value
@@ -687,7 +762,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 // 获取选中的消息
                 val selectedMessages = messageIndices.sorted().map { currentHistory[it] }
                 
-                Log.d(TAG, "准备生成图片，选中消息数量: ${selectedMessages.size}")
+                AppLogger.d(TAG, "准备生成图片，选中消息数量: ${selectedMessages.size}")
                 
                 // 生成图片（内部会自动处理线程切换）
                 val imageFile = MessageImageGenerator
@@ -705,7 +780,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         chatStyle = chatStyle
                     )
                 
-                Log.d(TAG, "图片文件生成成功: ${imageFile.absolutePath}, 大小: ${imageFile.length()} bytes")
+                AppLogger.d(TAG, "图片文件生成成功: ${imageFile.absolutePath}, 大小: ${imageFile.length()} bytes")
                 
                 // 使用 FileProvider 获取 Uri
                 val uri = FileProvider.getUriForFile(
@@ -714,12 +789,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     imageFile
                 )
                 
-                Log.d(TAG, "Uri 获取成功: $uri")
+                AppLogger.d(TAG, "Uri 获取成功: $uri")
                 
                 onSuccess(uri)
                 
             } catch (e: Exception) {
-                Log.e(TAG, "生成分享图片失败", e)
+                AppLogger.e(TAG, "生成分享图片失败", e)
                 onError("生成图片失败: ${e.message}")
             }
         }
@@ -767,7 +842,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 // 显示成功提示
                 uiStateDelegate.showToast("消息已更新")
             } catch (e: Exception) {
-                Log.e(TAG, "更新消息失败", e)
+                AppLogger.e(TAG, "更新消息失败", e)
                 uiStateDelegate.showErrorMessage("更新消息失败: ${e.message}")
             }
         }
@@ -814,22 +889,22 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 val currentChat = chatHistories.value.find { it.id == chatId }
                 val workspacePath = currentChat?.workspace
 
-                Log.d(TAG, "[Rewind] Target message timestamp: ${targetMessage.timestamp}")
+                AppLogger.d(TAG, "[Rewind] Target message timestamp: ${targetMessage.timestamp}")
                 if (index > 0) {
-                    Log.d(TAG, "[Rewind] Previous message timestamp: ${currentHistory[index - 1].timestamp}")
+                    AppLogger.d(TAG, "[Rewind] Previous message timestamp: ${currentHistory[index - 1].timestamp}")
                 } else {
-                    Log.d(TAG, "[Rewind] No previous message, target is the first message.")
+                    AppLogger.d(TAG, "[Rewind] No previous message, target is the first message.")
                 }
-                Log.d(TAG, "[Rewind] Timestamp passed to syncState: $rewindTimestamp")
+                AppLogger.d(TAG, "[Rewind] Timestamp passed to syncState: $rewindTimestamp")
 
                 // 如果绑定了工作区，则执行回滚
                 if (!workspacePath.isNullOrBlank()) {
-                    Log.d(TAG, "Rewinding workspace to timestamp: $rewindTimestamp")
+                    AppLogger.d(TAG, "Rewinding workspace to timestamp: $rewindTimestamp")
                     withContext(Dispatchers.IO) {
                         WorkspaceBackupManager.getInstance(context)
                             .syncState(workspacePath, rewindTimestamp)
                     }
-                    Log.d(TAG, "Workspace rewind complete.")
+                    AppLogger.d(TAG, "Workspace rewind complete.")
                 }
 
                 // 截取到指定消息的历史记录（不包含该消息本身）
@@ -851,8 +926,111 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 messageProcessingDelegate.updateUserMessage(editedContent)
                 sendUserMessage()
             } catch (e: Exception) {
-                Log.e(TAG, "回档并重新发送消息失败", e)
+                AppLogger.e(TAG, "回档并重新发送消息失败", e)
                 uiStateDelegate.showErrorMessage("回档失败: ${e.message}")
+            }
+        }
+    }
+
+    suspend fun previewWorkspaceChangesForMessage(index: Int): List<WorkspaceBackupManager.WorkspaceFileChange> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val currentHistory = chatHistoryDelegate.chatHistory.value.toMutableList()
+
+                if (index < 0 || index >= currentHistory.size) {
+                    emptyList()
+                } else {
+                    val rewindTimestamp = if (index > 0) {
+                        currentHistory[index - 1].timestamp
+                    } else {
+                        0L
+                    }
+
+                    val chatId = currentChatId.value
+                    val currentChat = chatHistories.value.find { it.id == chatId }
+                    val workspacePath = currentChat?.workspace
+
+                    if (workspacePath.isNullOrBlank()) {
+                        emptyList()
+                    } else {
+                        val workspaceDir = File(workspacePath)
+                        val backupDir = File(workspaceDir, ".backup")
+                        val existingBackups = backupDir.listFiles { file ->
+                            file.isFile && file.name.endsWith(".json")
+                        }?.mapNotNull {
+                            it.nameWithoutExtension.toLongOrNull()
+                        }?.sorted() ?: emptyList()
+
+                        val newerBackups = existingBackups.filter { it > rewindTimestamp }
+                        if (newerBackups.isEmpty()) {
+                            emptyList()
+                        } else {
+                            val restoreTimestamp = newerBackups.first()
+                            WorkspaceBackupManager.getInstance(context)
+                                .previewChanges(workspacePath, restoreTimestamp)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "预览工作区变更失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    fun rollbackToMessage(index: Int) {
+        viewModelScope.launch {
+            try {
+                val currentHistory = chatHistoryDelegate.chatHistory.value.toMutableList()
+
+                if (index < 0 || index >= currentHistory.size) {
+                    uiStateDelegate.showErrorMessage("无效的消息索引")
+                    return@launch
+                }
+
+                val targetMessage = currentHistory[index]
+
+                // 目前UI只允许对用户消息执行回滚，这里再做一次保护
+                if (targetMessage.sender != "user") {
+                    uiStateDelegate.showErrorMessage("只能对用户消息执行此操作")
+                    return@launch
+                }
+
+                val rewindTimestamp = if (index > 0) {
+                    currentHistory[index - 1].timestamp
+                } else {
+                    0L
+                }
+
+                val chatId = currentChatId.value
+                val currentChat = chatHistories.value.find { it.id == chatId }
+                val workspacePath = currentChat?.workspace
+
+                if (!workspacePath.isNullOrBlank()) {
+                    AppLogger.d(TAG, "[Rollback] Rewinding workspace to timestamp: $rewindTimestamp")
+                    withContext(Dispatchers.IO) {
+                        WorkspaceBackupManager.getInstance(context)
+                            .syncState(workspacePath, rewindTimestamp)
+                    }
+                    AppLogger.d(TAG, "[Rollback] Workspace rewind complete.")
+                }
+
+                // 删除目标消息及其之后的所有消息
+                val newHistory = currentHistory.subList(0, index)
+
+                val timestampOfFirstDeletedMessage = currentHistory[index].timestamp
+                chatHistoryDelegate.truncateChatHistory(
+                    newHistory,
+                    timestampOfFirstDeletedMessage
+                )
+
+                val plainText = AvatarEmotionManager.stripXmlLikeTags(targetMessage.content)
+                updateUserMessage(TextFieldValue(plainText))
+
+                uiStateDelegate.showToast("已回滚，消息内容已放入输入框")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "回滚到指定消息失败", e)
+                uiStateDelegate.showErrorMessage("回滚失败: ${e.message}")
             }
         }
     }
@@ -922,7 +1100,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 FloatingMode.VOICE_BALL,
                 FloatingMode.RESULT_DISPLAY -> {
                     // 这些模式暂时不处理，或者可以添加默认行为
-                    Log.d(TAG, "未实现的悬浮窗模式: $mode")
+                    AppLogger.d(TAG, "未实现的悬浮窗模式: $mode")
                 }
             }
         }
@@ -953,6 +1131,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun handleAttachment(filePath: String) {
         viewModelScope.launch {
             try {
+                // 获取当前会话ID并绑定
+                val currentChatId = chatHistoryDelegate.currentChatId.value
+                if (currentChatId != null) {
+                    messageProcessingDelegate.setActiveStreamingChatId(currentChatId)
+                }
+                
                 // 显示附件处理进度
                 messageProcessingDelegate.setInputProcessingState(true, "正在处理附件...")
 
@@ -960,12 +1144,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
                 // 清除附件处理进度显示
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             } catch (e: Exception) {
-                Log.e(TAG, "处理附件失败", e)
+                AppLogger.e(TAG, "处理附件失败", e)
                 // 修改: 使用错误弹窗而不是 Toast 显示附件处理错误
                 uiStateDelegate.showErrorMessage("处理附件失败: ${e.message}")
                 // 发生错误时也需要清除进度显示
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             }
         }
     }
@@ -999,6 +1185,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             try {
                 messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
+                
+                // 获取当前会话ID并绑定
+                val currentChatId = chatHistoryDelegate.currentChatId.value
+                if (currentChatId != null) {
+                    messageProcessingDelegate.setActiveStreamingChatId(currentChatId)
+                }
+                
                 // 显示屏幕内容获取进度
                 messageProcessingDelegate.setInputProcessingState(true, "正在获取屏幕内容...")
                 uiStateDelegate.showToast("正在获取屏幕内容...")
@@ -1008,10 +1201,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
                 // 清除进度显示
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             } catch (e: Exception) {
-                Log.e(TAG, "截取屏幕内容失败", e)
+                AppLogger.e(TAG, "截取屏幕内容失败", e)
                 uiStateDelegate.showErrorMessage("截取屏幕内容失败: ${e.message}")
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             }
         }
     }
@@ -1021,6 +1216,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             try {
                 messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
+                
+                // 获取当前会话ID并绑定
+                val currentChatId = chatHistoryDelegate.currentChatId.value
+                if (currentChatId != null) {
+                    messageProcessingDelegate.setActiveStreamingChatId(currentChatId)
+                }
+                
                 // 显示通知获取进度
                 messageProcessingDelegate.setInputProcessingState(true, "正在获取当前通知...")
                 uiStateDelegate.showToast("正在获取当前通知...")
@@ -1030,10 +1232,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
                 // 清除进度显示
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             } catch (e: Exception) {
-                Log.e(TAG, "获取通知数据失败", e)
+                AppLogger.e(TAG, "获取通知数据失败", e)
                 uiStateDelegate.showErrorMessage("获取通知数据失败: ${e.message}")
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             }
         }
     }
@@ -1043,6 +1247,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             try {
                 messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
+                
+                // 获取当前会话ID并绑定
+                val currentChatId = chatHistoryDelegate.currentChatId.value
+                if (currentChatId != null) {
+                    messageProcessingDelegate.setActiveStreamingChatId(currentChatId)
+                }
+                
                 // 显示位置获取进度
                 messageProcessingDelegate.setInputProcessingState(true, "正在获取位置信息...")
                 uiStateDelegate.showToast("正在获取位置信息...")
@@ -1052,10 +1263,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 
                 // 隐藏进度状态
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             } catch (e: Exception) {
-                Log.e(TAG, "Error capturing location", e)
+                AppLogger.e(TAG, "Error capturing location", e)
                 uiStateDelegate.showToast("获取位置失败: ${e.message}")
                 messageProcessingDelegate.setInputProcessingState(false, "")
+                messageProcessingDelegate.setActiveStreamingChatId(null)
             }
         }
     }
@@ -1077,7 +1290,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 // 清除进度显示
                 messageProcessingDelegate.setInputProcessingState(false, "")
             } catch (e: Exception) {
-                Log.e(TAG, "附着记忆文件夹失败", e)
+                AppLogger.e(TAG, "附着记忆文件夹失败", e)
                 uiStateDelegate.showErrorMessage("附着记忆文件夹失败: ${e.message}")
                 messageProcessingDelegate.setInputProcessingState(false, "")
             }
@@ -1096,14 +1309,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
      * Creates a new chat, attaches files, and pre-fills message
      */
     fun handleSharedFiles(uris: List<Uri>) {
-        Log.d(TAG, "handleSharedFiles called with ${uris.size} file(s)")
+        AppLogger.d(TAG, "handleSharedFiles called with ${uris.size} file(s)")
         uris.forEachIndexed { index, uri ->
-            Log.d(TAG, "  [$index] URI: $uri")
+            AppLogger.d(TAG, "  [$index] URI: $uri")
         }
         
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Creating new chat for shared files...")
+                AppLogger.d(TAG, "Creating new chat for shared files...")
                 // Create a new chat for the shared file(s)
                 createNewChat()
                 
@@ -1115,37 +1328,37 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
                 
                 if (currentChatId.value == null) {
-                    Log.e(TAG, "Failed to create chat after waiting")
+                    AppLogger.e(TAG, "Failed to create chat after waiting")
                     uiStateDelegate.showErrorMessage("创建新对话失败")
                     return@launch
                 }
                 
-                Log.d(TAG, "Chat created successfully: ${currentChatId.value}")
+                AppLogger.d(TAG, "Chat created successfully: ${currentChatId.value}")
                 
                 // Show processing state
                 messageProcessingDelegate.setInputProcessingState(true, "正在处理分享的文件...")
                 
                 // Attach each file
-                Log.d(TAG, "Starting to attach ${uris.size} file(s)...")
+                AppLogger.d(TAG, "Starting to attach ${uris.size} file(s)...")
                 uris.forEachIndexed { index, uri ->
                     val filePath = uri.toString()
-                    Log.d(TAG, "Attaching file [$index]: $filePath")
+                    AppLogger.d(TAG, "Attaching file [$index]: $filePath")
                     attachmentDelegate.handleAttachment(filePath)
                     delay(100) // Small delay between files
                 }
-                Log.d(TAG, "All files attached successfully")
+                AppLogger.d(TAG, "All files attached successfully")
                 
                 // Set the pre-filled message
-                Log.d(TAG, "Setting pre-filled message")
+                AppLogger.d(TAG, "Setting pre-filled message")
                 messageProcessingDelegate.updateUserMessage(TextFieldValue("帮我看看这个文件"))
 
                 // Clear processing state
                 messageProcessingDelegate.setInputProcessingState(false, "")
                 
-                Log.d(TAG, "Successfully processed shared files")
+                AppLogger.d(TAG, "Successfully processed shared files")
                 uiStateDelegate.showToast("已添加 ${uris.size} 个文件")
             } catch (e: Exception) {
-                Log.e(TAG, "处理分享文件失败", e)
+                AppLogger.e(TAG, "处理分享文件失败", e)
                 uiStateDelegate.showErrorMessage("处理分享文件失败: ${e.message}")
                 messageProcessingDelegate.setInputProcessingState(false, "")
             }
@@ -1158,7 +1371,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             viewModelScope.launch {
                 try {
                     // 使用默认配置或保存的配置创建一个新实例
-                    Log.d(TAG, "创建默认EnhancedAIService实例")
+                    AppLogger.d(TAG, "创建默认EnhancedAIService实例")
                     apiConfigDelegate.useDefaultConfig()
 
                     // 等待服务实例创建完成
@@ -1169,14 +1382,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     }
 
                     if (enhancedAiService == null) {
-                        Log.e(TAG, "无法创建EnhancedAIService实例")
+                        AppLogger.e(TAG, "无法创建EnhancedAIService实例")
                         // 修改: 使用错误弹窗而不是 Toast 显示服务初始化错误
                         uiStateDelegate.showErrorMessage("无法初始化AI服务，请检查网络和API设置")
                     } else {
-                        Log.d(TAG, "成功创建EnhancedAIService实例")
+                        AppLogger.d(TAG, "成功创建EnhancedAIService实例")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "创建EnhancedAIService实例时出错", e)
+                    AppLogger.e(TAG, "创建EnhancedAIService实例时出错", e)
                     // 修改: 使用错误弹窗而不是 Toast 显示服务初始化错误
                     uiStateDelegate.showErrorMessage("初始化AI服务失败: ${e.message}")
                 }
@@ -1199,7 +1412,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         // 如果要显示WebView，先关闭AI电脑
         if (!_showWebView.value && _showAiComputer.value) {
             _showAiComputer.value = false
-            Log.d(TAG, "AI电脑已关闭（由于打开工作区）")
+            AppLogger.d(TAG, "AI电脑已关闭（由于打开工作区）")
         }
         
         // 如果要显示WebView，确保本地Web服务器已启动
@@ -1210,7 +1423,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 try {
                     workspaceServer.start()
                 } catch (e: IOException) {
-                    Log.e(TAG, "Failed to start workspace web server", e)
+                    AppLogger.e(TAG, "Failed to start workspace web server", e)
                     showErrorMessage("Failed to start workspace server.")
                     return
                 }
@@ -1260,7 +1473,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             val workspacePath = chat?.workspace
 
             if (workspacePath == null) {
-                Log.w(TAG, "Chat $chatId has no workspace bound. Web server not updated.")
+                AppLogger.w(TAG, "Chat $chatId has no workspace bound. Web server not updated.")
                 return
             }
 
@@ -1271,9 +1484,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 webServer.start()
             }
             webServer.updateChatWorkspace(workspacePath)
-            Log.d(TAG, "Web服务器工作空间已更新为: $workspacePath for chat $chatId")
+            AppLogger.d(TAG, "Web服务器工作空间已更新为: $workspacePath for chat $chatId")
         } catch (e: Exception) {
-            Log.e(TAG, "更新Web服务器工作空间失败", e)
+            AppLogger.e(TAG, "更新Web服务器工作空间失败", e)
             uiStateDelegate.showErrorMessage("更新Web工作空间失败: ${e.message}")
         }
     }
@@ -1428,12 +1641,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     webServer.start()
                 }
                 webServer.updateChatWorkspace(workspace)
-                Log.d(TAG, "Web server workspace updated to: $workspace for chat $chatId")
+                AppLogger.d(TAG, "Web server workspace updated to: $workspace for chat $chatId")
 
                 // 3. Trigger a refresh of the WebView
                 refreshWebView()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to update web server workspace after binding", e)
+                AppLogger.e(TAG, "Failed to update web server workspace after binding", e)
                 uiStateDelegate.showErrorMessage("更新Web工作空间失败: ${e.message}")
             }
         }
@@ -1451,12 +1664,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 if (webServer.isRunning()) {
                     webServer.stop()
                 }
-                Log.d(TAG, "Web server stopped after unbinding workspace for chat $chatId")
+                AppLogger.d(TAG, "Web server stopped after unbinding workspace for chat $chatId")
 
                 // 3. Trigger a refresh of the WebView
                 refreshWebView()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop web server after unbinding", e)
+                AppLogger.e(TAG, "Failed to stop web server after unbinding", e)
                 uiStateDelegate.showErrorMessage("停止Web工作空间失败: ${e.message}")
             }
         }
@@ -1478,7 +1691,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Executing workspace command: ${command.command} in $workspacePath")
+                AppLogger.d(TAG, "Executing workspace command: ${command.command} in $workspacePath")
                 
                 val sessionId: String
                 val workspaceDir = File(workspacePath)
@@ -1488,7 +1701,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     val sessionTitle = command.sessionTitle ?: command.label
                     val dedicatedSessionId = terminal.createSessionAndWait(sessionTitle)
                     if (dedicatedSessionId == null) {
-                        Log.e(TAG, "Failed to create dedicated terminal session")
+                        AppLogger.e(TAG, "Failed to create dedicated terminal session")
                         uiStateDelegate.showErrorMessage("无法创建独立终端会话")
                         return@launch
                     }
@@ -1497,7 +1710,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     terminal.executeCommand(dedicatedSessionId, "cd \"${workspaceDir.absolutePath}\"")
                     sessionId = dedicatedSessionId
                     
-                    Log.d(TAG, "Created dedicated terminal session $sessionId for command: ${command.label}")
+                    AppLogger.d(TAG, "Created dedicated terminal session $sessionId for command: ${command.label}")
                 } else {
                     // 使用工作区的共享会话
                     var sharedSessionId = workspaceTerminalSessions[workspacePath]
@@ -1508,7 +1721,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         
                         sharedSessionId = terminal.createSessionAndWait("Workspace: $workspaceName")
                         if (sharedSessionId == null) {
-                            Log.e(TAG, "Failed to create workspace terminal session")
+                            AppLogger.e(TAG, "Failed to create workspace terminal session")
                             uiStateDelegate.showErrorMessage("无法创建工作区终端会话")
                             return@launch
                         }
@@ -1518,7 +1731,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         
                         // 切换到工作区目录
                         terminal.executeCommand(sharedSessionId, "cd \"${workspaceDir.absolutePath}\"")
-                        Log.d(TAG, "Created new workspace terminal session $sharedSessionId for $workspacePath")
+                        AppLogger.d(TAG, "Created new workspace terminal session $sharedSessionId for $workspacePath")
                     }
                     
                     sessionId = sharedSessionId
@@ -1530,9 +1743,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 // 执行命令（用户可以立即看到输出）
                 terminal.executeCommand(sessionId, command.command)
                 
-                Log.d(TAG, "Switched to computer view and executing command in session $sessionId")
+                AppLogger.d(TAG, "Switched to computer view and executing command in session $sessionId")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to execute workspace command", e)
+                AppLogger.e(TAG, "Failed to execute workspace command", e)
                 uiStateDelegate.showErrorMessage("命令执行失败: ${e.message}")
             }
         }
@@ -1577,7 +1790,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             // 如果要显示AI电脑，先关闭工作区
             if (!_showAiComputer.value && _showWebView.value) {
                 _showWebView.value = false
-                Log.d(TAG, "工作区已关闭（由于打开AI电脑）")
+                AppLogger.d(TAG, "工作区已关闭（由于打开AI电脑）")
             }
             
             val newShowState = !_showAiComputer.value
@@ -1586,14 +1799,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             if (newShowState) {
                 // 初始化AI电脑管理器
                 try {
-                    Log.d(TAG, "AI电脑已启动")
+                    AppLogger.d(TAG, "AI电脑已启动")
                 } catch (e: Exception) {
-                    Log.e(TAG, "启动AI电脑失败", e)
+                    AppLogger.e(TAG, "启动AI电脑失败", e)
                     _showAiComputer.value = false
                     uiStateDelegate.showErrorMessage("启动AI电脑失败: ${e.message}")
                 }
             } else {
-                Log.d(TAG, "AI电脑已关闭")
+                AppLogger.d(TAG, "AI电脑已关闭")
             }
         }
     }
@@ -1602,20 +1815,41 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     /** 初始化语音服务 */
     private fun initializeVoiceService() {
+        // 监听TTS服务类型和配置的变化
         viewModelScope.launch {
-            try {
-                voiceService = VoiceServiceFactory.getInstance(context)
-                val initialized = voiceService?.initialize() ?: false
-                if (!initialized) {
-                    Log.w(TAG, "语音服务初始化失败")
+            combine(
+                speechServicesPreferences.ttsServiceTypeFlow,
+                speechServicesPreferences.ttsHttpConfigFlow
+            ) { type, config ->
+                type to config
+            }.collect { (type, config) ->
+                try {
+                    AppLogger.d(TAG, "TTS配置变化，重新初始化语音服务: type=$type")
+                    
+                    // 停止当前播放
+                    voiceService?.stop()
+                    
+                    // 重置工厂单例，强制重新创建
+                    VoiceServiceFactory.resetInstance()
+                    
+                    // 重新获取服务实例
+                    voiceService = VoiceServiceFactory.getInstance(context)
+                    val initialized = voiceService?.initialize() ?: false
+                    if (!initialized) {
+                        AppLogger.w(TAG, "语音服务初始化失败")
+                    } else {
+                        AppLogger.i(TAG, "语音服务初始化成功")
+                        
+                        // 初始化成功后，重新监听播放状态
+                        viewModelScope.launch {
+                            voiceService?.speakingStateFlow?.collect { isSpeaking ->
+                                _isPlaying.value = isSpeaking
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "初始化语音服务时出错", e)
                 }
-                
-                // 监听语音播放状态
-                voiceService?.speakingStateFlow?.collect { isSpeaking ->
-                    _isPlaying.value = isSpeaking
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "初始化语音服务时出错", e)
             }
         }
     }
@@ -1624,10 +1858,16 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun speakMessage(message: String) {
         viewModelScope.launch {
             try {
+                // 如果服务未初始化，等待一段时间让监听协程完成初始化
                 if (voiceService == null) {
-                    initializeVoiceService()
-                    // 等待初始化完成
-                    delay(500)
+                    AppLogger.d(TAG, "语音服务尚未初始化，等待初始化完成...")
+                    delay(1000)
+                }
+
+                if (voiceService == null) {
+                    uiStateDelegate.showToast("语音服务初始化失败，请检查设置")
+                    AppLogger.e(TAG, "语音服务初始化超时")
+                    return@launch
                 }
 
                 val cleanerRegexs = speechServicesPreferences.ttsCleanerRegexsFlow.first()
@@ -1645,7 +1885,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     uiStateDelegate.showToast("朗读失败")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "朗读消息失败", e)
+                AppLogger.e(TAG, "朗读消息失败", e)
                 uiStateDelegate.showToast("朗读消息失败: ${e.message}")
             }
         }
@@ -1657,7 +1897,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             try {
                 voiceService?.stop()
             } catch (e: Exception) {
-                Log.e(TAG, "停止朗读失败", e)
+                AppLogger.e(TAG, "停止朗读失败", e)
             }
         }
     }

@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -57,13 +59,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ImportStrategy
 import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.data.repository.MemoryRepository
+import com.ai.assistance.operit.data.converter.ExportFormat
+import com.ai.assistance.operit.data.converter.ChatFormat
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -93,6 +100,15 @@ enum class MemoryOperation {
     FAILED
 }
 
+enum class ModelConfigOperation {
+    IDLE,
+    EXPORTING,
+    EXPORTED,
+    IMPORTING,
+    IMPORTED,
+    FAILED
+}
+
 @Composable
 fun ChatBackupSettingsScreen() {
     val context = LocalContext.current
@@ -100,19 +116,33 @@ fun ChatBackupSettingsScreen() {
 
     val chatHistoryManager = remember { ChatHistoryManager.getInstance(context) }
     val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val modelConfigManager = remember { ModelConfigManager(context) }
     val activeProfileId by userPreferencesManager.activeProfileIdFlow.collectAsState(initial = "default")
     var memoryRepo by remember { mutableStateOf<MemoryRepository?>(null) }
 
     var totalChatCount by remember { mutableStateOf(0) }
     var totalMemoryCount by remember { mutableStateOf(0) }
     var totalMemoryLinkCount by remember { mutableStateOf(0) }
+    var totalModelConfigCount by remember { mutableStateOf(0) }
     var operationState by remember { mutableStateOf(ChatHistoryOperation.IDLE) }
     var operationMessage by remember { mutableStateOf("") }
     var memoryOperationState by remember { mutableStateOf(MemoryOperation.IDLE) }
     var memoryOperationMessage by remember { mutableStateOf("") }
+    var modelConfigOperationState by remember { mutableStateOf(ModelConfigOperation.IDLE) }
+    var modelConfigOperationMessage by remember { mutableStateOf("") }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showMemoryImportStrategyDialog by remember { mutableStateOf(false) }
     var pendingMemoryImportUri by remember { mutableStateOf<Uri?>(null) }
+    
+    // 模型配置导出安全警告
+    var showModelConfigExportWarning by remember { mutableStateOf(false) }
+    var exportedModelConfigPath by remember { mutableStateOf("") }
+    
+    // Operit 目录备份文件统计
+    var chatBackupFileCount by remember { mutableStateOf(0) }
+    var memoryBackupFileCount by remember { mutableStateOf(0) }
+    var modelConfigBackupFileCount by remember { mutableStateOf(0) }
+    var isScanning by remember { mutableStateOf(false) }
 
     val profileIds by userPreferencesManager.profileListFlow.collectAsState(initial = listOf("default"))
     var allProfiles by remember { mutableStateOf<List<PreferenceProfile>>(emptyList()) }
@@ -120,6 +150,15 @@ fun ChatBackupSettingsScreen() {
     var selectedImportProfileId by remember { mutableStateOf(activeProfileId) }
     var showExportProfileDialog by remember { mutableStateOf(false) }
     var showImportProfileDialog by remember { mutableStateOf(false) }
+    
+    // 导出格式选择
+    var showExportFormatDialog by remember { mutableStateOf(false) }
+    var selectedExportFormat by remember { mutableStateOf(ExportFormat.JSON) }
+    
+    // 导入格式选择
+    var showImportFormatDialog by remember { mutableStateOf(false) }
+    var selectedImportFormat by remember { mutableStateOf(ChatFormat.OPERIT) }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
 
     LaunchedEffect(activeProfileId) {
         memoryRepo = MemoryRepository(context, activeProfileId)
@@ -152,6 +191,44 @@ fun ChatBackupSettingsScreen() {
             totalMemoryLinkCount = graph.edges.size
         }
     }
+    
+    LaunchedEffect(Unit) {
+        modelConfigManager.configListFlow.collect { configList ->
+            totalModelConfigCount = configList.size
+        }
+    }
+    
+    // 扫描 Operit 目录中的备份文件
+    LaunchedEffect(Unit) {
+        scope.launch {
+            isScanning = true
+            try {
+                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val operitDir = File(downloadDir, "Operit")
+                
+                if (operitDir.exists() && operitDir.isDirectory) {
+                    val files = operitDir.listFiles() ?: emptyArray()
+                    
+                    chatBackupFileCount = files.count { file ->
+                        file.name.startsWith("chat_backup_") && file.extension == "json" ||
+                        file.name.startsWith("chat_export_") && file.extension in listOf("json", "md", "html", "txt")
+                    }
+                    
+                    memoryBackupFileCount = files.count { file ->
+                        file.name.startsWith("memory_backup_") && file.extension == "json"
+                    }
+                    
+                    modelConfigBackupFileCount = files.count { file ->
+                        file.name.startsWith("model_config_backup_") && file.extension == "json"
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isScanning = false
+            }
+        }
+    }
 
     val chatFilePickerLauncher =
         rememberLauncherForActivityResult(
@@ -159,28 +236,9 @@ fun ChatBackupSettingsScreen() {
         ) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
                 result.data?.data?.let { uri ->
-                    scope.launch {
-                        operationState = ChatHistoryOperation.IMPORTING
-                        try {
-                            val importResult = chatHistoryManager.importChatHistoriesFromUri(uri)
-                            operationMessage = if (importResult.total > 0) {
-                                operationState = ChatHistoryOperation.IMPORTED
-                                "导入成功：\n" +
-                                    "- 新增记录：${importResult.new}条\n" +
-                                    "- 更新记录：${importResult.updated}条\n" +
-                                    (if (importResult.skipped > 0) "- 跳过无效记录：${importResult.skipped}条" else "")
-                            } else {
-                                operationState = ChatHistoryOperation.FAILED
-                                "导入失败：未找到有效的聊天记录，请确保选择了正确的备份文件"
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            operationState = ChatHistoryOperation.FAILED
-                            operationMessage =
-                                "导入失败：${e.localizedMessage ?: e.toString()}\n" +
-                                    "请确保选择了有效的Operit聊天记录备份文件"
-                        }
-                    }
+                    // 保存URI，显示格式选择对话框
+                    pendingImportUri = uri
+                    showImportFormatDialog = true
                 }
             }
         }
@@ -193,6 +251,39 @@ fun ChatBackupSettingsScreen() {
                 result.data?.data?.let { uri ->
                     pendingMemoryImportUri = uri
                     showImportProfileDialog = true
+                }
+            }
+        }
+    
+    val modelConfigFilePickerLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    scope.launch {
+                        modelConfigOperationState = ModelConfigOperation.IMPORTING
+                        try {
+                            val inputStream = context.contentResolver.openInputStream(uri)
+                            val jsonContent = inputStream?.bufferedReader()?.use { it.readText() }
+                            if (jsonContent != null) {
+                                val (newCount, updatedCount, skippedCount) = 
+                                    modelConfigManager.importConfigs(jsonContent)
+                                modelConfigOperationState = ModelConfigOperation.IMPORTED
+                                modelConfigOperationMessage = "成功导入模型配置：\n" +
+                                    "- 新增配置：${newCount}个\n" +
+                                    "- 更新配置：${updatedCount}个" +
+                                    (if (skippedCount > 0) "\n- 跳过无效配置：${skippedCount}个" else "")
+                            } else {
+                                modelConfigOperationState = ModelConfigOperation.FAILED
+                                modelConfigOperationMessage = "导入失败：无法读取文件"
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            modelConfigOperationState = ModelConfigOperation.FAILED
+                            modelConfigOperationMessage = "导入失败：${e.localizedMessage ?: e.toString()}"
+                        }
+                    }
                 }
             }
         }
@@ -215,34 +306,62 @@ fun ChatBackupSettingsScreen() {
             )
         }
         item {
+            BackupFilesStatisticsCard(
+                chatBackupCount = chatBackupFileCount,
+                memoryBackupCount = memoryBackupFileCount,
+                modelConfigBackupCount = modelConfigBackupFileCount,
+                isScanning = isScanning,
+                onRefresh = {
+                    scope.launch {
+                        isScanning = true
+                        try {
+                            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                            val operitDir = File(downloadDir, "Operit")
+                            
+                            if (operitDir.exists() && operitDir.isDirectory) {
+                                val files = operitDir.listFiles() ?: emptyArray()
+                                
+                                chatBackupFileCount = files.count { file ->
+                                    file.name.startsWith("chat_backup_") && file.extension == "json" ||
+                                    file.name.startsWith("chat_export_") && file.extension in listOf("json", "md", "html", "txt")
+                                }
+                                
+                                memoryBackupFileCount = files.count { file ->
+                                    file.name.startsWith("memory_backup_") && file.extension == "json"
+                                }
+                                
+                                modelConfigBackupFileCount = files.count { file ->
+                                    file.name.startsWith("model_config_backup_") && file.extension == "json"
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        } finally {
+                            isScanning = false
+                        }
+                    }
+                }
+            )
+        }
+        item {
             DataManagementCard(
                 totalChatCount = totalChatCount,
                 operationState = operationState,
                 operationMessage = operationMessage,
                 onExport = {
-                    scope.launch {
-                        operationState = ChatHistoryOperation.EXPORTING
-                        try {
-                            val filePath = chatHistoryManager.exportChatHistoriesToDownloads()
-                            if (filePath != null) {
-                                operationState = ChatHistoryOperation.EXPORTED
-                                val chatCount = chatHistoryManager.chatHistoriesFlow.first().size
-                                operationMessage = "成功导出 $chatCount 条聊天记录到：\n$filePath"
-                            } else {
-                                operationState = ChatHistoryOperation.FAILED
-                                operationMessage = "导出失败：无法创建文件"
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            operationState = ChatHistoryOperation.FAILED
-                            operationMessage = "导出失败：${e.localizedMessage ?: e.toString()}"
-                        }
-                    }
+                    // 显示格式选择对话框
+                    showExportFormatDialog = true
                 },
                 onImport = {
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "application/json"
+                        type = "*/*"  // 接受所有类型
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                            "application/json",
+                            "text/markdown",
+                            "text/plain",
+                            "text/csv"
+                        ))
                     }
                     chatFilePickerLauncher.launch(intent)
                 },
@@ -262,6 +381,46 @@ fun ChatBackupSettingsScreen() {
                         type = "application/json"
                     }
                     memoryFilePickerLauncher.launch(intent)
+                }
+            )
+        }
+        item {
+            ModelConfigManagementCard(
+                totalConfigCount = totalModelConfigCount,
+                operationState = modelConfigOperationState,
+                operationMessage = modelConfigOperationMessage,
+                onExport = {
+                    scope.launch {
+                        modelConfigOperationState = ModelConfigOperation.EXPORTING
+                        try {
+                            val jsonContent = modelConfigManager.exportAllConfigs()
+                            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                            val exportDir = File(downloadDir, "Operit")
+                            if (!exportDir.exists()) {
+                                exportDir.mkdirs()
+                            }
+                            val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
+                            val timestamp = dateFormat.format(Date())
+                            val exportFile = File(exportDir, "model_config_backup_$timestamp.json")
+                            exportFile.writeText(jsonContent)
+                            
+                            // 导出成功，显示安全警告对话框
+                            exportedModelConfigPath = exportFile.absolutePath
+                            showModelConfigExportWarning = true
+                            modelConfigOperationState = ModelConfigOperation.EXPORTED
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            modelConfigOperationState = ModelConfigOperation.FAILED
+                            modelConfigOperationMessage = "导出失败：${e.localizedMessage ?: e.toString()}"
+                        }
+                    }
+                },
+                onImport = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/json"
+                    }
+                    modelConfigFilePickerLauncher.launch(intent)
                 }
             )
         }
@@ -390,6 +549,100 @@ fun ChatBackupSettingsScreen() {
             }
         )
     }
+    
+    if (showExportFormatDialog) {
+        ExportFormatDialog(
+            selectedFormat = selectedExportFormat,
+            onFormatSelected = { selectedExportFormat = it },
+            onDismiss = { showExportFormatDialog = false },
+            onConfirm = {
+                showExportFormatDialog = false
+                scope.launch {
+                    operationState = ChatHistoryOperation.EXPORTING
+                    try {
+                        val filePath = chatHistoryManager.exportChatHistoriesToDownloads(selectedExportFormat)
+                        if (filePath != null) {
+                            operationState = ChatHistoryOperation.EXPORTED
+                            val chatCount = chatHistoryManager.chatHistoriesFlow.first().size
+                            val formatName = when (selectedExportFormat) {
+                                ExportFormat.JSON -> "JSON"
+                                ExportFormat.MARKDOWN -> "Markdown"
+                                ExportFormat.HTML -> "HTML"
+                                ExportFormat.TXT -> "文本"
+                                ExportFormat.CSV -> "CSV"
+                            }
+                            operationMessage = "成功导出 $chatCount 条聊天记录为 $formatName 格式到：\n$filePath"
+                        } else {
+                            operationState = ChatHistoryOperation.FAILED
+                            operationMessage = "导出失败：无法创建文件"
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        operationState = ChatHistoryOperation.FAILED
+                        operationMessage = "导出失败：${e.localizedMessage ?: e.toString()}"
+                    }
+                }
+            }
+        )
+    }
+    
+    if (showImportFormatDialog) {
+        ImportFormatDialog(
+            selectedFormat = selectedImportFormat,
+            onFormatSelected = { selectedImportFormat = it },
+            onDismiss = {
+                showImportFormatDialog = false
+                pendingImportUri = null
+            },
+            onConfirm = {
+                showImportFormatDialog = false
+                pendingImportUri?.let { uri ->
+                    scope.launch {
+                        operationState = ChatHistoryOperation.IMPORTING
+                        try {
+                            val importResult = chatHistoryManager.importChatHistoriesFromUri(uri, selectedImportFormat)
+                            operationMessage = if (importResult.total > 0) {
+                                operationState = ChatHistoryOperation.IMPORTED
+                                val formatName = when (selectedImportFormat) {
+                                    ChatFormat.OPERIT -> "Operit JSON"
+                                    ChatFormat.CHATGPT -> "ChatGPT"
+                                    ChatFormat.CHATBOX -> "ChatBox"
+                                    ChatFormat.MARKDOWN -> "Markdown"
+                                    ChatFormat.GENERIC_JSON -> "通用 JSON"
+                                    ChatFormat.CLAUDE -> "Claude"
+                                    else -> "未知格式"
+                                }
+                                "成功导入 $formatName 格式：\n" +
+                                    "- 新增记录：${importResult.new}条\n" +
+                                    "- 更新记录：${importResult.updated}条\n" +
+                                    (if (importResult.skipped > 0) "- 跳过无效记录：${importResult.skipped}条" else "")
+                            } else {
+                                operationState = ChatHistoryOperation.FAILED
+                                "导入失败：未找到有效的聊天记录"
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            operationState = ChatHistoryOperation.FAILED
+                            operationMessage = "导入失败：${e.localizedMessage ?: e.toString()}"
+                        } finally {
+                            pendingImportUri = null
+                        }
+                    }
+                }
+            }
+        )
+    }
+    
+    // 模型配置导出安全警告对话框
+    if (showModelConfigExportWarning) {
+        ModelConfigExportWarningDialog(
+            exportPath = exportedModelConfigPath,
+            onDismiss = {
+                showModelConfigExportWarning = false
+                modelConfigOperationMessage = "成功导出到：$exportedModelConfigPath"
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -407,11 +660,11 @@ private fun OverviewCard(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "数据概览",
+                    text = stringResource(R.string.backup_data_overview),
                     style = MaterialTheme.typography.titleLarge
                 )
                 Text(
-                    text = "当前配置：$activeProfileName",
+                    text = stringResource(R.string.backup_current_profile, activeProfileName),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -424,17 +677,153 @@ private fun OverviewCard(
                 StatChip(
                     icon = Icons.Default.History,
                     title = "$totalChatCount",
-                    subtitle = "聊天记录"
+                    subtitle = stringResource(R.string.backup_chat_count)
                 )
                 StatChip(
                     icon = Icons.Default.Psychology,
                     title = "$totalMemoryCount",
-                    subtitle = "记忆条目"
+                    subtitle = stringResource(R.string.backup_memory_count)
                 )
                 StatChip(
                     icon = Icons.Default.Link,
                     title = "$totalLinkCount",
-                    subtitle = "记忆关联"
+                    subtitle = stringResource(R.string.backup_memory_link_count)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BackupFilesStatisticsCard(
+    chatBackupCount: Int,
+    memoryBackupCount: Int,
+    modelConfigBackupCount: Int,
+    isScanning: Boolean,
+    onRefresh: () -> Unit
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "📁 " + stringResource(R.string.backup_files_statistics),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Text(
+                        text = stringResource(R.string.backup_files_statistics_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    FilledTonalButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(40.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.backup_refresh),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            
+            Divider()
+            
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                BackupFileStatItem(
+                    icon = Icons.Default.History,
+                    count = chatBackupCount,
+                    label = stringResource(R.string.backup_chat_files),
+                    color = MaterialTheme.colorScheme.primary
+                )
+                BackupFileStatItem(
+                    icon = Icons.Default.Psychology,
+                    count = memoryBackupCount,
+                    label = stringResource(R.string.backup_memory_files),
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                BackupFileStatItem(
+                    icon = Icons.Default.Settings,
+                    count = modelConfigBackupCount,
+                    label = stringResource(R.string.backup_model_config_files),
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            
+            if (!isScanning) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text(
+                        text = "💡 " + stringResource(R.string.backup_files_location_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupFileStatItem(
+    icon: ImageVector,
+    count: Int,
+    label: String,
+    color: androidx.compose.ui.graphics.Color
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.1f)
+        ),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(24.dp)
+            )
+            Column {
+                Text(
+                    text = "$count",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -698,6 +1087,80 @@ private fun MemoryManagementCard(
                         )
                         MemoryOperation.FAILED -> OperationResultCard(
                             title = "操作失败",
+                            message = operationMessage,
+                            icon = Icons.Default.Info,
+                            isError = true
+                        )
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModelConfigManagementCard(
+    totalConfigCount: Int,
+    operationState: ModelConfigOperation,
+    operationMessage: String,
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SectionHeader(
+                title = stringResource(R.string.backup_model_config),
+                subtitle = stringResource(R.string.backup_model_config_subtitle),
+                icon = Icons.Default.Settings
+            )
+
+            Text(
+                text = stringResource(R.string.backup_model_config_current_count, totalConfigCount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ManagementButton(
+                    text = stringResource(R.string.backup_export),
+                    icon = Icons.Default.CloudDownload,
+                    onClick = onExport,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                ManagementButton(
+                    text = stringResource(R.string.backup_import),
+                    icon = Icons.Default.CloudUpload,
+                    onClick = onImport,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
+
+            AnimatedVisibility(visible = operationState != ModelConfigOperation.IDLE) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    when (operationState) {
+                        ModelConfigOperation.EXPORTING -> OperationProgressView(message = stringResource(R.string.backup_exporting, stringResource(R.string.backup_model_config)))
+                        ModelConfigOperation.IMPORTING -> OperationProgressView(message = stringResource(R.string.backup_importing, stringResource(R.string.backup_model_config)))
+                        ModelConfigOperation.EXPORTED -> OperationResultCard(
+                            title = stringResource(R.string.backup_export_success),
+                            message = operationMessage,
+                            icon = Icons.Default.CloudDownload
+                        )
+                        ModelConfigOperation.IMPORTED -> OperationResultCard(
+                            title = stringResource(R.string.backup_import_success),
+                            message = operationMessage,
+                            icon = Icons.Default.CloudUpload
+                        )
+                        ModelConfigOperation.FAILED -> OperationResultCard(
+                            title = stringResource(R.string.backup_operation_failed),
                             message = operationMessage,
                             icon = Icons.Default.Info,
                             isError = true
@@ -1061,4 +1524,359 @@ private fun ProfileSelectionDialog(
     )
 }
 
+@Composable
+private fun ExportFormatDialog(
+    selectedFormat: ExportFormat,
+    onFormatSelected: (ExportFormat) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择导出格式") },
+        text = {
+            Column {
+                Text(
+                    text = "请选择导出聊天记录的文件格式：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                FormatOption(
+                    format = ExportFormat.JSON,
+                    title = "JSON",
+                    description = "标准格式，支持完整数据结构（推荐）",
+                    selected = selectedFormat == ExportFormat.JSON,
+                    onClick = { onFormatSelected(ExportFormat.JSON) }
+                )
+                
+                FormatOption(
+                    format = ExportFormat.MARKDOWN,
+                    title = "Markdown",
+                    description = "纯文本格式，易于阅读和编辑",
+                    selected = selectedFormat == ExportFormat.MARKDOWN,
+                    onClick = { onFormatSelected(ExportFormat.MARKDOWN) }
+                )
+                
+                FormatOption(
+                    format = ExportFormat.HTML,
+                    title = "HTML",
+                    description = "网页格式，在浏览器中查看",
+                    selected = selectedFormat == ExportFormat.HTML,
+                    onClick = { onFormatSelected(ExportFormat.HTML) }
+                )
+                
+                FormatOption(
+                    format = ExportFormat.TXT,
+                    title = "纯文本",
+                    description = "简单文本格式，通用性最强",
+                    selected = selectedFormat == ExportFormat.TXT,
+                    onClick = { onFormatSelected(ExportFormat.TXT) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("导出")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ImportFormatDialog(
+    selectedFormat: ChatFormat,
+    onFormatSelected: (ChatFormat) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择导入格式") },
+        text = {
+            Column {
+                Text(
+                    text = "请选择要导入的聊天记录格式：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                ImportFormatOption(
+                    format = ChatFormat.OPERIT,
+                    title = "Operit JSON（推荐）",
+                    description = "本应用的原生格式，完整保留所有数据",
+                    selected = selectedFormat == ChatFormat.OPERIT,
+                    onClick = { onFormatSelected(ChatFormat.OPERIT) }
+                )
+                
+                ImportFormatOption(
+                    format = ChatFormat.CHATGPT,
+                    title = "ChatGPT",
+                    description = "OpenAI ChatGPT conversations.json 导出格式",
+                    selected = selectedFormat == ChatFormat.CHATGPT,
+                    onClick = { onFormatSelected(ChatFormat.CHATGPT) }
+                )
+                
+                ImportFormatOption(
+                    format = ChatFormat.CHATBOX,
+                    title = "ChatBox",
+                    description = "ChatBox 桌面应用导出格式",
+                    selected = selectedFormat == ChatFormat.CHATBOX,
+                    onClick = { onFormatSelected(ChatFormat.CHATBOX) }
+                )
+                
+                ImportFormatOption(
+                    format = ChatFormat.MARKDOWN,
+                    title = "Markdown",
+                    description = "Markdown 格式的聊天记录文件",
+                    selected = selectedFormat == ChatFormat.MARKDOWN,
+                    onClick = { onFormatSelected(ChatFormat.MARKDOWN) }
+                )
+                
+                ImportFormatOption(
+                    format = ChatFormat.GENERIC_JSON,
+                    title = "通用 JSON",
+                    description = "标准 role-content 结构的 JSON（支持 Claude、LibreChat 等）",
+                    selected = selectedFormat == ChatFormat.GENERIC_JSON,
+                    onClick = { onFormatSelected(ChatFormat.GENERIC_JSON) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("导入")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ImportFormatOption(
+    format: ChatFormat,
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        border = if (selected)
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = onClick
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FormatOption(
+    format: ExportFormat,
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        border = if (selected)
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = onClick
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelConfigExportWarningDialog(
+    exportPath: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "⚠️ " + stringResource(R.string.backup_model_config_warning_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.backup_model_config_warning_contains),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Column(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    SecurityWarningItem("🔑 " + stringResource(R.string.backup_model_config_warning_api_key))
+                    SecurityWarningItem("🌐 " + stringResource(R.string.backup_model_config_warning_api_endpoint))
+                    SecurityWarningItem("⚙️ " + stringResource(R.string.backup_model_config_warning_model_params))
+                    SecurityWarningItem("🔧 " + stringResource(R.string.backup_model_config_warning_custom_params))
+                }
+                
+                Spacer(modifier = Modifier.size(8.dp))
+                
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "📋 " + stringResource(R.string.backup_model_config_warning_security_tips),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = stringResource(R.string.backup_model_config_warning_tips),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.size(4.dp))
+                
+                Text(
+                    text = stringResource(R.string.backup_model_config_warning_export_path),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Text(
+                        text = exportPath,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(stringResource(R.string.backup_model_config_warning_confirm))
+            }
+        }
+    )
+}
+
+@Composable
+private fun SecurityWarningItem(text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Info,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
 

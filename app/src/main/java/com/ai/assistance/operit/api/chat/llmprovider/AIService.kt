@@ -68,11 +68,13 @@ interface AIService {
      *
      * @param message 用户消息内容
      * @param chatHistory 聊天历史记录
+     * @param availableTools 可用工具列表（可选）
      * @return 估算的输入token总数 (包括缓存和新增部分)
      */
     suspend fun calculateInputTokens(
             message: String,
-            chatHistory: List<Pair<String, String>>
+            chatHistory: List<Pair<String, String>>,
+            availableTools: List<ToolPrompt>? = null
     ): Int
 
     /**

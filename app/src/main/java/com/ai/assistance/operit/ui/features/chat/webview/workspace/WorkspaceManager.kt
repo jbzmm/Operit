@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.ui.features.chat.webview.workspace
 
 import android.annotation.SuppressLint
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import android.view.MotionEvent
 import android.webkit.WebView
 import androidx.compose.animation.*
@@ -44,7 +44,9 @@ import com.ai.assistance.operit.ui.features.chat.webview.WebViewHandler
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.CodeEditor
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.CodeFormatter
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.LanguageDetector
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlinx.serialization.Serializable
 
@@ -79,9 +81,15 @@ fun WorkspaceManager(
     val coroutineScope = rememberCoroutineScope()
     val toolHandler = remember { AIToolHandler.getInstance(context) }
     
-    // 读取工作区配置
-    val workspaceConfig = remember(workspacePath) { 
-        WorkspaceConfigReader.readConfig(workspacePath) 
+    // 读取工作区配置：在重新进入预览界面时从磁盘刷新
+    var workspaceConfig by remember(workspacePath) {
+        mutableStateOf(WorkspaceConfigReader.readConfig(workspacePath))
+    }
+
+    LaunchedEffect(isVisible, workspacePath) {
+        if (isVisible) {
+            workspaceConfig = WorkspaceConfigReader.readConfig(workspacePath)
+        }
     }
 
     // 将 webViewHandler 和 webView 实例提升到 remember 中，使其在重组中保持稳定
@@ -135,7 +143,7 @@ fun WorkspaceManager(
     // 监听WebView刷新计数器变化并触发刷新
     LaunchedEffect(webViewRefreshCounter) {
         if (webViewRefreshCounter > 0) {
-            Log.d("WorkspaceManager", "WebView refresh triggered, counter: $webViewRefreshCounter")
+            AppLogger.d("WorkspaceManager", "WebView refresh triggered, counter: $webViewRefreshCounter")
             // 确保webView已经加载完成后再刷新
             kotlinx.coroutines.delay(100) // 短暂延迟确保webView准备就绪
             webView.reload()
@@ -358,7 +366,7 @@ fun WorkspaceManager(
                                     actualViewModel.executeCommandInWorkspace(command, workspacePath)
                                 } else {
                                     // 对于旧版本Android，显示不支持提示
-                                    Log.w("WorkspaceManager", "Terminal features require Android 8.0+")
+                                    AppLogger.w("WorkspaceManager", "Terminal features require Android 8.0+")
                                 }
                             }
                         )
@@ -371,22 +379,49 @@ fun WorkspaceManager(
                         when {
                             // 图片文件：显示图片预览
                             fileInfo.isImage -> {
+                                // Decode bitmap in background thread
+                                var bitmap by remember(fileInfo.path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+                                var isLoading by remember(fileInfo.path) { mutableStateOf(true) }
+                                
+                                LaunchedEffect(fileInfo.path) {
+                                    bitmap = withContext(Dispatchers.IO) {
+                                        try {
+                                            android.graphics.BitmapFactory.decodeFile(fileInfo.path)
+                                        } catch (e: Exception) {
+                                            AppLogger.e("WorkspaceManager", "Failed to decode bitmap: ${fileInfo.path}", e)
+                                            null
+                                        }
+                                    }
+                                    isLoading = false
+                                }
+                                
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(Color.Black),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    AndroidView(
-                                        factory = { context ->
-                                            android.widget.ImageView(context).apply {
-                                                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-                                                val bitmap = android.graphics.BitmapFactory.decodeFile(fileInfo.path)
-                                                setImageBitmap(bitmap)
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                                    if (isLoading) {
+                                        CircularProgressIndicator(color = Color.White)
+                                    } else {
+                                        bitmap?.let { decodedBitmap ->
+                                            AndroidView(
+                                                factory = { context ->
+                                                    android.widget.ImageView(context).apply {
+                                                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                                                        setImageBitmap(decodedBitmap)
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } ?: run {
+                                            Text(
+                                                text = "Failed to load image",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
                                     
                                     // 图片信息叠加层
                                     Surface(

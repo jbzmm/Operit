@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.rememberNavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.mcp.MCPRepository
@@ -39,8 +40,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
+import java.time.LocalDateTime
 
 // 为TopAppBar的actions提供CompositionLocal
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
@@ -56,14 +57,13 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     val context = LocalContext.current
     val announcementPreferences = remember { ChatAnnouncementPreferences(context) }
 
-
     // Navigation state - using a custom back stack
     var selectedItem by remember { mutableStateOf(initialNavItem) }
     var currentScreen by remember {
         mutableStateOf(OperitRouter.getScreenForNavItem(initialNavItem))
     }
     val backStack = remember { mutableStateListOf<Screen>() }
-    
+
     // 跟踪是否是返回操作
     var isNavigatingBack by remember { mutableStateOf(false) }
 
@@ -118,7 +118,7 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
         if (backStack.isNotEmpty()) {
             // 设置为返回导航
             isNavigatingBack = true
-            
+
             val previousScreen = backStack.removeLast()
             currentScreen = previousScreen
             // Update the selected NavItem if the previous screen has one.
@@ -164,29 +164,39 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
         showChatBindingAnnouncement = false
     }
 
+    val isEventCampaignActive = remember { isEventCampaignActive() }
+
     // Navigation items grouped by category
-    val navGroups =
+    val navGroups = listOf(
+        NavGroup(
+            "AI功能",
             listOf(
-                    NavGroup(
-                            "AI功能",
-                            listOf(
-                                    NavItem.AiChat,
-                                    NavItem.AssistantConfig,
-                                    NavItem.Packages,
-                                    NavItem.MemoryBase,
-                                    NavItem.TokenConfig
-                            )
-                    ),
-                    NavGroup(
-                            "工具",
-                            listOf(
-                                    NavItem.Toolbox,
-                                    NavItem.ShizukuCommands,
-                                    // NavItem.Workflow,
-                            )
-                    ),
-                    NavGroup("系统", listOf(NavItem.Settings, NavItem.Help, NavItem.About, NavItem.UpdateHistory))
+                NavItem.AiChat,
+                NavItem.AssistantConfig,
+                NavItem.Packages,
+                NavItem.MemoryBase,
+                NavItem.TokenConfig
             )
+        ),
+        NavGroup(
+            "工具",
+            listOf(
+                NavItem.Toolbox,
+                NavItem.ShizukuCommands,
+                // NavItem.Workflow,
+            )
+        ),
+        NavGroup(
+            "系统",
+            listOfNotNull(
+                NavItem.Settings,
+                if (isEventCampaignActive) NavItem.EventCampaign else null,
+                NavItem.Help,
+                NavItem.About,
+                NavItem.UpdateHistory
+            )
+        )
+    )
 
     // Flattened list for components that need it
     val navItems = navGroups.flatMap { it.items }
@@ -224,68 +234,68 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
 
     // Main app container
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
-        CompositionLocalProvider(LocalTopBarActions provides { actions: @Composable RowScope.() -> Unit -> 
-            topBarActions = actions 
+        CompositionLocalProvider(LocalTopBarActions provides { actions: @Composable RowScope.() -> Unit ->
+            topBarActions = actions
         }) {
             if (useTabletLayout) {
                 // Tablet layout
                 TabletLayout(
-                        currentScreen = currentScreen,
-                        selectedItem = selectedItem,
-                        isTabletSidebarExpanded = isTabletSidebarExpanded,
-                        isLoading = isLoading,
-                        navGroups = navGroups,
-                        navItems = navItems,
-                        isNetworkAvailable = isNetworkAvailable,
-                        networkType = networkType,
-                        navController = navController,
-                        scope = scope,
-                        drawerState = drawerState,
-                        showFpsCounter = showFpsCounter,
-                        tabletSidebarWidth = tabletSidebarWidth,
-                        collapsedTabletSidebarWidth = collapsedTabletSidebarWidth,
-                        onScreenChange = { screen -> navigateTo(screen) },
-                        onNavItemChange = { item ->
-                            navigateTo(
-                                    OperitRouter.getScreenForNavItem(item),
-                                    fromDrawer = true
-                            )
-                        },
-                        onToggleSidebar = {
-                                isTabletSidebarExpanded = !isTabletSidebarExpanded
-                        },
-                        navigateToTokenConfig = ::navigateToTokenConfig,
-                        canGoBack = canGoBack,
-                        onGoBack = ::goBack,
-                        isNavigatingBack = isNavigatingBack,
-                        topBarActions = { topBarActions() }
+                    currentScreen = currentScreen,
+                    selectedItem = selectedItem,
+                    isTabletSidebarExpanded = isTabletSidebarExpanded,
+                    isLoading = isLoading,
+                    navGroups = navGroups,
+                    navItems = navItems,
+                    isNetworkAvailable = isNetworkAvailable,
+                    networkType = networkType,
+                    navController = navController,
+                    scope = scope,
+                    drawerState = drawerState,
+                    showFpsCounter = showFpsCounter,
+                    tabletSidebarWidth = tabletSidebarWidth,
+                    collapsedTabletSidebarWidth = collapsedTabletSidebarWidth,
+                    onScreenChange = { screen -> navigateTo(screen) },
+                    onNavItemChange = { item ->
+                        navigateTo(
+                            OperitRouter.getScreenForNavItem(item),
+                            fromDrawer = true
+                        )
+                    },
+                    onToggleSidebar = {
+                        isTabletSidebarExpanded = !isTabletSidebarExpanded
+                    },
+                    navigateToTokenConfig = ::navigateToTokenConfig,
+                    canGoBack = canGoBack,
+                    onGoBack = ::goBack,
+                    isNavigatingBack = isNavigatingBack,
+                    topBarActions = { topBarActions() }
                 )
             } else {
                 // Phone layout
                 PhoneLayout(
-                        currentScreen = currentScreen,
-                        selectedItem = selectedItem,
-                        isLoading = isLoading,
-                        navGroups = navGroups,
-                        isNetworkAvailable = isNetworkAvailable,
-                        networkType = networkType,
-                        drawerWidth = drawerWidth,
-                        navController = navController,
-                        scope = scope,
-                        drawerState = drawerState,
-                        showFpsCounter = showFpsCounter,
-                        onScreenChange = { screen -> navigateTo(screen) },
-                        onNavItemChange = { item ->
-                            navigateTo(
-                                    OperitRouter.getScreenForNavItem(item),
-                                    fromDrawer = true
-                            )
-                        },
-                        navigateToTokenConfig = ::navigateToTokenConfig,
-                        canGoBack = canGoBack,
-                        onGoBack = ::goBack,
-                        isNavigatingBack = isNavigatingBack,
-                        topBarActions = { topBarActions() }
+                    currentScreen = currentScreen,
+                    selectedItem = selectedItem,
+                    isLoading = isLoading,
+                    navGroups = navGroups,
+                    isNetworkAvailable = isNetworkAvailable,
+                    networkType = networkType,
+                    drawerWidth = drawerWidth,
+                    navController = navController,
+                    scope = scope,
+                    drawerState = drawerState,
+                    showFpsCounter = showFpsCounter,
+                    onScreenChange = { screen -> navigateTo(screen) },
+                    onNavItemChange = { item ->
+                        navigateTo(
+                            OperitRouter.getScreenForNavItem(item),
+                            fromDrawer = true
+                        )
+                    },
+                    navigateToTokenConfig = ::navigateToTokenConfig,
+                    canGoBack = canGoBack,
+                    onGoBack = ::goBack,
+                    isNavigatingBack = isNavigatingBack,
+                    topBarActions = { topBarActions() }
                 )
             }
         }
@@ -294,7 +304,7 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
             ChatBindingAnnouncementDialog(
                 onNavigateToChatManagement = {
                     dismissChatBindingAnnouncement()
-                    navigateTo(Screen.ChatHistorySettings)
+                    navigateTo(Screen.Help)
                 },
                 onDismiss = { dismissChatBindingAnnouncement() }
             )
@@ -302,3 +312,12 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     }
 }
 
+fun isEventCampaignActive(): Boolean {
+    return try {
+        val now = LocalDateTime.now()
+        val end = LocalDateTime.of(2025, 12, 24, 23, 59)
+        now.isBefore(end)
+    } catch (e: Exception) {
+        false
+    }
+}

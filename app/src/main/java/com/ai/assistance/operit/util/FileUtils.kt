@@ -2,8 +2,10 @@ package com.ai.assistance.operit.util
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import android.webkit.MimeTypeMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -91,7 +93,7 @@ object FileUtils {
                 return isTextLikeBytes(buffer, bytesRead)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking if file is text-like: ${file.path}", e)
+            AppLogger.e(TAG, "Error checking if file is text-like: ${file.path}", e)
             return false
         }
     }
@@ -279,14 +281,14 @@ object FileUtils {
      * @param uniqueName A unique name or prefix for the file to prevent overwriting.
      * @return The URI of the copied file in internal storage, or null on failure.
      */
-    fun copyFileToInternalStorage(context: Context, uri: Uri, uniqueName: String): Uri? {
+    suspend fun copyFileToInternalStorage(context: Context, uri: Uri, uniqueName: String): Uri? = withContext(Dispatchers.IO) {
         var inputStream: InputStream? = null
         var outputStream: FileOutputStream? = null
         try {
             inputStream = context.contentResolver.openInputStream(uri)
             if (inputStream == null) {
-                Log.e("FileUtils", "Failed to open input stream for URI: $uri")
-                return null
+                AppLogger.e("FileUtils", "Failed to open input stream for URI: $uri")
+                return@withContext null
             }
 
             // 获取原始文件的扩展名
@@ -303,17 +305,17 @@ object FileUtils {
             }
             outputStream.flush()
             
-            Log.d("FileUtils", "File copied successfully to internal storage: ${file.absolutePath}")
-            return Uri.fromFile(file)
+            AppLogger.d("FileUtils", "File copied successfully to internal storage: ${file.absolutePath}")
+            return@withContext Uri.fromFile(file)
         } catch (e: Exception) {
-            Log.e("FileUtils", "Error copying file to internal storage", e)
-            return null
+            AppLogger.e("FileUtils", "Error copying file to internal storage", e)
+            return@withContext null
         } finally {
             try {
                 inputStream?.close()
                 outputStream?.close()
             } catch (e: Exception) {
-                Log.e("FileUtils", "Error closing streams", e)
+                AppLogger.e("FileUtils", "Error closing streams", e)
             }
         }
     }
@@ -324,13 +326,13 @@ object FileUtils {
      * @param uri The URI to get the extension from
      * @return The file extension or null if it couldn't be determined
      */
-    private fun getFileExtensionFromUri(context: Context, uri: Uri): String? {
+    private suspend fun getFileExtensionFromUri(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
         // First try to get from the URI path itself
         val uriPath = uri.path
         if (uriPath != null) {
             val pathExtension = uriPath.substringAfterLast('.', "")
             if (pathExtension.isNotEmpty() && pathExtension.length <= 10 && !pathExtension.contains('/')) {
-                return pathExtension.lowercase()
+                return@withContext pathExtension.lowercase()
             }
         }
         
@@ -339,7 +341,7 @@ object FileUtils {
         if (mimeType != null) {
             val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
             if (extension != null) {
-                return extension.lowercase()
+                return@withContext extension.lowercase()
             }
         }
         
@@ -351,13 +353,13 @@ object FileUtils {
                     val fileName = cursor.getString(nameIndex)
                     val fileExtension = fileName?.substringAfterLast('.', "")
                     if (!fileExtension.isNullOrEmpty() && fileExtension.length <= 10) {
-                        return fileExtension.lowercase()
+                        return@withContext fileExtension.lowercase()
                     }
                 }
             }
         }
         
-        return null
+        return@withContext null
     }
 
     /**
@@ -376,7 +378,7 @@ object FileUtils {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning old background files", e)
+            AppLogger.e(TAG, "Error cleaning old background files", e)
         }
     }
 
@@ -395,7 +397,7 @@ object FileUtils {
                 return fileSize <= maxSizeBytes
             }
         } catch (e: Exception) {
-            Log.e("FileUtils", "检查视频大小时出错", e)
+            AppLogger.e("FileUtils", "检查视频大小时出错", e)
         }
         // 如果无法检查大小，返回true以避免阻止用户选择
         return true

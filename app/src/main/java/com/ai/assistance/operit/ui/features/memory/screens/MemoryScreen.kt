@@ -65,14 +65,16 @@ import com.ai.assistance.operit.ui.features.memory.screens.dialogs.EditEdgeDialo
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.ToolTestDialog
 import com.ai.assistance.operit.ui.features.memory.viewmodel.MemoryViewModel
 import com.ai.assistance.operit.ui.features.memory.viewmodel.MemoryViewModelFactory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import android.provider.OpenableColumns
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -167,36 +169,41 @@ fun MemoryScreen() {
                     var tempFile: File? = null
                     try {
                         // More robust file name extraction
-                        var fileName = "Untitled"
-                        context.contentResolver.query(fileUri, null, null, null, null)
-                            ?.use { cursor ->
-                                if (cursor.moveToFirst()) {
-                                    val displayNameIndex =
-                                        cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                                    if (displayNameIndex != -1) {
-                                        fileName = cursor.getString(displayNameIndex)
+                        val (fileName, mimeType) = withContext(Dispatchers.IO) {
+                            // Execute ContentResolver operations on IO thread
+                            var extractedFileName = "Untitled"
+                            context.contentResolver.query(fileUri, null, null, null, null)
+                                ?.use { cursor ->
+                                    if (cursor.moveToFirst()) {
+                                        val displayNameIndex =
+                                            cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                        if (displayNameIndex != -1) {
+                                            extractedFileName = cursor.getString(displayNameIndex)
+                                        }
                                     }
                                 }
-                            }
 
-                        val mimeType = context.contentResolver.getType(fileUri)
-                        val content: String
+                            val extractedMimeType = context.contentResolver.getType(fileUri)
+                            Pair(extractedFileName, extractedMimeType)
+                        }
 
                         if (mimeType != null && mimeType.startsWith("text")) {
-                            val inputStream = context.contentResolver.openInputStream(fileUri)
-                            val reader = BufferedReader(InputStreamReader(inputStream))
-                            content = reader.readText()
+                            val content = withContext(Dispatchers.IO) {
+                                val inputStream = context.contentResolver.openInputStream(fileUri)
+                                val reader = BufferedReader(InputStreamReader(inputStream))
+                                reader.readText()
+                            }
                             viewModel.importDocument(fileName, fileUri.toString(), content)
                         } else {
                             // For binary files, use the tool
-                            val inputStream = context.contentResolver.openInputStream(fileUri)
                             tempFile = File(context.cacheDir, fileName)
-                            val outputStream = FileOutputStream(tempFile)
-                            inputStream?.use { input ->
-                                outputStream.use { output ->
-                                    input.copyTo(
-                                        output
-                                    )
+                            withContext(Dispatchers.IO) {
+                                val inputStream = context.contentResolver.openInputStream(fileUri)
+                                val outputStream = FileOutputStream(tempFile)
+                                inputStream?.use { input ->
+                                    outputStream.use { output ->
+                                        input.copyTo(output)
+                                    }
                                 }
                             }
 
@@ -210,18 +217,18 @@ fun MemoryScreen() {
                             if (result.success) {
                                 // Assuming result.result can be cast to StringResultData
                                 val resultData = result.result
-                                content = if (resultData is StringResultData) {
+                                val content = if (resultData is StringResultData) {
                                     resultData.value
                                 } else {
                                     resultData.toString()
                                 }
                                 viewModel.importDocument(fileName, fileUri.toString(), content)
                             } else {
-                                Log.e("MemoryScreen", "Tool execution failed: ${result.error}")
+                                AppLogger.e("MemoryScreen", "Tool execution failed: ${result.error}")
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MemoryScreen", "Error processing file: $fileUri", e)
+                        AppLogger.e("MemoryScreen", "Error processing file: $fileUri", e)
                     } finally {
                         tempFile?.delete()
                     }
@@ -250,7 +257,7 @@ fun MemoryScreen() {
                 // 框选模式切换按钮
                 FloatingActionButton(
                     onClick = {
-                        android.util.Log.d(
+                        com.ai.assistance.operit.util.AppLogger.d(
                             "MemoryScreen",
                             "Box selection button clicked. Current mode: ${uiState.isBoxSelectionMode}, toggling to ${!uiState.isBoxSelectionMode}"
                         )
@@ -264,7 +271,7 @@ fun MemoryScreen() {
 
                 FloatingActionButton(
                     onClick = {
-                        android.util.Log.d(
+                        com.ai.assistance.operit.util.AppLogger.d(
                             "MemoryScreen",
                             "Linking button clicked. Current mode: ${uiState.isLinkingMode}, toggling to ${!uiState.isLinkingMode}"
                         )

@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.DirectoryListingData
@@ -34,9 +34,12 @@ import java.util.zip.ZipOutputStream
 import com.ai.assistance.operit.util.FileUtils
 import com.ai.assistance.operit.util.SyntaxCheckUtil
 import com.ai.assistance.operit.util.PathMapper
+import com.ai.assistance.operit.util.ImagePoolManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.core.content.FileProvider
@@ -88,12 +91,12 @@ open class StandardFileSystemTools(protected val context: Context) {
         
         // 如果SSH已登录，使用SSH文件系统
         if (sshProvider != null) {
-            Log.d(TAG, "Using SSH file system provider")
+            AppLogger.d(TAG, "Using SSH file system provider")
             return sshProvider
         }
         
         // 否则使用本地Terminal的文件系统
-        Log.d(TAG, "Using local terminal file system provider")
+        AppLogger.d(TAG, "Using local terminal file system provider")
         return terminalManager.getFileSystemProvider()
     }
 
@@ -228,7 +231,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 }
             }
 
-            Log.d(TAG, "Listed ${entries.size} entries in directory $path")
+            AppLogger.d(TAG, "Listed ${entries.size} entries in directory $path")
 
             return ToolResult(
                 toolName = tool.name,
@@ -237,7 +240,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error listing directory", e)
+            AppLogger.e(TAG, "Error listing directory", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -270,7 +273,7 @@ open class StandardFileSystemTools(protected val context: Context) {
     ): ToolResult? {
         return when (fileExt) {
             "doc", "docx" -> {
-                Log.d(
+                AppLogger.d(
                     TAG,
                     "Detected Word document, attempting to extract text"
                 )
@@ -283,7 +286,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         .extractTextFromWord(sourceFile, tempFile, fileExt)
 
                     if (success && tempFile.exists()) {
-                        Log.d(
+                        AppLogger.d(
                             TAG,
                             "Successfully extracted text from Word document"
                         )
@@ -301,7 +304,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                             error = ""
                         )
                     } else {
-                        Log.w(
+                        AppLogger.w(
                             TAG,
                             "Word text extraction failed, returning error"
                         )
@@ -313,7 +316,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error during Word document text extraction", e)
+                    AppLogger.e(TAG, "Error during Word document text extraction", e)
                     ToolResult(
                         toolName = tool.name,
                         success = false,
@@ -324,7 +327,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             }
 
             "pdf" -> {
-                Log.d(
+                AppLogger.d(
                     TAG,
                     "Detected PDF document, attempting to extract text"
                 )
@@ -337,7 +340,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         .extractTextFromPdf(context, sourceFile, tempFile)
 
                     if (success && tempFile.exists()) {
-                        Log.d(
+                        AppLogger.d(
                             TAG,
                             "Successfully extracted text from PDF document"
                         )
@@ -355,7 +358,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                             error = ""
                         )
                     } else {
-                        Log.w(
+                        AppLogger.w(
                             TAG,
                             "PDF text extraction failed, returning error"
                         )
@@ -367,7 +370,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error during PDF document text extraction", e)
+                    AppLogger.e(TAG, "Error during PDF document text extraction", e)
                     ToolResult(
                         toolName = tool.name,
                         success = false,
@@ -378,15 +381,42 @@ open class StandardFileSystemTools(protected val context: Context) {
             }
 
             "jpg", "jpeg", "png", "gif", "bmp" -> {
-                // 获取可选的intent参数
+                // 获取可选的intent参数和direct_image参数
                 val intent = tool.parameters.find { it.name == "intent" }?.value
+                val directImage = tool.parameters.find { it.name == "direct_image" }?.value?.toBoolean() ?: false
 
-                Log.d(
+                AppLogger.d(
                     TAG,
-                    "Detected image file, intent=${intent ?: "无"}"
+                    "Detected image file, intent=${intent ?: "无"}, direct_image=$directImage"
                 )
 
-                // 如果提供了intent，使用识图模型
+                // 情况1：direct_image 为 true，直接返回图片链接，供支持识图的聊天模型自己查看
+                if (directImage) {
+                    try {
+                        val imageId = ImagePoolManager.addImage(path)
+                        if (imageId == "error") {
+                            AppLogger.e(TAG, "Failed to register image for direct_image, falling back to intent/OCR: $path")
+                        } else {
+                            val link = "<link type=\"image\" id=\"$imageId\"></link>"
+                            AppLogger.d(TAG, "Generated image link for direct_image: $link")
+                            return ToolResult(
+                                toolName = tool.name,
+                                success = true,
+                                result = FileContentData(
+                                    path = path,
+                                    content = link,
+                                    size = link.length.toLong()
+                                ),
+                                error = ""
+                            )
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "Error generating direct image link, falling back to intent/OCR", e)
+                    }
+                    // 如果生成图片链接失败，则继续走下面的 intent/OCR 逻辑
+                }
+
+                // 情况2：提供了 intent，使用后端识图模型
                 if (!intent.isNullOrBlank()) {
                     try {
                         val enhancedService =
@@ -406,14 +436,16 @@ open class StandardFileSystemTools(protected val context: Context) {
                             error = ""
                         )
                     } catch (e: Exception) {
-                        Log.e(TAG, "识图模型调用失败，回退到OCR", e)
+                        AppLogger.e(TAG, "识图模型调用失败，回退到OCR", e)
                         // 回退到默认OCR处理
                     }
                 }
 
-                // 默认OCR处理
+                // 情况3：默认OCR处理
                 try {
-                    val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+                    val bitmap = withContext(Dispatchers.IO) {
+                        android.graphics.BitmapFactory.decodeFile(path)
+                    }
                     if (bitmap != null) {
                         val ocrText =
                             kotlinx.coroutines.runBlocking {
@@ -424,7 +456,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                                     )
                             }
                         if (ocrText.isNotBlank()) {
-                            Log.d(
+                            AppLogger.d(
                                 TAG,
                                 "Successfully extracted text from image using OCR"
                             )
@@ -442,7 +474,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                                 error = ""
                             )
                         } else {
-                            Log.w(
+                            AppLogger.w(
                                 TAG,
                                 "OCR extraction returned empty text, returning no text detected message"
                             )
@@ -463,7 +495,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                             )
                         }
                     } else {
-                        Log.w(
+                        AppLogger.w(
                             TAG,
                             "Failed to decode image file, returning error message"
                         )
@@ -484,7 +516,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error during OCR text extraction", e)
+                    AppLogger.e(TAG, "Error during OCR text extraction", e)
                     ToolResult(
                         toolName = tool.name,
                         success = true,
@@ -597,7 +629,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error reading file (full)", e)
+            AppLogger.e(TAG, "Error reading file (full)", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -709,7 +741,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error reading file", e)
+            AppLogger.e(TAG, "Error reading file", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -741,84 +773,86 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
         }
 
-        return try {
-            val file = File(path)
-            if (!file.exists() || !file.isFile) {
-                return ToolResult(
+        return withContext(Dispatchers.IO) {
+            try {
+                val file = File(path)
+                if (!file.exists() || !file.isFile) {
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "File does not exist or is not a regular file: $path"
+                    )
+                }
+
+                // 1. 准备数据源 & 获取总行数
+                // 如果是特殊文件，先提取所有文本到内存；如果是普通文件，只统计行数
+                val inMemoryLines: List<String>?
+                val totalLines: Int
+
+                if (isSpecialFileType(file.extension)) {
+                    val specialResult = handleSpecialFileRead(tool, path, file.extension.lowercase())
+                    if (specialResult != null && !specialResult.success) return@withContext specialResult
+
+                    if (specialResult != null) {
+                        val content = (specialResult.result as FileContentData).content
+                        inMemoryLines = content.lines()
+                        totalLines = inMemoryLines.size
+                    } else {
+                        // Fallback if handleSpecialFileRead returns null (shouldn't happen given check)
+                        inMemoryLines = null
+                        totalLines = 0
+                    }
+                } else {
+                    inMemoryLines = null
+                    totalLines = countFileLines(file)
+                }
+
+                // 2. 计算实际的行号范围（行号从1开始，转换为0-based索引）
+                val startLine = maxOf(1, startLineParam).coerceIn(1, maxOf(1, totalLines))
+                val endLine = (endLineParam ?: (startLine + 99)).coerceIn(startLine, maxOf(1, totalLines))
+                
+                // 转换为0-based索引
+                val startIndex = startLine - 1
+                val endIndex = endLine // endLine 本身就是最后一行的1-based行号，转成exclusive的end需要不减1
+
+                // 3. 获取分段内容
+                val partContent = if (inMemoryLines != null) {
+                    // 内存模式：直接切片
+                    if (totalLines > 0 && startIndex < totalLines) {
+                        inMemoryLines.subList(startIndex, minOf(endIndex, totalLines)).joinToString("\n")
+                    } else ""
+                } else {
+                    // 磁盘流模式：读取指定行
+                    if (totalLines > 0) readLinesFromFile(file, startIndex, endIndex) else ""
+                }
+
+                // 4. 封装返回结果
+                val contentWithLineNumbers = addLineNumbers(partContent, startIndex, totalLines)
+
+                ToolResult(
+                    toolName = tool.name,
+                    success = true,
+                    result = FilePartContentData(
+                        path = path,
+                        content = contentWithLineNumbers,
+                        partIndex = 0, // 保留兼容性，但不再使用
+                        totalParts = 1, // 保留兼容性，但不再使用
+                        startLine = startIndex,
+                        endLine = minOf(endIndex, totalLines),
+                        totalLines = totalLines
+                    ),
+                    error = ""
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error reading file part", e)
+                return@withContext ToolResult(
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "File does not exist or is not a regular file: $path"
+                    error = "Error reading file part: ${e.message}"
                 )
             }
-
-            // 1. 准备数据源 & 获取总行数
-            // 如果是特殊文件，先提取所有文本到内存；如果是普通文件，只统计行数
-            val inMemoryLines: List<String>?
-            val totalLines: Int
-
-            if (isSpecialFileType(file.extension)) {
-                val specialResult = handleSpecialFileRead(tool, path, file.extension.lowercase())
-                if (specialResult != null && !specialResult.success) return specialResult
-
-                if (specialResult != null) {
-                    val content = (specialResult.result as FileContentData).content
-                    inMemoryLines = content.lines()
-                    totalLines = inMemoryLines.size
-                } else {
-                    // Fallback if handleSpecialFileRead returns null (shouldn't happen given check)
-                    inMemoryLines = null
-                    totalLines = 0
-                }
-            } else {
-                inMemoryLines = null
-                totalLines = countFileLines(file)
-            }
-
-            // 2. 计算实际的行号范围（行号从1开始，转换为0-based索引）
-            val startLine = maxOf(1, startLineParam).coerceIn(1, maxOf(1, totalLines))
-            val endLine = (endLineParam ?: (startLine + 99)).coerceIn(startLine, maxOf(1, totalLines))
-            
-            // 转换为0-based索引
-            val startIndex = startLine - 1
-            val endIndex = endLine // endLine 本身就是最后一行的1-based行号，转成exclusive的end需要不减1
-
-            // 3. 获取分段内容
-            val partContent = if (inMemoryLines != null) {
-                // 内存模式：直接切片
-                if (totalLines > 0 && startIndex < totalLines) {
-                    inMemoryLines.subList(startIndex, minOf(endIndex, totalLines)).joinToString("\n")
-                } else ""
-            } else {
-                // 磁盘流模式：读取指定行
-                if (totalLines > 0) readLinesFromFile(file, startIndex, endIndex) else ""
-            }
-
-            // 4. 封装返回结果
-            val contentWithLineNumbers = addLineNumbers(partContent, startIndex, totalLines)
-
-            ToolResult(
-                toolName = tool.name,
-                success = true,
-                result = FilePartContentData(
-                    path = path,
-                    content = contentWithLineNumbers,
-                    partIndex = 0, // 保留兼容性，但不再使用
-                    totalParts = 1, // 保留兼容性，但不再使用
-                    startLine = startIndex,
-                    endLine = minOf(endIndex, totalLines),
-                    totalLines = totalLines
-                ),
-                error = ""
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading file part", e)
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error reading file part: ${e.message}"
-            )
         }
     }
 
@@ -851,108 +885,110 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
         }
 
-        return try {
-            val file = File(path)
+        return withContext(Dispatchers.IO) {
+            try {
+                val file = File(path)
 
-            // Create parent directories if needed
-            val parentDir = file.parentFile
-            if (parentDir != null && !parentDir.exists()) {
-                if (!parentDir.mkdirs()) {
-                    Log.w(
-                        TAG,
-                        "Failed to create parent directory: ${parentDir.absolutePath}"
+                // Create parent directories if needed
+                val parentDir = file.parentFile
+                if (parentDir != null && !parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        AppLogger.w(
+                            TAG,
+                            "Failed to create parent directory: ${parentDir.absolutePath}"
+                        )
+                    }
+                }
+
+                // Write content to file
+                if (append && file.exists()) {
+                    file.appendText(content)
+                } else {
+                    file.writeText(content)
+                }
+
+                // Verify write was successful
+                if (!file.exists()) {
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result =
+                        FileOperationData(
+                            operation =
+                            if (append) "append" else "write",
+                            path = path,
+                            successful = false,
+                            details =
+                            "Write completed but file does not exist. Possible permission issue."
+                        ),
+                        error =
+                        "Write completed but file does not exist. Possible permission issue."
                     )
                 }
-            }
 
-            // Write content to file
-            if (append && file.exists()) {
-                file.appendText(content)
-            } else {
-                file.writeText(content)
-            }
-
-            // Verify write was successful
-            if (!file.exists()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                    FileOperationData(
-                        operation =
-                        if (append) "append" else "write",
-                        path = path,
-                        successful = false,
-                        details =
-                        "Write completed but file does not exist. Possible permission issue."
-                    ),
-                    error =
-                    "Write completed but file does not exist. Possible permission issue."
-                )
-            }
-
-            if (file.length() == 0L && content.isNotEmpty()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                    FileOperationData(
-                        operation =
-                        if (append) "append" else "write",
-                        path = path,
-                        successful = false,
-                        details =
+                if (file.length() == 0L && content.isNotEmpty()) {
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result =
+                        FileOperationData(
+                            operation =
+                            if (append) "append" else "write",
+                            path = path,
+                            successful = false,
+                            details =
+                            "File was created but appears to be empty. Possible write failure."
+                        ),
+                        error =
                         "File was created but appears to be empty. Possible write failure."
-                    ),
-                    error =
-                    "File was created but appears to be empty. Possible write failure."
-                )
-            }
-
-            val operation = if (append) "append" else "write"
-            val details =
-                if (append) "Content appended to $path"
-                else "Content written to $path"
-
-            return ToolResult(
-                toolName = tool.name,
-                success = true,
-                result =
-                FileOperationData(
-                    operation = operation,
-                    path = path,
-                    successful = true,
-                    details = details
-                ),
-                error = ""
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error writing to file", e)
-
-            val errorMessage =
-                when {
-                    e is IOException ->
-                        "File I/O error: ${e.message}. Please check if the path has write permissions."
-
-                    e.message?.contains("permission", ignoreCase = true) ==
-                            true ->
-                        "Permission denied, cannot write to file: ${e.message}. Please check if the app has proper permissions."
-
-                    else -> "Error writing to file: ${e.message}"
+                    )
                 }
 
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result =
-                FileOperationData(
-                    operation = if (append) "append" else "write",
-                    path = path,
-                    successful = false,
-                    details = errorMessage
-                ),
-                error = errorMessage
-            )
+                val operation = if (append) "append" else "write"
+                val details =
+                    if (append) "Content appended to $path"
+                    else "Content written to $path"
+
+                ToolResult(
+                    toolName = tool.name,
+                    success = true,
+                    result =
+                    FileOperationData(
+                        operation = operation,
+                        path = path,
+                        successful = true,
+                        details = details
+                    ),
+                    error = ""
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error writing to file", e)
+
+                val errorMessage =
+                    when {
+                        e is IOException ->
+                            "File I/O error: ${e.message}. Please check if the path has write permissions."
+
+                        e.message?.contains("permission", ignoreCase = true) ==
+                                true ->
+                            "Permission denied, cannot write to file: ${e.message}. Please check if the app has proper permissions."
+
+                        else -> "Error writing to file: ${e.message}"
+                    }
+
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result =
+                    FileOperationData(
+                        operation = if (append) "append" else "write",
+                        path = path,
+                        successful = false,
+                        details = errorMessage
+                    ),
+                    error = errorMessage
+                )
+            }
         }
     }
 
@@ -1005,7 +1041,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             val parentDir = file.parentFile
             if (parentDir != null && !parentDir.exists()) {
                 if (!parentDir.mkdirs()) {
-                    Log.w(
+                    AppLogger.w(
                         TAG,
                         "Failed to create parent directory: ${parentDir.absolutePath}"
                     )
@@ -1067,7 +1103,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error writing binary file", e)
+            AppLogger.e(TAG, "Error writing binary file", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -1191,7 +1227,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting file/directory", e)
+            AppLogger.e(TAG, "Error deleting file/directory", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -1257,7 +1293,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking file existence", e)
+            AppLogger.e(TAG, "Error checking file existence", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -1409,7 +1445,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error moving file", e)
+            AppLogger.e(TAG, "Error moving file", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -1447,7 +1483,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Error copying directory", e)
+            AppLogger.e(TAG, "Error copying directory", e)
             return false
         }
     }
@@ -1468,7 +1504,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val finalDestPath = destPath
 
         return try {
-            Log.d(
+            AppLogger.d(
                 TAG,
                 "Cross-environment copy: $sourceEnvironment:$sourcePath -> $destEnvironment:$finalDestPath"
             )
@@ -1611,7 +1647,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             }
 
             // 5. 验证成功
-            Log.d(TAG, "Successfully copied file cross-environment: $totalBytes bytes")
+            AppLogger.d(TAG, "Successfully copied file cross-environment: $totalBytes bytes")
             return ToolResult(
                 toolName = toolName,
                 success = true,
@@ -1624,7 +1660,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error copying file cross-environment", e)
+            AppLogger.e(TAG, "Error copying file cross-environment", e)
             return ToolResult(
                 toolName = toolName,
                 success = false,
@@ -1653,7 +1689,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val finalDestPath = destPath
 
         return try {
-            Log.d(
+            AppLogger.d(
                 TAG,
                 "Cross-environment directory copy: $sourceEnvironment:$sourcePath -> $destEnvironment:$finalDestPath"
             )
@@ -1712,7 +1748,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                     if (result.success) {
                         copiedDirs++
                     } else {
-                        Log.w(TAG, "Failed to copy directory: $srcFullPath")
+                        AppLogger.w(TAG, "Failed to copy directory: $srcFullPath")
                     }
                 } else {
                     val result = copyFileCrossEnvironment(
@@ -1726,12 +1762,12 @@ open class StandardFileSystemTools(protected val context: Context) {
                     if (result.success) {
                         copiedFiles++
                     } else {
-                        Log.w(TAG, "Failed to copy file: $srcFullPath")
+                        AppLogger.w(TAG, "Failed to copy file: $srcFullPath")
                     }
                 }
             }
 
-            Log.d(
+            AppLogger.d(
                 TAG,
                 "Successfully copied directory: $copiedFiles files, $copiedDirs subdirectories"
             )
@@ -1747,7 +1783,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error copying directory cross-environment", e)
+            AppLogger.e(TAG, "Error copying directory cross-environment", e)
             return ToolResult(
                 toolName = toolName,
                 success = false,
@@ -1940,7 +1976,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error copying file/directory", e)
+            AppLogger.e(TAG, "Error copying file/directory", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2061,7 +2097,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error creating directory", e)
+            AppLogger.e(TAG, "Error creating directory", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2167,7 +2203,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error searching for files", e)
+            AppLogger.e(TAG, "Error searching for files", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2360,7 +2396,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting file information", e)
+            AppLogger.e(TAG, "Error getting file information", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2470,7 +2506,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error compressing files", e)
+            AppLogger.e(TAG, "Error compressing files", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2607,7 +2643,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error extracting zip file", e)
+            AppLogger.e(TAG, "Error extracting zip file", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -2680,14 +2716,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             !(fileExistsResult.result as FileExistsData).exists
         ) {
             // 文件不存在，直接创建并写入内容
-            Log.d(TAG, "File does not exist. Creating new file '$path'...")
-            emit(
-                ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result = StringResultData("File does not exist. Creating new file '$path'...")
-                )
-            )
+            AppLogger.d(TAG, "File does not exist. Creating new file '$path'...")
 
             val writeResult = writeFile(
                 AITool(
@@ -2768,17 +2797,6 @@ open class StandardFileSystemTools(protected val context: Context) {
             return@flow
         }
 
-        emit(
-            ToolResult(
-                toolName = tool.name,
-                success = true,
-                result =
-                StringResultData(
-                    "Read original file. Now merging changes and writing back..."
-                )
-            )
-        )
-
         // 提取原始文件内容
         val originalContent = (readResult.result as? FileContentData)?.content ?: ""
 
@@ -2790,7 +2808,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
         // 检查文件绑定是否返回错误
         if (aiInstructions.startsWith("Error", ignoreCase = true)) {
-            Log.e(TAG, "File binding failed: $aiInstructions")
+            AppLogger.e(TAG, "File binding failed: $aiInstructions")
             emit(
                 ToolResult(
                     toolName = tool.name,
@@ -2872,7 +2890,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         )
     }
         .catch { e ->
-            Log.e(TAG, "Error applying file binding", e)
+            AppLogger.e(TAG, "Error applying file binding", e)
             val path = tool.parameters.find { it.name == "path" }?.value ?: "unknown"
             emit(
                 ToolResult(
@@ -3026,7 +3044,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error downloading file", e)
+            AppLogger.e(TAG, "Error downloading file", e)
             return ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -3113,7 +3131,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: ActivityNotFoundException) {
-            Log.e(TAG, "No activity found to handle opening file: $path", e)
+            AppLogger.e(TAG, "No activity found to handle opening file: $path", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -3127,7 +3145,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = "No application found to open this file type."
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error opening file", e)
+            AppLogger.e(TAG, "Error opening file", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -3160,7 +3178,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val maxResults =
             tool.parameters.find { it.name == "max_results" }?.value?.toIntOrNull() ?: 100
 
-        Log.d(TAG, "grep_code: Starting search - path=$path, pattern=\"$pattern\", file_pattern=$filePattern, max_results=$maxResults")
+        AppLogger.d(TAG, "grep_code: Starting search - path=$path, pattern=\"$pattern\", file_pattern=$filePattern, max_results=$maxResults")
 
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
@@ -3186,92 +3204,100 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
         }
 
-        return try {
-            // 1. 使用 findFiles 查找所有匹配的文件
-            val findFilesResult = findFiles(
-                AITool(
-                    name = "find_files",
-                    parameters = listOf(
-                        ToolParameter("path", path),
-                        ToolParameter("pattern", filePattern),
-                        ToolParameter("use_path_pattern", "false"),
-                        ToolParameter("case_insensitive", "false"),
-                        ToolParameter("environment", environment ?: "")
-                    )
-                )
-            )
-
-            if (!findFilesResult.success) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to find files: ${findFilesResult.error}"
-                )
-            }
-
-            val foundFiles = (findFilesResult.result as FindFilesResultData).files
-            Log.d(TAG, "grep_code: Found ${foundFiles.size} files to search")
-
-            if (foundFiles.isEmpty()) {
-                Log.d(TAG, "grep_code: No files found matching pattern")
-                return ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result = GrepResultData(
-                        searchPath = path,
-                        pattern = pattern,
-                        matches = emptyList(),
-                        totalMatches = 0,
-                        filesSearched = 0
-                    ),
-                    error = ""
-                )
-            }
-
-            // 2. 创建正则表达式用于匹配
-            val regex = if (caseInsensitive) {
-                Regex(pattern, RegexOption.IGNORE_CASE)
-            } else {
-                Regex(pattern)
-            }
-
-            // 3. 遍历每个文件，搜索匹配的行
-            val fileMatches = mutableListOf<GrepResultData.FileMatch>()
-            var totalMatches = 0
-            var filesSearched = 0
-
-            for (filePath in foundFiles) {
-                if (totalMatches >= maxResults) {
-                    Log.d(TAG, "grep_code: Reached max results limit ($maxResults), stopping search")
-                    break
-                }
-
-                filesSearched++
-                val fileStartTime = System.currentTimeMillis()
-
-                // 读取文件内容（启用 text_only 模式，跳过图片等非文本文件）
-                val readResult = readFileFull(
+        return withContext(Dispatchers.IO) {
+            try {
+                // 1. 使用 findFiles 查找所有匹配的文件
+                val findFilesResult = findFiles(
                     AITool(
-                        name = "read_file_full",
+                        name = "find_files",
                         parameters = listOf(
-                            ToolParameter("path", filePath),
-                            ToolParameter("text_only", "true")
+                            ToolParameter("path", path),
+                            ToolParameter("pattern", filePattern),
+                            ToolParameter("use_path_pattern", "false"),
+                            ToolParameter("case_insensitive", "false"),
+                            ToolParameter("environment", environment ?: "")
                         )
                     )
                 )
 
-                if (!readResult.success) {
-                    // 如果读取失败（可能是二进制文件或权限问题），跳过该文件
-                    Log.d(TAG, "grep_code: Skipped file $filePath (${readResult.error})")
-                    continue
+                if (!findFilesResult.success) {
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Failed to find files: ${findFilesResult.error}"
+                    )
                 }
 
-                val fileContent = (readResult.result as FileContentData).content
-                val lines = fileContent.lines()
-                
-                // 使用 regex.findAll 在整个文件内容上一次性找到所有匹配，比逐行遍历更高效
-                val matches = regex.findAll(fileContent)
+                val foundFiles = (findFilesResult.result as FindFilesResultData).files
+                AppLogger.d(TAG, "grep_code: Found ${foundFiles.size} files to search")
+
+                if (foundFiles.isEmpty()) {
+                    AppLogger.d(TAG, "grep_code: No files found matching pattern")
+                    return@withContext ToolResult(
+                        toolName = tool.name,
+                        success = true,
+                        result = GrepResultData(
+                            searchPath = path,
+                            pattern = pattern,
+                            matches = emptyList(),
+                            totalMatches = 0,
+                            filesSearched = 0
+                        ),
+                        error = ""
+                    )
+                }
+
+                // 2. 创建正则表达式用于匹配
+                val regex = if (caseInsensitive) {
+                    Regex(pattern, RegexOption.IGNORE_CASE)
+                } else {
+                    Regex(pattern)
+                }
+
+                // 3. 遍历每个文件，搜索匹配的行
+                val fileMatches = mutableListOf<GrepResultData.FileMatch>()
+                var totalMatches = 0
+                var filesSearched = 0
+
+                for (filePath in foundFiles) {
+                    if (totalMatches >= maxResults) {
+                        AppLogger.d(TAG, "grep_code: Reached max results limit ($maxResults), stopping search")
+                        break
+                    }
+
+                    filesSearched++
+                    val fileStartTime = System.currentTimeMillis()
+
+                    // 读取文件内容（启用 text_only 模式，跳过图片等非文本文件）
+                    val readResult = readFileFull(
+                        AITool(
+                            name = "read_file_full",
+                            parameters = listOf(
+                                ToolParameter("path", filePath),
+                                ToolParameter("text_only", "true")
+                            )
+                        )
+                    )
+
+                    if (!readResult.success) {
+                        // 如果读取失败（可能是二进制文件或权限问题），跳过该文件
+                        AppLogger.d(TAG, "grep_code: Skipped file $filePath (${readResult.error})")
+                        continue
+                    }
+
+                    val fileContent = (readResult.result as FileContentData).content
+                    val lines = fileContent.lines()
+                    
+                    // 使用 regex.findAll 在整个文件内容上一次性找到所有匹配，比逐行遍历更高效
+                    // 对于大文件，考虑限制处理大小或分块处理
+                    val matches = if (fileContent.length > 10_000_000) { // 10MB limit
+                        // 对于超大文件，只处理前10MB以避免ANR
+                        val limitedContent = fileContent.take(10_000_000)
+                        regex.findAll(limitedContent)
+                    } else {
+                        regex.findAll(fileContent)
+                    }
                 val matchedLineNumbers = matches
                     .map { match ->
                         // 通过计算匹配位置之前的换行符数量得到行号
@@ -3286,7 +3312,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 }
                 
                 val fileElapsed = System.currentTimeMillis() - fileStartTime
-                Log.d(TAG, "grep_code: File $filesSearched/${foundFiles.size} - Found ${matchedLineNumbers.size} matching lines in ${File(filePath).name} (${fileElapsed}ms)")
+                AppLogger.d(TAG, "grep_code: File $filesSearched/${foundFiles.size} - Found ${matchedLineNumbers.size} matching lines in ${File(filePath).name} (${fileElapsed}ms)")
 
                 // 合并相近的匹配（根据上下文窗口大小）
                 val mergedMatches = mergeNearbyMatches(matchedLineNumbers, contextLines)
@@ -3336,32 +3362,32 @@ open class StandardFileSystemTools(protected val context: Context) {
                 }
             }
 
-            // 4. 返回结果
-            val totalElapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "grep_code: Completed - Found $totalMatches matches in ${fileMatches.size} files (searched $filesSearched/${foundFiles.size} files, ${totalElapsed}ms total)")
-            
-            ToolResult(
-                toolName = tool.name,
-                success = true,
-                result = GrepResultData(
-                    searchPath = path,
-                    pattern = pattern,
-                    matches = fileMatches.take(20), // 最多显示20个文件
-                    totalMatches = totalMatches,
-                    filesSearched = filesSearched
-                ),
-                error = ""
-            )
-
-        } catch (e: Exception) {
-            val totalElapsed = System.currentTimeMillis() - startTime
-            Log.e(TAG, "grep_code: Error after ${totalElapsed}ms - ${e.message}", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error performing grep search: ${e.message}"
-            )
+                // 4. 返回结果
+                val totalElapsed = System.currentTimeMillis() - startTime
+                AppLogger.d(TAG, "grep_code: Completed - Found $totalMatches matches in ${fileMatches.size} files (searched $filesSearched/${foundFiles.size} files, ${totalElapsed}ms total)")
+                
+                ToolResult(
+                    toolName = tool.name,
+                    success = true,
+                    result = GrepResultData(
+                        searchPath = path,
+                        pattern = pattern,
+                        matches = fileMatches.take(20), // 最多显示20个文件
+                        totalMatches = totalMatches,
+                        filesSearched = filesSearched
+                    ),
+                    error = ""
+                )
+            } catch (e: Exception) {
+                val totalElapsed = System.currentTimeMillis() - startTime
+                AppLogger.e(TAG, "grep_code: Error after ${totalElapsed}ms - ${e.message}", e)
+                return@withContext ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Error performing grep search: ${e.message}"
+                )
+            }
         }
     }
 
@@ -3564,7 +3590,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing context search", e)
+            AppLogger.e(TAG, "Error performing context search", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -3697,7 +3723,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing context search in file", e)
+            AppLogger.e(TAG, "Error performing context search in file", e)
             ToolResult(
                 toolName = toolName,
                 success = false,
@@ -3789,7 +3815,7 @@ open class StandardFileSystemTools(protected val context: Context) {
             val result = SyntaxCheckUtil.checkSyntax(filePath, content)
             result?.toString()
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing syntax check", e)
+            AppLogger.e(TAG, "Error performing syntax check", e)
             "Syntax check failed: ${e.message}"
         }
     }
@@ -3871,7 +3897,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = ""
             )
         } catch (e: ActivityNotFoundException) {
-            Log.e(TAG, "No activity found to handle sharing file: $path", e)
+            AppLogger.e(TAG, "No activity found to handle sharing file: $path", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -3885,7 +3911,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = "No application found to share this file type."
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error sharing file", e)
+            AppLogger.e(TAG, "Error sharing file", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,

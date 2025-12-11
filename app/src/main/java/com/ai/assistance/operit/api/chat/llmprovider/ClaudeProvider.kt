@@ -1,6 +1,6 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
@@ -38,6 +38,7 @@ class ClaudeProvider(
 
     // 当前活跃的Call对象，用于取消流式传输
     private var activeCall: Call? = null
+    private var activeResponse: Response? = null
     @Volatile private var isManuallyCancelled = false
 
     /**
@@ -68,13 +69,28 @@ class ClaudeProvider(
     // 取消当前流式传输
     override fun cancelStreaming() {
         isManuallyCancelled = true
+
+        // 1. 强制关闭 Response（这会立即中断流读取操作）
+        activeResponse?.let {
+            try {
+                it.close()
+                AppLogger.d("AIService", "已强制关闭Response流")
+            } catch (e: Exception) {
+                AppLogger.w("AIService", "关闭Response时出错: ${e.message}")
+            }
+        }
+        activeResponse = null
+
+        // 2. 取消 Call
         activeCall?.let {
             if (!it.isCanceled()) {
                 it.cancel()
-                Log.d("AIService", "已取消当前流式传输")
+                AppLogger.d("AIService", "已取消当前流式传输，Call已中断")
             }
         }
         activeCall = null
+
+        AppLogger.d("AIService", "取消标志已设置，流读取将立即被中断")
     }
 
     // ==================== Tool Call 支持 ====================
@@ -142,7 +158,7 @@ class ClaudeProvider(
             })
             
             callIndex++
-            Log.d("AIService", "XML→ClaudeToolUse: $toolName -> ID: $callId")
+            AppLogger.d("AIService", "XML→ClaudeToolUse: $toolName -> ID: $callId")
             
             // 从文本内容中移除tool标签
             textContent = textContent.replace(match.value, "")
@@ -182,7 +198,7 @@ class ClaudeProvider(
             results.add(Pair("toolu_result_${resultIndex}", resultContent))
             textContent = textContent.replace(match.value, "").trim()
             
-            Log.d("AIService", "解析Claude tool_result #$resultIndex, content length=${resultContent.length}")
+            AppLogger.d("AIService", "解析Claude tool_result #$resultIndex, content length=${resultContent.length}")
             resultIndex++
         }
         
@@ -378,21 +394,26 @@ class ClaudeProvider(
                     val (textContent, toolResults) = parseXmlToolResults(content)
                     
                     val contentArray = JSONArray()
-                    // 先添加tool_result
-                    if (toolResults != null && toolResults.isNotEmpty()) {
-                        toolResults.forEachIndexed { index, (_, resultContent) ->
-                            val toolUseId = if (index < lastToolUseIds.size) {
-                                lastToolUseIds[index]
-                            } else {
-                                "toolu_unknown_$index"
-                            }
+                    // 先添加tool_result（只转换有对应tool_use_id的）
+                    if (toolResults != null && toolResults.isNotEmpty() && lastToolUseIds.isNotEmpty()) {
+                        // 只转换有对应tool_use_id的tool_result
+                        val validCount = minOf(toolResults.size, lastToolUseIds.size)
+                        
+                        for (index in 0 until validCount) {
+                            val (_, resultContent) = toolResults[index]
                             contentArray.put(JSONObject().apply {
                                 put("type", "tool_result")
-                                put("tool_use_id", toolUseId)
+                                put("tool_use_id", lastToolUseIds[index])
                                 put("content", resultContent)
                             })
-                            Log.d("AIService", "历史XML→ClaudeToolResult: ID=$toolUseId, content length=${resultContent.length}")
+                            AppLogger.d("AIService", "历史XML→ClaudeToolResult: ID=${lastToolUseIds[index]}, content length=${resultContent.length}")
                         }
+                        
+                        // 如果有多余的tool_result，记录警告
+                        if (toolResults.size > validCount) {
+                            AppLogger.w("AIService", "发现多余的tool_result: ${toolResults.size} results vs ${lastToolUseIds.size} tool_uses，忽略多余的${toolResults.size - validCount}个")
+                        }
+                        
                         lastToolUseIds.clear()
                     }
                     // 再添加文本内容
@@ -400,6 +421,12 @@ class ClaudeProvider(
                         contentArray.put(JSONObject().apply {
                             put("type", "text")
                             put("text", textContent)
+                        })
+                    } else if (contentArray.length() == 0) {
+                        // 如果没有任何内容，保留原始content
+                        contentArray.put(JSONObject().apply {
+                            put("type", "text")
+                            put("text", content)
                         })
                     }
                     
@@ -429,10 +456,18 @@ class ClaudeProvider(
 
     override suspend fun calculateInputTokens(
             message: String,
-            chatHistory: List<Pair<String, String>>
+            chatHistory: List<Pair<String, String>>,
+            availableTools: List<ToolPrompt>?
     ): Int {
+        // 构建工具定义的JSON字符串
+        val toolsJson = if (enableToolCall && availableTools != null && availableTools.isNotEmpty()) {
+            val tools = buildToolDefinitionsForClaude(availableTools)
+            if (tools.length() > 0) tools.toString() else null
+        } else {
+            null
+        }
         // 使用缓存管理器进行快速估算
-        return tokenCacheManager.calculateInputTokens(message, chatHistory)
+        return tokenCacheManager.calculateInputTokens(message, chatHistory, toolsJson)
     }
 
     // 创建Claude API请求体
@@ -451,8 +486,19 @@ class ClaudeProvider(
         // 添加已启用的模型参数
         addParameters(jsonObject, modelParameters)
 
-        // 使用TokenCacheManager计算输入token，并继续使用原有逻辑构建消息体
-        tokenCacheManager.calculateInputTokens(message, chatHistory)
+        // 添加 Tool Call 工具定义（如果启用且有可用工具）
+        var toolsJson: String? = null
+        if (enableToolCall && availableTools != null && availableTools.isNotEmpty()) {
+            val tools = buildToolDefinitionsForClaude(availableTools)
+            if (tools.length() > 0) {
+                jsonObject.put("tools", tools)
+                toolsJson = tools.toString() // 保存工具定义用于token计算
+                AppLogger.d("AIService", "已添加 ${tools.length()} 个 Claude Tool Definitions")
+            }
+        }
+
+        // 使用TokenCacheManager计算输入token（包含工具定义），并继续使用原有逻辑构建消息体
+        tokenCacheManager.calculateInputTokens(message, chatHistory, toolsJson)
         val (messagesArray, systemPrompt, _) = buildMessagesAndCountTokens(message, chatHistory)
 
         jsonObject.put("messages", messagesArray)
@@ -462,24 +508,21 @@ class ClaudeProvider(
             jsonObject.put("system", systemPrompt)
         }
 
-        // 添加 Tool Call 工具定义（如果启用且有可用工具）
-        if (enableToolCall && availableTools != null && availableTools.isNotEmpty()) {
-            val tools = buildToolDefinitionsForClaude(availableTools)
-            if (tools.length() > 0) {
-                jsonObject.put("tools", tools)
-                Log.d("AIService", "已添加 ${tools.length()} 个 Claude Tool Definitions")
-            }
-        }
-
         // 添加extended thinking支持
         if (enableThinking) {
             val thinkingObject = JSONObject()
             thinkingObject.put("type", "enabled")
             jsonObject.put("thinking", thinkingObject)
-            Log.d("AIService", "启用Claude的extended thinking功能")
+            AppLogger.d("AIService", "启用Claude的extended thinking功能")
         }
 
-        Log.d("AIService", "Claude请求体: ${jsonObject.toString(4)}")
+        // 日志输出时省略过长的tools字段
+        val logJson = JSONObject(jsonObject.toString())
+        if (logJson.has("tools")) {
+            val toolsArray = logJson.getJSONArray("tools")
+            logJson.put("tools", "[${toolsArray.length()} tools omitted for brevity]")
+        }
+        AppLogger.d("AIService", "Claude请求体: ${logJson.toString(4)}")
         return jsonObject.toString().toRequestBody(JSON)
     }
 
@@ -533,7 +576,7 @@ class ClaudeProvider(
                                         else -> null
                                     }
                                 } catch (e: Exception) {
-                                    Log.w("AIService", "Claude OBJECT参数解析失败: ${param.apiName}", e)
+                                    AppLogger.w("AIService", "Claude OBJECT参数解析失败: ${param.apiName}", e)
                                     null
                                 }
                                 if (parsed != null) {
@@ -545,7 +588,7 @@ class ClaudeProvider(
                         }
                     }
                 }
-                Log.d("AIService", "添加Claude参数 ${param.apiName} = ${param.currentValue}")
+                AppLogger.d("AIService", "添加Claude参数 ${param.apiName} = ${param.currentValue}")
             }
         }
     }
@@ -567,7 +610,7 @@ class ClaudeProvider(
         }
 
         val request = builder.build()
-        Log.d("AIService", "Claude请求头: \n${request.headers}")
+        AppLogger.d("AIService", "Claude请求头: \n${request.headers}")
         return request
     }
 
@@ -592,15 +635,21 @@ class ClaudeProvider(
         // 用于保存已接收到的内容，以便在重试时使用
         val receivedContent = StringBuilder()
 
-        Log.d("AIService", "准备连接到Claude AI服务...")
+        AppLogger.d("AIService", "准备连接到Claude AI服务...")
         while (retryCount < maxRetries) {
+            // 在循环开始时检查是否已被取消
+            if (isManuallyCancelled) {
+                AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
+                throw UserCancellationException("请求已被用户取消")
+            }
+            
             try {
                 // 如果是重试，我们需要构建一个新的请求
                 val currentMessage: String
                 val currentHistory: List<Pair<String, String>>
 
                 if (retryCount > 0 && receivedContent.isNotEmpty()) {
-                    Log.d("AIService", "【Claude 重试】准备续写请求，已接收内容: ${receivedContent.length}")
+                    AppLogger.d("AIService", "【Claude 重试】准备续写请求，已接收内容: ${receivedContent.length}")
                     // Claude 对续写指令可能需要不同的优化，这里使用一个通用的方式
                     currentMessage = message + "\n\n[SYSTEM NOTE] The previous response was cut off by a network error. You MUST continue from the exact point of interruption. Do not repeat any content. If you were in the middle of a code block or XML tag, complete it. Just output the text that would have come next."
                     val resumeHistory = chatHistory.toMutableList()
@@ -623,8 +672,10 @@ class ClaudeProvider(
                 val call = client.newCall(request)
                 activeCall = call
 
-                Log.d("AIService", "正在建立连接...")
-                call.execute().use { response ->
+                AppLogger.d("AIService", "正在建立连接...")
+                val response = call.execute()
+                activeResponse = response
+                try {
                     if (!response.isSuccessful) {
                         val errorBody = response.body?.string() ?: "No error details"
                         // 对于4xx这类明确的客户端错误，直接抛出，不进行重试
@@ -635,7 +686,7 @@ class ClaudeProvider(
                         throw IOException("API请求失败，状态码: ${response.code}，错误信息: $errorBody")
                     }
 
-                    Log.d("AIService", "连接成功，等待响应...")
+                    AppLogger.d("AIService", "连接成功，等待响应...")
                     val responseBody = response.body ?: throw IOException("API响应为空")
                     
                     // 根据stream参数处理响应
@@ -653,7 +704,7 @@ class ClaudeProvider(
                                 lines.forEach { line ->
                                     // 如果call已被取消，提前退出
                                     if (activeCall?.isCanceled() == true) {
-                                        Log.d("AIService", "流式传输已被取消，提前退出处理")
+                                        AppLogger.d("AIService", "流式传输已被取消，提前退出处理")
                                         wasCancelled = true
                                         return@forEach
                                     }
@@ -707,7 +758,7 @@ class ClaudeProvider(
                                                                     }
                                                                 }
                                                                 
-                                                                Log.d("AIService", "Claude Tool Use流式转XML: $toolName")
+                                                                AppLogger.d("AIService", "Claude Tool Use流式转XML: $toolName")
                                                             }
                                                         }
                                                     }
@@ -765,22 +816,22 @@ class ClaudeProvider(
 
                                         } catch (e: Exception) {
                                             // 忽略解析错误，继续处理下一行
-                                            Log.w("AIService", "JSON解析错误: ${e.message}")
+                                            AppLogger.w("AIService", "JSON解析错误: ${e.message}")
                                         }
                                     }
                                 }
                             }
                         } catch (e: IOException) {
                             if (isManuallyCancelled) {
-                                Log.d("AIService", "【Claude】流式传输已被用户取消，停止后续操作。")
+                                AppLogger.d("AIService", "【Claude】流式传输已被用户取消，停止后续操作。")
                                 throw UserCancellationException("请求已被用户取消", e)
                             }
                             // 捕获IO异常，可能是由于取消Call导致的
                             if (activeCall?.isCanceled() == true) {
-                                Log.d("AIService", "流式传输已被取消，处理IO异常")
+                                AppLogger.d("AIService", "流式传输已被取消，处理IO异常")
                                 wasCancelled = true
                             } else {
-                                 Log.e("AIService", "【Claude】流式读取时发生IO异常，准备重试", e)
+                                 AppLogger.e("AIService", "【Claude】流式读取时发生IO异常，准备重试", e)
                                 lastException = e
                                 throw e
                             }
@@ -788,7 +839,7 @@ class ClaudeProvider(
                     } else {
                         // 处理非流式响应
                         val responseText = responseBody.string()
-                        Log.d("AIService", "收到完整响应，长度: ${responseText.length}")
+                        AppLogger.d("AIService", "收到完整响应，长度: ${responseText.length}")
                         
                         try {
                             val jsonResponse = JSONObject(responseText)
@@ -836,7 +887,7 @@ class ClaudeProvider(
                                                     }
                                                     
                                                     fullText.append("\n</tool>\n")
-                                                    Log.d("AIService", "Claude Tool Use流式转XML (非流式): $toolName")
+                                                    AppLogger.d("AIService", "Claude Tool Use流式转XML (非流式): $toolName")
                                                 }
                                             }
                                         }
@@ -857,77 +908,84 @@ class ClaudeProvider(
                                 }
                             }
                             
-                            Log.d("AIService", "【Claude】非流式响应处理完成")
+                            AppLogger.d("AIService", "【Claude】非流式响应处理完成")
                         } catch (e: Exception) {
-                            Log.e("AIService", "【Claude】解析非流式响应失败", e)
+                            AppLogger.e("AIService", "【Claude】解析非流式响应失败", e)
                             throw IOException("解析响应失败: ${e.message}", e)
                         }
                     }
-
-                    // 清理活跃Call引用
-                    activeCall = null
+                } finally {
+                    response.close()
+                    AppLogger.d("AIService", "【Claude】关闭响应连接")
                 }
 
+                // 清理活跃引用
+                activeCall = null
+                activeResponse = null
+
                 // 成功处理后，返回
-                 Log.d( "AIService", "【Claude】请求成功完成")
+                AppLogger.d("AIService", "【Claude】请求成功完成")
                 return@stream
             } catch (e: NonRetriableException) {
-                Log.e("AIService", "【Claude】发生不可重试错误", e)
+                AppLogger.e("AIService", "【Claude】发生不可重试错误", e)
                 throw e // 直接抛出，不重试
             } catch (e: SocketTimeoutException) {
                 if (isManuallyCancelled) {
-                    Log.d("AIService", "【Claude】请求被用户取消，停止重试。")
+                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                     throw UserCancellationException("请求已被用户取消", e)
                 }
                 lastException = e
                 retryCount++
                 if (retryCount >= maxRetries) {
-                    Log.e("AIService", "【Claude】连接超时且达到最大重试次数", e)
+                    AppLogger.e("AIService", "【Claude】连接超时且达到最大重试次数", e)
                     throw IOException("AI响应获取失败，连接超时且已达最大重试次数: ${e.message}")
                 }
-                Log.w("AIService", "【Claude】连接超时，正在进行第 $retryCount 次重试...", e)
+                AppLogger.w("AIService", "【Claude】连接超时，正在进行第 $retryCount 次重试...", e)
                 onNonFatalError("【网络超时，正在进行第 $retryCount 次重试...】")
                 delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: UnknownHostException) {
                 if (isManuallyCancelled) {
-                    Log.d("AIService", "【Claude】请求被用户取消，停止重试。")
+                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                     throw UserCancellationException("请求已被用户取消", e)
                 }
                 lastException = e
                 retryCount++
                 if (retryCount >= maxRetries) {
-                    Log.e("AIService", "【Claude】无法解析主机且达到最大重试次数", e)
+                    AppLogger.e("AIService", "【Claude】无法解析主机且达到最大重试次数", e)
                 throw IOException("无法连接到服务器，请检查网络连接或API地址是否正确")
                 }
-                Log.w("AIService", "【Claude】无法解析主机，正在进行第 $retryCount 次重试...", e)
+                AppLogger.w("AIService", "【Claude】无法解析主机，正在进行第 $retryCount 次重试...", e)
                 onNonFatalError("【网络不稳定，正在进行第 $retryCount 次重试...】")
                 delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: IOException) {
                 if (isManuallyCancelled) {
-                    Log.d("AIService", "【Claude】请求被用户取消，停止重试。")
+                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                     throw UserCancellationException("请求已被用户取消", e)
                 }
                 lastException = e
                 retryCount++
                 if(retryCount >= maxRetries) {
-                    Log.e("AIService", "【Claude】达到最大重试次数", e)
+                    AppLogger.e("AIService", "【Claude】达到最大重试次数", e)
                     throw IOException("AI响应获取失败，已达最大重试次数: ${e.message}")
                 }
-                Log.w("AIService", "【Claude】网络中断，正在进行第 $retryCount 次重试...", e)
+                AppLogger.w("AIService", "【Claude】网络中断，正在进行第 $retryCount 次重试...", e)
                 onNonFatalError("【网络中断，正在进行第 $retryCount 次重试...】")
                 delay(1000L * (1 shl (retryCount - 1)))
             }
             catch (e: Exception) {
                 if (isManuallyCancelled) {
-                    Log.d("AIService", "【Claude】请求被用户取消，停止重试。")
+                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                     throw UserCancellationException("请求已被用户取消", e)
                 }
-                Log.e("AIService", "【Claude】发生未知异常，停止重试", e)
+                AppLogger.e("AIService", "【Claude】发生未知异常，停止重试", e)
                 throw IOException("AI响应获取失败: ${e.message}", e)
             }
         }
         
-        Log.e("AIService", "【Claude】重试失败，请检查网络连接", lastException)
+        // 添加空检查，因为lastException是可空的Exception?类型
+        lastException?.let { ex ->
+            AppLogger.e("AIService", "【Claude】重试失败，请检查网络连接", ex)
+        } ?: AppLogger.e("AIService", "【Claude】重试失败，请检查网络连接")
         // 所有重试都失败
         throw IOException("连接超时或中断，已重试 $maxRetries 次: ${lastException?.message}")
     }
@@ -959,7 +1017,7 @@ class ClaudeProvider(
 
             Result.success("连接成功！")
         } catch (e: Exception) {
-            Log.e("AIService", "连接测试失败", e)
+            AppLogger.e("AIService", "连接测试失败", e)
             Result.failure(IOException("连接测试失败: ${e.message}", e))
         }
     }

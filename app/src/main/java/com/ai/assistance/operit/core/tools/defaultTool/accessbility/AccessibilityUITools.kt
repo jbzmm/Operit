@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.core.tools.defaultTool.accessbility
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.SimplifiedUINode
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.UIActionResultData
@@ -58,12 +58,12 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
             
             retryCount++
             if (retryCount < MAX_RETRY_COUNT) {
-                Log.d(TAG, "获取UI层次结构失败，正在重试 #$retryCount")
+                AppLogger.d(TAG, "获取UI层次结构失败，正在重试 #$retryCount")
                 delay(RETRY_DELAY_MS)
             }
         }
         
-        Log.w(TAG, "获取UI层次结构失败，已重试${MAX_RETRY_COUNT}次")
+        AppLogger.w(TAG, "获取UI层次结构失败，已重试${MAX_RETRY_COUNT}次")
         return uiXml
     }
 
@@ -111,7 +111,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
             ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting page info", e)
+            AppLogger.e(TAG, "Error getting page info", e)
             ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -128,7 +128,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
             // 1. 获取UI层次结构的XML快照（带重试）
             val hierarchyXml = getUIHierarchyWithRetry()
             if (hierarchyXml.isEmpty()) {
-                Log.w(TAG, "无法获取UI层次结构XML，使用默认值。")
+                AppLogger.w(TAG, "无法获取UI层次结构XML，使用默认值。")
                 focusInfo.packageName = "android"
                 // 即使XML获取失败，仍然尝试获取Activity名称
                 focusInfo.activityName = UIHierarchyManager.getCurrentActivityName(context) ?: "ForegroundActivity"
@@ -147,7 +147,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
             if (focusInfo.packageName == null) focusInfo.packageName = "android"
             if (focusInfo.activityName == null) focusInfo.activityName = "ForegroundActivity"
         } catch (e: Exception) {
-            Log.e(TAG, "从XML解析焦点信息时出错", e)
+            AppLogger.e(TAG, "从XML解析焦点信息时出错", e)
             // 设置默认值
             focusInfo.packageName = "android"
             focusInfo.activityName = "ForegroundActivity"
@@ -297,7 +297,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 handleClickByBounds(tool, targetNodeBounds)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error clicking element", e)
+            AppLogger.e(TAG, "Error clicking element", e)
             operationOverlay.hide()
             ToolResult(
                         toolName = tool.name,
@@ -338,7 +338,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 ToolResult(toolName = tool.name, success = false, result = StringResultData(""), error = "Failed to click at bounds $bounds via accessibility service.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error clicking by bounds", e)
+            AppLogger.e(TAG, "Error clicking by bounds", e)
             operationOverlay.hide()
             return ToolResult(toolName = tool.name, success = false, result = StringResultData(""), error = "Error clicking at bounds: ${e.message}")
         }
@@ -418,7 +418,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting input text", e)
+            AppLogger.e(TAG, "Error setting input text", e)
             operationOverlay.hide()
             ToolResult(
                     toolName = tool.name,
@@ -474,16 +474,75 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                         result = StringResultData(""),
                         error = "Failed to tap at coordinates via accessibility service."
                 )
-                }
+            }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error tapping at coordinates", e)
+            AppLogger.e(TAG, "Error tapping at coordinates", e)
             operationOverlay.hide()
             ToolResult(
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
                     error = "Error tapping at coordinates: ${e.message}"
+            )
+        }
+    }
+
+    /** 执行长按操作 */
+    override suspend fun longPress(tool: AITool): ToolResult {
+        return try {
+            withAccessibilityCheck(tool) {
+        val x = tool.parameters.find { it.name == "x" }?.value?.toIntOrNull()
+        val y = tool.parameters.find { it.name == "y" }?.value?.toIntOrNull()
+
+        if (x == null || y == null) {
+                    return@withAccessibilityCheck ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                        error = "Missing or invalid coordinates. Both 'x' and 'y' must be valid integers."
+            )
+        }
+
+            // 显示长按反馈（复用点击效果）
+            operationOverlay.showTap(x, y)
+
+            // 使用无障碍服务执行长按
+            val result = performAccessibilityLongPress(x, y)
+
+                if (result) {
+                // 成功后主动隐藏overlay
+                operationOverlay.hide()
+                ToolResult(
+                        toolName = tool.name,
+                        success = true,
+                        result =
+                                UIActionResultData(
+                                        actionType = "long_press",
+                                        actionDescription =
+                                                "Successfully long pressed at coordinates ($x, $y) via accessibility service",
+                                        coordinates = Pair(x, y)
+                                ),
+                        error = ""
+                )
+            } else {
+                operationOverlay.hide()
+                ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Failed to long press at coordinates via accessibility service."
+                )
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error long pressing at coordinates", e)
+            operationOverlay.hide()
+            ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Error long pressing at coordinates: ${e.message}"
             )
         }
     }
@@ -538,7 +597,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing swipe", e)
+            AppLogger.e(TAG, "Error performing swipe", e)
             operationOverlay.hide()
             ToolResult(
                     toolName = tool.name,
@@ -554,7 +613,17 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
         return try {
             UIHierarchyManager.performClick(context, x, y)
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing accessibility click", e)
+            AppLogger.e(TAG, "Error performing accessibility click", e)
+            return false
+        }
+    }
+
+    // 使用无障碍服务执行长按的辅助方法
+    private suspend fun performAccessibilityLongPress(x: Int, y: Int): Boolean {
+        return try {
+            UIHierarchyManager.performLongPress(context, x, y)
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error performing accessibility long press", e)
             return false
         }
     }
@@ -570,7 +639,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
         return try {
             UIHierarchyManager.performSwipe(context, startX, startY, endX, endY, duration.toLong())
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing accessibility swipe", e)
+            AppLogger.e(TAG, "Error performing accessibility swipe", e)
             return false
         }
     }
@@ -635,7 +704,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error pressing key", e)
+            AppLogger.e(TAG, "Error pressing key", e)
             return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -659,7 +728,7 @@ open class AccessibilityUITools(context: Context) : StandardUITools(context) {
                 rect.bottom = parts[3].toInt()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing bounds: $boundsString", e)
+            AppLogger.e(TAG, "Error parsing bounds: $boundsString", e)
         }
         return rect
     }

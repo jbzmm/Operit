@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
@@ -50,7 +50,7 @@ object AIServiceFactory {
             }
             headers
         } catch (e: Exception) {
-            Log.e("AIServiceFactory", "解析自定义请求头失败", e)
+            AppLogger.e("AIServiceFactory", "解析自定义请求头失败", e)
             emptyMap()
         }
     }
@@ -119,13 +119,14 @@ object AIServiceFactory {
             ApiProviderType.BAICHUAN -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.MOONSHOT -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
 
-            // 默认使用OpenAI格式（大多数服务商兼容）
-            ApiProviderType.DEEPSEEK -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            // DeepSeek使用专用Provider（支持推理模式）
+            ApiProviderType.DEEPSEEK -> DeepseekProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall, config.enableDeepseekReasoning)
             ApiProviderType.MISTRAL -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.SILICONFLOW -> QwenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.OPENROUTER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.INFINIAI -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.ALIPAY_BAILING -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
+            ApiProviderType.DOUBAO -> DoubaoAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.PPINFRA -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
             ApiProviderType.OTHER -> OpenAIProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, supportsVision, enableToolCall)
         }

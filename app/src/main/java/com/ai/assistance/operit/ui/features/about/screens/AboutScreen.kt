@@ -115,49 +115,102 @@ data class OpenSourceLibrary(
 // 准备开源库列表
 private fun getOpenSourceLibraries(): List<OpenSourceLibrary> {
     return listOf(
+        // UI & Android Framework
         OpenSourceLibrary("android-gif-drawable", "GIF support for Android", "MIT", "https://github.com/koral--/android-gif-drawable"),
         OpenSourceLibrary("Android-Image-Cropper", "Image cropping library for Android", "Apache-2.0", "https://github.com/CanHub/Android-Image-Cropper"),
         OpenSourceLibrary("AndroidSVG", "SVG rendering library", "Apache-2.0", "https://github.com/BigBadaboom/androidsvg"),
-        OpenSourceLibrary("AndroidX Compose", "Android 声明式 UI 框架", "Apache-2.0", "https://developer.android.com/jetpack/compose"),
-        OpenSourceLibrary("AndroidX Core KTX", "Android 核心库的 Kotlin 扩展", "Apache-2.0", "https://developer.android.com/jetpack/androidx"),
+        OpenSourceLibrary("AndroidX Compose", "Modern declarative UI toolkit for Android", "Apache-2.0", "https://developer.android.com/jetpack/compose"),
+        OpenSourceLibrary("AndroidX Core KTX", "Kotlin extensions for Android core libraries", "Apache-2.0", "https://developer.android.com/jetpack/androidx"),
         OpenSourceLibrary("AndroidX DataStore", "Data storage solution", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/datastore"),
+        OpenSourceLibrary("AndroidX Security Crypto", "Encryption library for Android", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/security"),
         OpenSourceLibrary("AndroidX Window", "Window manager library for foldables", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/window"),
+        OpenSourceLibrary("AndroidX WorkManager", "Background job scheduling library", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/work"),
+        OpenSourceLibrary("AndroidX Glance", "Compose for App Widgets", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/glance"),
+        OpenSourceLibrary("Accompanist", "Utilities for Jetpack Compose", "Apache-2.0", "https://github.com/google/accompanist"),
+        OpenSourceLibrary("colorpicker-compose", "A color picker for Jetpack Compose", "Apache-2.0", "https://github.com/skydoves/colorpicker-compose"),
+        OpenSourceLibrary("Reorderable", "Drag-and-drop reorderable list for Compose", "Apache-2.0", "https://github.com/Calvin-LL/Reorderable"),
+        OpenSourceLibrary("Swipe", "Swipe-to-reveal actions for Compose", "Apache-2.0", "https://github.com/saket/swipe"),
+        
+        // File & Archive Processing
         OpenSourceLibrary("Apache Commons Compress", "Library for working with archives", "Apache-2.0", "https://commons.apache.org/proper/commons-compress/"),
         OpenSourceLibrary("Apache Commons IO", "Library of I/O utilities", "Apache-2.0", "https://commons.apache.org/proper/commons-io/"),
-        OpenSourceLibrary("Apache PDFBox", "Java library for working with PDF documents", "Apache-2.0", "https://pdfbox.apache.org/"),
-        OpenSourceLibrary("Apache POI", "文档处理库", "Apache-2.0", "https://poi.apache.org/"),
-        OpenSourceLibrary("apk-parser", "A parser for APK files", "Apache-2.0", "https://github.com/hsiafan/apk-parser"),
-        OpenSourceLibrary("axml", "A-XML format parsing library", "Apache-2.0", "https://github.com/Sable/axml"),
-        OpenSourceLibrary("Bouncy Castle", "Cryptography library", "MIT", "https://www.bouncycastle.org/"),
-        OpenSourceLibrary("Coil", "Image loading library for Android", "Apache-2.0", "https://coil-kt.github.io/coil/"),
-        OpenSourceLibrary("colorpicker-compose", "A color picker for Jetpack Compose", "Apache-2.0", "https://github.com/skydoves/colorpicker-compose"),
-        OpenSourceLibrary("ExoPlayer", "Extensible media player for Android", "Apache-2.0", "https://exoplayer.dev/"),
-        OpenSourceLibrary("FFmpegKit", "FFmpeg 工具库", "LGPL-3.0", "https://github.com/arthenica/ffmpeg-kit"),
-        OpenSourceLibrary("Glide", "Android 图片加载库", "BSD, MIT, Apache-2.0", "https://github.com/bumptech/glide"),
-        OpenSourceLibrary("Gson", "Google JSON 解析库", "Apache-2.0", "https://github.com/google/gson"),
-        OpenSourceLibrary("HJSON", "Human-friendly JSON format", "MIT", "https://hjson.github.io/"),
-        OpenSourceLibrary("HNSWLib", "Header-only C++/python library for fast approximate nearest neighbor search", "Apache-2.0", "https://github.com/jelmerk/hnswlib"),
-        OpenSourceLibrary("iText (v5)", "Library for creating and manipulating PDF files", "MPL/LGPL", "https://itextpdf.com/"),
-        OpenSourceLibrary("java-diff-utils", "Diff library for Java", "Apache-2.0", "https://github.com/java-diff-utils/java-diff-utils"),
-        OpenSourceLibrary("Jieba-Android", "Jieba Chinese word segmentation for Android", "MIT", "https://github.com/huaban/jieba-analysis"),
-        OpenSourceLibrary("JLatexMath-Android", "LaTeX formula rendering library", "Apache-2.0", "https://github.com/noties/jlatexmath-android"),
-        OpenSourceLibrary("Jsoup", "Java HTML parser", "MIT", "https://jsoup.org/"),
         OpenSourceLibrary("junrar", "RAR archive extraction library", "The Unlicense", "https://github.com/junrar/junrar"),
-        OpenSourceLibrary("kotlin-logging", "Lightweight logging framework for Kotlin", "Apache-2.0", "https://github.com/oshai/kotlin-logging"),
-        OpenSourceLibrary("kotlin-uuid", "UUID library for Kotlin", "Apache-2.0", "https://github.com/benasher44/uuid"),
-        OpenSourceLibrary("Kotlin Coroutines", "Kotlin 协程库", "Apache-2.0", "https://github.com/Kotlin/kotlinx.coroutines"),
-        OpenSourceLibrary("kotlinx.serialization", "Kotlin 序列化库", "Apache-2.0", "https://github.com/Kotlin/kotlinx.serialization"),
-        OpenSourceLibrary("libsu", "Root access library for Android", "Apache-2.0", "https://github.com/topjohnwu/libsu"),
-        OpenSourceLibrary("ML Kit", "Google 机器学习工具包", "Apache-2.0", "https://developers.google.com/ml-kit"),
-        OpenSourceLibrary("NanoHTTPD", "轻量级 HTTP 服务器", "BSD-3-Clause", "https://github.com/NanoHttpd/nanohttpd"),
-        OpenSourceLibrary("OkHttp", "HTTP 客户端", "Apache-2.0", "https://square.github.io/okhttp/"),
-        OpenSourceLibrary("RenderX", "LaTeX rendering library", "MIT", "https://github.com/tech-pw/RenderX"),
-        OpenSourceLibrary("Room", "Android SQLite 对象映射库", "Apache-2.0", "https://developer.android.com/training/data-storage/room"),
-        OpenSourceLibrary("Shizuku", "System service for apps to use system APIs directly", "Apache-2.0", "https://github.com/RikkaApps/Shizuku"),
-        OpenSourceLibrary("sherpa-ncnn", "Real-time speech recognition with Next-gen Kaldi", "Apache-2.0", "https://github.com/k2-fsa/sherpa-ncnn"),
-        OpenSourceLibrary("SLF4J", "Simple Logging Facade for Java", "MIT", "https://www.slf4j.org/"),
+        OpenSourceLibrary("ZIP4J", "Java library for ZIP file handling", "Apache-2.0", "https://github.com/srikanth-lingala/zip4j"),
+        
+        // Document Processing
+        OpenSourceLibrary("Apache PDFBox", "Java library for working with PDF documents", "Apache-2.0", "https://pdfbox.apache.org/"),
+        OpenSourceLibrary("Apache POI", "Document processing library (Excel, Word, PowerPoint)", "Apache-2.0", "https://poi.apache.org/"),
+        OpenSourceLibrary("iText (v5)", "Library for creating and manipulating PDF files", "MPL/LGPL", "https://itextpdf.com/"),
+        
+        // APK Tools
+        OpenSourceLibrary("apk-parser", "A parser for APK files", "Apache-2.0", "https://github.com/hsiafan/apk-parser"),
+        OpenSourceLibrary("apksig", "APK signing tool", "Apache-2.0", "https://developer.android.com/tools/apksigner"),
+        OpenSourceLibrary("axml", "A-XML format parsing library", "Apache-2.0", "https://github.com/Sable/axml"),
+        OpenSourceLibrary("zipalign-java", "zipalign implementation in Java", "MIT", "https://github.com/Iyxan23/zipalign-java"),
+        
+        // Image Processing
+        OpenSourceLibrary("Coil", "Image loading library for Android", "Apache-2.0", "https://coil-kt.github.io/coil/"),
+        OpenSourceLibrary("Glide", "Image loading library for Android", "BSD, MIT, Apache-2.0", "https://github.com/bumptech/glide"),
+        
+        // Multimedia
+        OpenSourceLibrary("ExoPlayer", "Extensible media player for Android", "Apache-2.0", "https://exoplayer.dev/"),
+        OpenSourceLibrary("FFmpegKit", "FFmpeg toolkit for mobile platforms", "LGPL-3.0", "https://github.com/arthenica/ffmpeg-kit"),
+        
+        // AI & Machine Learning
+        OpenSourceLibrary("ML Kit", "Google's machine learning toolkit for mobile", "Apache-2.0", "https://developers.google.com/ml-kit"),
+        OpenSourceLibrary("MediaPipe", "Cross-platform ML solutions", "Apache-2.0", "https://developers.google.com/mediapipe"),
+        OpenSourceLibrary("MNN", "Alibaba's lightweight deep learning inference engine", "Apache-2.0", "https://github.com/alibaba/MNN"),
+        OpenSourceLibrary("ONNX Runtime", "Cross-platform ML inference engine", "MIT", "https://github.com/microsoft/onnxruntime"),
         OpenSourceLibrary("TensorFlow Lite", "On-device machine learning framework", "Apache-2.0", "https://www.tensorflow.org/lite"),
-        OpenSourceLibrary("zipalign-java", "zipalign implementation in Java", "MIT", "https://github.com/Iyxan23/zipalign-java")
+        
+        // NLP & Search
+        OpenSourceLibrary("HNSWLib", "Fast approximate nearest neighbor search", "Apache-2.0", "https://github.com/jelmerk/hnswlib"),
+        OpenSourceLibrary("Jieba-Android", "Jieba Chinese word segmentation for Android", "MIT", "https://github.com/huaban/jieba-analysis"),
+        
+        // Networking
+        OpenSourceLibrary("Apache FTPServer", "FTP server library", "Apache-2.0", "https://mina.apache.org/ftpserver-project/"),
+        OpenSourceLibrary("Apache SSHD", "SSH server and client library", "Apache-2.0", "https://mina.apache.org/sshd-project/"),
+        OpenSourceLibrary("JSch", "Java SSH client library", "BSD-3-Clause", "https://github.com/mwiede/jsch"),
+        OpenSourceLibrary("Jsoup", "Java HTML parser", "MIT", "https://jsoup.org/"),
+        OpenSourceLibrary("Ktor", "Asynchronous networking framework", "Apache-2.0", "https://ktor.io/"),
+        OpenSourceLibrary("MCP SDK", "Model Context Protocol SDK", "MIT", "https://github.com/modelcontextprotocol/kotlin-sdk"),
+        OpenSourceLibrary("NanoHTTPD", "Lightweight HTTP server library", "BSD-3-Clause", "https://github.com/NanoHttpd/nanohttpd"),
+        OpenSourceLibrary("OkHttp", "HTTP client library", "Apache-2.0", "https://square.github.io/okhttp/"),
+        OpenSourceLibrary("Retrofit", "Type-safe HTTP client", "Apache-2.0", "https://square.github.io/retrofit/"),
+        
+        // Data & Serialization
+        OpenSourceLibrary("Gson", "Google's JSON parsing library", "Apache-2.0", "https://github.com/google/gson"),
+        OpenSourceLibrary("HJSON", "Human-friendly JSON format", "MIT", "https://hjson.github.io/"),
+        OpenSourceLibrary("kotlin-uuid", "UUID library for Kotlin", "Apache-2.0", "https://github.com/benasher44/uuid"),
+        OpenSourceLibrary("kotlinx.serialization", "Kotlin serialization library", "Apache-2.0", "https://github.com/Kotlin/kotlinx.serialization"),
+        OpenSourceLibrary("Moshi", "Modern JSON library for Kotlin", "Apache-2.0", "https://github.com/square/moshi"),
+        
+        // Database
+        OpenSourceLibrary("ObjectBox", "High-performance NoSQL database", "Apache-2.0", "https://objectbox.io/"),
+        OpenSourceLibrary("Room", "Android SQLite ORM library", "Apache-2.0", "https://developer.android.com/training/data-storage/room"),
+        
+        // LaTeX & Math Rendering
+        OpenSourceLibrary("JLatexMath-Android", "LaTeX formula rendering library", "GPL-2.0 with Classpath Exception", "https://github.com/noties/jlatexmath-android"),
+        OpenSourceLibrary("RenderX", "LaTeX rendering library", "MIT", "https://github.com/tech-pw/RenderX"),
+        
+        // Security & Crypto
+        OpenSourceLibrary("Bouncy Castle", "Cryptography library", "MIT", "https://www.bouncycastle.org/"),
+        
+        // System & Root
+        OpenSourceLibrary("libsu", "Root access library for Android", "Apache-2.0", "https://github.com/topjohnwu/libsu"),
+        OpenSourceLibrary("Shizuku", "System service for apps to use system APIs directly", "Apache-2.0", "https://github.com/RikkaApps/Shizuku"),
+        OpenSourceLibrary("Tasker Plugin Library", "Library for creating Tasker plugins", "Apache-2.0", "https://github.com/joaomgcd/TaskerPluginLibrary"),
+        
+        // Terminal & Native
+        OpenSourceLibrary("Code FA", "VS Code for Android (code-server based)", "BSD-3-Clause", "https://github.com/nightmare-space/code_lfa"),
+        OpenSourceLibrary("DragonBones", "Popular 2D skeletal animation library", "MIT", "https://github.com/DragonBones/DragonBonesCPP"),
+        
+        // Kotlin & Logging
+        OpenSourceLibrary("java-diff-utils", "Diff library for Java", "Apache-2.0", "https://github.com/java-diff-utils/java-diff-utils"),
+        OpenSourceLibrary("Kotlin Coroutines", "Kotlin coroutines library", "Apache-2.0", "https://github.com/Kotlin/kotlinx.coroutines"),
+        OpenSourceLibrary("kotlin-logging", "Lightweight logging framework for Kotlin", "Apache-2.0", "https://github.com/oshai/kotlin-logging"),
+        OpenSourceLibrary("sherpa-ncnn", "Real-time speech recognition with Next-gen Kaldi", "Apache-2.0", "https://github.com/k2-fsa/sherpa-ncnn"),
+        OpenSourceLibrary("SLF4J", "Simple Logging Facade for Java", "MIT", "https://www.slf4j.org/")
     ).sortedBy { it.name }
 }
 

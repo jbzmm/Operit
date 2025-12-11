@@ -12,9 +12,17 @@ fun getJsToolsDefinition(): String {
                     if (environment) params.environment = environment;
                     return toolCall("list_files", params);
                 },
-                read: (path, environment) => {
-                    const params = { path };
-                    if (environment) params.environment = environment;
+                read: (pathOrOptions) => {
+                    let params;
+                    if (typeof pathOrOptions === 'string') {
+                        // Simple form: read(path)
+                        params = { path: pathOrOptions };
+                    } else if (pathOrOptions && typeof pathOrOptions === 'object') {
+                        // Options form: read({ path, environment?, intent? })
+                        params = { ...pathOrOptions };
+                    } else {
+                        params = {};
+                    }
                     return toolCall("read_file_full", params);
                 },
                 readPart: (path, startLine, endLine, environment) => {
@@ -215,6 +223,7 @@ fun getJsToolsDefinition(): String {
             UI: {
                 getPageInfo: () => toolCall("get_page_info"),
                 tap: (x, y) => toolCall("tap", { x, y }),
+                longPress: (x, y) => toolCall("long_press", { x, y }),
                 // 增强的clickElement方法，支持多种参数类型
                 clickElement: function(param1, param2, param3) {
                     // 根据参数类型和数量判断调用方式
@@ -269,6 +278,16 @@ fun getJsToolsDefinition(): String {
                     return toolCall("swipe", params);
                 },
                 pressKey: (keyCode) => toolCall("press_key", { key_code: keyCode }),
+                /**
+                 * Run the built-in UI automation subagent.
+                 * @param intent High-level task description for the subagent.
+                 * @param maxSteps Optional maximum number of steps (default 20).
+                 */
+                runSubAgent: (intent, maxSteps) => {
+                    const params = { intent: String(intent || "") };
+                    if (maxSteps !== undefined) params.max_steps = String(maxSteps);
+                    return toolCall("run_ui_subagent", params);
+                },
             },
             // 记忆管理
             Memory: {

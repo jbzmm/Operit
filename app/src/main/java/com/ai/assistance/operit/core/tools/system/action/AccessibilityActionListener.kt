@@ -3,11 +3,10 @@ package com.ai.assistance.operit.core.tools.system.action
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import android.view.accessibility.AccessibilityEvent
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.data.repository.UIHierarchyManager
-import com.ai.assistance.operit.provider.IAccessibilityEventCallback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,13 +22,6 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
 
     private val isListening = AtomicBoolean(false)
     private var actionCallback: ((ActionListener.ActionEvent) -> Unit)? = null
-
-    // AIDL回调的实现。当无障碍服务捕获到事件时，会通过这个回调通知我们
-    private val remoteListener = object : IAccessibilityEventCallback.Stub() {
-        override fun onAccessibilityEvent(event: AccessibilityEvent) {
-            handleAccessibilityEvent(event)
-        }
-    }
 
     override fun getPermissionLevel(): AndroidPermissionLevel = AndroidPermissionLevel.ACCESSIBILITY
 
@@ -47,7 +39,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
     }
 
     override fun initialize() {
-        Log.d(TAG, "无障碍UI操作监听器已初始化")
+        AppLogger.d(TAG, "无障碍UI操作监听器已初始化")
     }
 
     override suspend fun requestPermission(onResult: (Boolean) -> Unit) {
@@ -65,7 +57,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
             // 由于无法知道用户是否启用了服务，返回false，让调用者自行处理后续检查
             onResult(false)
         } catch (e: Exception) {
-            Log.e(TAG, "打开无障碍设置失败", e)
+            AppLogger.e(TAG, "打开无障碍设置失败", e)
             onResult(false)
         }
     }
@@ -81,25 +73,18 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
                 }
 
                 if (!isListening.compareAndSet(false, true)) {
-                    Log.w(TAG, "启动监听失败：已在监听中")
+                    AppLogger.w(TAG, "启动监听失败：已在监听中")
                     return@withContext ActionListener.ListeningResult.failure("已在监听中")
                 }
 
                 actionCallback = onAction
 
-                // 通过UIHierarchyManager注册AIDL回调
-                val registered = UIHierarchyManager.registerAccessibilityEventListener(context, remoteListener)
-                if (registered) {
-                    Log.d(TAG, "无障碍UI操作监听已启动")
-                    ActionListener.ListeningResult.success("无障碍UI操作监听已启动")
-                } else {
-                    isListening.set(false)
-                    actionCallback = null
-                    Log.w(TAG, "通过UIHierarchyManager注册监听器失败")
-                    ActionListener.ListeningResult.failure("注册无障碍事件监听器失败")
-                }
+                // 直接启动监听，不需要注册回调
+                isListening.set(true)
+                AppLogger.d(TAG, "无障碍UI操作监听已启动")
+                ActionListener.ListeningResult.success("无障碍UI操作监听已启动")
             } catch (e: Exception) {
-                Log.e(TAG, "启动无障碍UI操作监听失败", e)
+                AppLogger.e(TAG, "启动无障碍UI操作监听失败", e)
                 isListening.set(false)
                 actionCallback = null
                 ActionListener.ListeningResult.failure("启动失败: ${e.message}")
@@ -109,18 +94,15 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
     override suspend fun stopListening(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!isListening.compareAndSet(true, false)) {
-                Log.d(TAG, "监听器未在运行，无需停止")
+                AppLogger.d(TAG, "监听器未在运行，无需停止")
                 return@withContext true
             }
 
-            // 通过UIHierarchyManager注销AIDL回调
-            UIHierarchyManager.unregisterAccessibilityEventListener(context, remoteListener)
             actionCallback = null
-
-            Log.d(TAG, "无障碍UI操作监听已停止")
+            AppLogger.d(TAG, "无障碍UI操作监听已停止")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "停止无障碍UI操作监听失败", e)
+            AppLogger.e(TAG, "停止无障碍UI操作监听失败", e)
             // Even if unregistering fails, we consider the listener stopped from our side.
             actionCallback = null
             false
@@ -128,7 +110,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
     }
 
     /**
-     * 处理从远程无障碍服务通过AIDL回调传来的事件
+     * 处理从远程无障碍服务通过AIDL回 调传来的事件
      * @param event 无障碍事件
      */
     private fun handleAccessibilityEvent(event: AccessibilityEvent) {
@@ -171,7 +153,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
 
             callback.invoke(actionEvent)
         } catch (e: Exception) {
-            Log.e(TAG, "处理无障碍事件失败", e)
+            AppLogger.e(TAG, "处理无障碍事件失败", e)
         }
     }
 } 

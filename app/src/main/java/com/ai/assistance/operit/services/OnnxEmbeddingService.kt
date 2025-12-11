@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.services
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -10,6 +10,7 @@ import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.library.ProblemLibrary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -51,15 +52,15 @@ object OnnxEmbeddingService {
      */
     suspend fun initialize(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) {
-            Log.d(TAG, "OnnxEmbeddingService is already initialized.")
+            AppLogger.d(TAG, "OnnxEmbeddingService is already initialized.")
             return@withContext
         }
         
         if (isInitializing) {
-            Log.d(TAG, "OnnxEmbeddingService is already initializing, waiting...")
+            AppLogger.d(TAG, "OnnxEmbeddingService is already initializing, waiting...")
             // Wait for initialization to complete
             while (isInitializing && !isInitialized) {
-                Thread.sleep(100)
+                delay(100)
             }
             return@withContext
         }
@@ -67,7 +68,7 @@ object OnnxEmbeddingService {
         isInitializing = true
         
         try {
-            Log.d(TAG, "Starting OnnxEmbeddingService initialization in background thread...")
+            AppLogger.d(TAG, "Starting OnnxEmbeddingService initialization in background thread...")
             
             // 1. Initialize ONNX Runtime environment
             ortEnvironment = OrtEnvironment.getEnvironment()
@@ -86,37 +87,37 @@ object OnnxEmbeddingService {
             )
             
             // 4. Initialize tokenizer (this is the heavy part - loads large JSON)
-            Log.d(TAG, "Loading tokenizer from JSON...")
+            AppLogger.d(TAG, "Loading tokenizer from JSON...")
             val tokenizerFile = copyAssetToCache(context, TOKENIZER_PATH)
             tokenizer = BertTokenizer(tokenizerFile.absolutePath)
             
             isInitialized = true
-            Log.d(TAG, "OnnxEmbeddingService initialized successfully with multilingual support.")
+            AppLogger.d(TAG, "OnnxEmbeddingService initialized successfully with multilingual support.")
             
             // Log model info
             ortSession?.let { session ->
-                Log.d(TAG, "Model inputs: ${session.inputNames}")
-                Log.d(TAG, "Model outputs: ${session.outputNames}")
+                AppLogger.d(TAG, "Model inputs: ${session.inputNames}")
+                AppLogger.d(TAG, "Model outputs: ${session.outputNames}")
             }
             
             // 触发自动分类（使用 ProblemLibrary）
-            Log.d(TAG, "准备触发记忆库未分类记忆的自动分类...")
+            AppLogger.d(TAG, "准备触发记忆库未分类记忆的自动分类...")
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    Log.d(TAG, "开始获取 EnhancedAIService 实例...")
+                    AppLogger.d(TAG, "开始获取 EnhancedAIService 实例...")
                     val enhancedAIService = EnhancedAIService.getInstance(context)
-                    Log.d(TAG, "开始获取 PROBLEM_LIBRARY 功能的 AIService...")
+                    AppLogger.d(TAG, "开始获取 PROBLEM_LIBRARY 功能的 AIService...")
                     val aiService = enhancedAIService.getAIServiceForFunction(com.ai.assistance.operit.data.model.FunctionType.PROBLEM_LIBRARY)
-                    Log.d(TAG, "开始调用 ProblemLibrary.autoCategorizeMemoriesAsync...")
+                    AppLogger.d(TAG, "开始调用 ProblemLibrary.autoCategorizeMemoriesAsync...")
                     ProblemLibrary.autoCategorizeMemoriesAsync(context, aiService)
-                    Log.d(TAG, "已触发自动分类任务")
+                    AppLogger.d(TAG, "已触发自动分类任务")
                 } catch (e: Exception) {
-                    Log.e(TAG, "触发自动分类失败", e)
+                    AppLogger.e(TAG, "触发自动分类失败", e)
                 }
             }
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing OnnxEmbeddingService", e)
+            AppLogger.e(TAG, "Error initializing OnnxEmbeddingService", e)
             isInitialized = false
         } finally {
             isInitializing = false
@@ -142,7 +143,7 @@ object OnnxEmbeddingService {
     
     fun generateEmbedding(text: String): Embedding? {
         if (!isInitialized || ortSession == null || tokenizer == null) {
-            Log.w(TAG, "OnnxEmbeddingService is not initialized")
+            AppLogger.w(TAG, "OnnxEmbeddingService is not initialized")
             return null
         }
         
@@ -182,12 +183,12 @@ object OnnxEmbeddingService {
             
             // Log preview
             val preview = normalizedEmbedding.take(5).joinToString(", ") { "%.4f".format(it) }
-            Log.d(TAG, "Generated embedding for \"$text\": [$preview ...] (dim: ${normalizedEmbedding.size})")
+            AppLogger.d(TAG, "Generated embedding for \"$text\": [$preview ...] (dim: ${normalizedEmbedding.size})")
             
             return Embedding(normalizedEmbedding)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to generate embedding for text: $text", e)
+            AppLogger.e(TAG, "Failed to generate embedding for text: $text", e)
             return null
         }
     }
@@ -240,7 +241,7 @@ object OnnxEmbeddingService {
         val vec2 = emb2.vector
         
         if (vec1.size != vec2.size) {
-            Log.w(TAG, "Embedding dimension mismatch: ${vec1.size} vs ${vec2.size}")
+            AppLogger.w(TAG, "Embedding dimension mismatch: ${vec1.size} vs ${vec2.size}")
             return 0f
         }
         
@@ -260,9 +261,9 @@ object OnnxEmbeddingService {
             ortEnvironment = null
             tokenizer = null
             isInitialized = false
-            Log.d(TAG, "OnnxEmbeddingService cleaned up successfully")
+            AppLogger.d(TAG, "OnnxEmbeddingService cleaned up successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning up OnnxEmbeddingService", e)
+            AppLogger.e(TAG, "Error cleaning up OnnxEmbeddingService", e)
         }
     }
 }
@@ -323,7 +324,7 @@ class BertTokenizer(tokenizerPath: String) {
         padTokenId = specialTokens["<pad>"] ?: 1
         unkTokenId = specialTokens["<unk>"] ?: 3
         
-        Log.d("BertTokenizer", "Loaded vocabulary with ${vocab.size} tokens")
+        AppLogger.d("BertTokenizer", "Loaded vocabulary with ${vocab.size} tokens")
     }
     
     fun tokenize(text: String, maxLength: Int): TokenizationResult {

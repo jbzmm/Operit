@@ -513,9 +513,10 @@
     <string name="theme_save_colors">Guardar configuración de color</string>
     <string name="theme_title_background">Personalización de fondo</string>
     <string name="theme_bg_media">Configuración de medios de fondo</string>
-    <string name="theme_use_custom_bg">Usar fondo personalizado</string>
-    <string name="theme_custom_bg_desc">Cuando está activado, puedes seleccionar una imagen o video de fondo personalizado</string>
-    <string name="theme_media_type">Tipo de medio</string>
+    <string name="enable_tool_call">Habilitar llamada a herramientas</string>
+    <string name="enable_tool_call_desc">Cuando está desactivado, se utiliza el mecanismo de llamada a herramientas integrado. Cuando está activado, se utiliza la interfaz nativa de la API para llamadas a herramientas (requiere soporte del modelo)</string>
+    <string name="enable_deepseek_reasoning">Habilitar modo de razonamiento DeepSeek</string>
+    <string name="enable_deepseek_reasoning_desc">Cuando está habilitado, el contenido dentro de la etiqueta &lt;think&gt; se enviará como reasoning_content al modelo DeepSeek, para admitir la llamada a herramientas en modelos de razonamiento como DeepSeek-R1</string>
     <string name="theme_media_image">Imagen</string>
     <string name="theme_media_video">Video</string>
     <string name="theme_no_bg_selected">Haz clic en el botón de selección para agregar un fondo</string>
@@ -928,7 +929,7 @@
     <string name="function_desc_summary">Generar resúmenes de conversación para rastrear información importante</string>
     <string name="function_desc_problem_library">Utilizado para análisis y gestión de biblioteca de problemas</string>
     <string name="function_desc_file_binding">Procesa la vinculación inteligente y mezcla de contenido de archivos, proporcionando capacidades de procesamiento de código más precisas. Se recomienda usar modelos rápidos y económicos como Gemini Flash, no se recomienda usar DeepSeek R1</string>
-    <string name="function_desc_ui_controller">Utilizado para traversal automático y operación de interfaces de UI, será llamado por el modelo principal. Se recomienda usar modelos rápidos económicos.</string>
+    <string name="function_desc_ui_controller">Utilizado para la exploración y operación automáticas de interfaces de UI. El modelo de controlador de UI correspondiente solo se activará cuando el usuario solicite explícitamente usar un «agente» para el control, por ejemplo eligiendo modelos dedicados como autoglm-phone-9b.</string>
     
     <!-- Functional Prompt Config Screen -->
     <string name="advanced_config_notice">Para configuraciones avanzadas como modificar plantillas de prompt del sistema, vaya a la página \"Gestionar Todos los Prompts\".</string>
@@ -1238,9 +1239,26 @@
     
     <!-- Context Menu -->
     <string name="copy_message">Copiar Mensaje</string>
+    <string name="read_message">Leer Mensaje</string>
+    <string name="stop_reading">Detener Lectura</string>
     <string name="edit_and_resend">Editar y Reenviar</string>
+    <string name="rollback_to_here">Revertir hasta aquí</string>
+    <string name="reply_message">Responder</string>
+    <string name="select_copy">Seleccionar y Copiar</string>
+    <string name="insert_summary">Insertar Resumen</string>
+    <string name="create_branch">Crear Rama</string>
     <string name="modify_memory">Modificar Memoria</string>
     <string name="delete_from_here">Eliminar desde aquí</string>
+    <string name="confirm_rollback_message">Esto eliminará todos los mensajes posteriores y revertirá el espacio de trabajo vinculado al estado anterior a este mensaje. Esta acción no se puede deshacer. ¿Deseas continuar?</string>
+    <string name="confirm_rollback_confirm">Revertir</string>
+    <string name="confirm_edit_and_resend_title">Confirmar editar y reenviar</string>
+    <string name="confirm_edit_and_resend_message">Esto eliminará todos los mensajes posteriores, reenviará el contenido editado como una nueva petición y revertirá el espacio de trabajo vinculado al estado anterior a este mensaje. Esta acción no se puede deshacer. ¿Deseas continuar?</string>
+    <string name="confirm_edit_and_resend_confirm">Editar y reenviar</string>
+    <string name="workspace_changes_preview_title">Vista previa de cambios en el espacio de trabajo</string>
+    <string name="workspace_change_added">Añadido</string>
+    <string name="workspace_change_deleted">Eliminado</string>
+    <string name="workspace_change_modified">Modificado</string>
+    <string name="workspace_changes_more">y otros %1$d archivos</string>
     <string name="multi_select">Selección múltiple</string>
     <string name="exit_multi_select">Salir de selección múltiple</string>
     <string name="delete_selected">Eliminar seleccionados</string>
@@ -1288,4 +1306,5 @@
     <string name="html_content_block">Contenido HTML</string>
     <string name="mood_tag_block">Etiqueta de Ánimo</string>
     
+    <string name="provider_doubao">Doubao (Modelo Volcano)</string>
 </resources>

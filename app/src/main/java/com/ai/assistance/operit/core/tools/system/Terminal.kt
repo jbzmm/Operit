@@ -2,7 +2,7 @@ package com.ai.assistance.operit.core.tools.system
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import androidx.annotation.RequiresApi
 import com.ai.assistance.operit.terminal.CommandExecutionEvent
 import com.ai.assistance.operit.terminal.SessionDirectoryEvent
@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
 
@@ -77,9 +76,9 @@ class Terminal private constructor(private val context: Context) {
      * 创建新的终端会话 - 同步等待初始化完成
      */
     suspend fun createSession(title: String? = null): String {
-        Log.d(TAG, "Creating new terminal session and waiting for initialization")
+        AppLogger.d(TAG, "Creating new terminal session and waiting for initialization")
         val newSession = terminalManager.createNewSession(title)
-        Log.d(TAG, "Session ${newSession.id} initialized successfully")
+        AppLogger.d(TAG, "Session ${newSession.id} initialized successfully")
         return newSession.id
     }
     
@@ -91,7 +90,7 @@ class Terminal private constructor(private val context: Context) {
         return try {
             createSession(title)
         } catch (e: Exception) {
-            Log.e(TAG, "Session creation failed", e)
+            AppLogger.e(TAG, "Session creation failed", e)
             null
         }
     }
@@ -135,14 +134,13 @@ class Terminal private constructor(private val context: Context) {
                 }
         }
 
-        collectorReady.await() // 等待收集器准备就绪
+        // 等待收集器准备就绪
+        collectorReady.await()
         
         // 直接向指定会话发送命令，不切换当前会话
         terminalManager.sendCommandToSession(sessionId, command, commandId)
 
-        val result = withTimeoutOrNull(300000) { // 5 分钟超时
-            deferred.await()
-        }
+        val result = deferred.await()
         
         job.cancel()
         

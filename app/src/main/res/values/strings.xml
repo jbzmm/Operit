@@ -26,6 +26,7 @@
     <string name="menu">菜单</string>
     <string name="token_config">获取密钥</string>
     <string name="desktop_pet_start">启动桌宠</string>
+    <string name="nav_event_campaign">创作激励活动</string>
     
     <!-- 工作流相关 -->
     <string name="workflow_list_title">工作流列表</string>
@@ -476,6 +477,7 @@
     <string name="show_help">显示帮助</string>
     <string name="hide_help">隐藏帮助</string>
     <string name="request_permission">请求Shizuku权限</string>
+    <string name="screen_title_html_packager">HTML Packager</string>
     <string name="execute_shell">执行shell命令</string>
     <string name="enter_command">输入ADB命令</string>
     <string name="show_samples">显示示例命令</string>
@@ -1037,14 +1039,28 @@
     <string name="reply_message">回复</string>
     <string name="stop_reading">停止朗读</string>
     <string name="edit_and_resend">编辑并重发</string>
+    <string name="rollback_to_here">回滚到此处</string>
     <string name="select_copy">选择并复制</string>
+    <string name="insert_summary">插入总结</string>
     <string name="create_branch">创建分支</string>
     <string name="branch">分支</string>
     <string name="parent_chat">父对话: %1$s</string>
 
     <string name="modify_memory">修改记忆</string>
     <string name="delete_from_here">删除到此</string>
+    <string name="confirm_rollback_title">确认回滚</string>
+    <string name="confirm_rollback_message">将删除此消息之后的所有消息，并将已绑定的工作区回滚到此消息之前的状态。此操作不可撤销，确定继续吗？</string>
+    <string name="confirm_rollback_confirm">确认回滚</string>
+    <string name="confirm_edit_and_resend_title">确认编辑并重发</string>
+    <string name="confirm_edit_and_resend_message">将删除此消息之后的所有消息，并把已编辑的内容作为新的提问重新发送，同时回滚已绑定的工作区到此消息之前的状态。此操作不可撤销，确定继续吗？</string>
+    <string name="confirm_edit_and_resend_confirm">确认编辑并重发</string>
+    <string name="workspace_changes_preview_title">工作区文件变更预览</string>
+    <string name="workspace_change_added">新增</string>
+    <string name="workspace_change_deleted">删除</string>
+    <string name="workspace_change_modified">修改</string>
+    <string name="workspace_changes_more">以及另外 %1$d 个文件变更</string>
     <string name="multi_select">多选</string>
+
     <string name="exit_multi_select">退出多选</string>
     <string name="select_all_messages">全选</string>
     <string name="clear_selection">取消</string>
@@ -1246,7 +1262,7 @@
     <string name="ui_debug_tool">UI调试工具</string>
     <string name="ui_debug_description">点击右下角的按钮启动悬浮窗进行UI调试</string>
     <string name="current_interface_analysis">当前分析界面</string>
-    <string name="package_name">包名: %1$s</string>
+    <string name="package_name">包名</string>
     <string name="page_nodes">%1$s - 页面节点</string>
     <string name="no_page_nodes_found">没有找到页面节点</string>
     <string name="type_info">类型: %1$s</string>
@@ -1379,6 +1395,9 @@
     <string name="tool_log_viewer_desc">实时捕获并查看系统和应用日志，支持过滤和搜索</string>
     <string name="tool_process_limit_remover">解除幻象进程限制</string>
     <string name="tool_process_limit_remover_desc">管理Android 12+的幻象进程数量限制，允许更多后台子进程</string>
+
+    <string name="tool_html_packager">HTML打包器</string>
+    <string name="tool_html_packager_desc">将HTML文件及其依赖打包成单个HTML文件，方便分享和部署</string>
     
     <!-- Process Limit Remover Screen -->
     <string name="process_limit_title">解除幻象进程限制</string>
@@ -2015,7 +2034,7 @@
     <string name="function_desc_summary">生成对话总结，方便追踪重要信息</string>
     <string name="function_desc_problem_library">用于问题库的分析和管理</string>
     <string name="function_desc_file_binding">处理文件内容的智能绑定与混合，提供更精确的代码处理能力。建议使用快速的廉价模型如Gemini Flash，不建议使用DeepSeek R1</string>
-    <string name="function_desc_ui_controller">用于UI界面的自动遍历与操作，会被主模型调用。建议使用廉价快速模型。</string>
+    <string name="function_desc_ui_controller">用于UI界面的自动遍历与操作，对应的 UI 控制器模型仅在用户明确要求使用“智能体”控制时才会启用，例如可选择 autoglm 等专用模型。</string>
     <string name="function_desc_translation">提供多语言翻译功能，支持文本内容的语言转换。建议使用支持多语言的模型。</string>
     <string name="function_desc_image_recognition">用于图像内容识别和分析，调用read_file工具读取图片时支持intent参数进行深度理解。建议使用支持视觉的多模态模型。</string>
     
@@ -2165,7 +2184,7 @@
     <string name="memory_attachment">记忆附着</string>
     <string name="memory_attachment_desc">开启后，发送消息时会自动从记忆库中检索并附加相关内容，但这可能会影响AI回答的焦点。</string>
     <string name="thinking_mode">思考模式</string>
-    <string name="thinking_mode_desc">目前支持Gemini、Qwen3、Claude、硅基流动和MNN本地模型，能够启用内置的思考。</string>
+    <string name="thinking_mode_desc">目前支持Gemini、Qwen3、Claude、豆包、硅基流动和MNN本地模型，能够启用内置的思考。</string>
     <string name="thinking_guidance">思考引导</string>
     <string name="thinking_guidance_desc">能够让不能思考的模型强制进行思考。该选项不建议对思考模型开启。</string>
     <string name="details">详情</string>
@@ -2225,6 +2244,8 @@
     <string name="settings_functional_prompts_subtitle">功能专用提示词模板</string>
     <string name="settings_context_length">上下文长度</string>
     <string name="settings_context_length_subtitle">模型记忆对话长度(k tokens)</string>
+    <string name="settings_max_context_length">最大上下文长度</string>
+    <string name="settings_max_context_length_subtitle">模型API支持的最大上下文长度(k tokens)</string>
     <string name="settings_summary_threshold">上下文使用比例阈值</string>
     <string name="settings_summary_threshold_subtitle">当上下文使用超过此比例时触发总结(0.1-0.95)</string>
     
@@ -2536,7 +2557,9 @@
     <string name="enable_google_search">启用 Google Search</string>
     <string name="enable_google_search_desc">启用后，Gemini 将使用 Google 搜索来增强回答（可能产生额外费用）</string>
     <string name="enable_tool_call">启用 Tool Call 接口调用工具</string>
-    <string name="enable_tool_call_desc">启用后，将使用模型原生的Tool Call接口调用工具，而不是XML格式（需要模型支持）</string>
+    <string name="enable_tool_call_desc">关闭时，会使用软件内工具调用机制，也可以完成工具调用。开启后，将会使用API的专用接口进行原生工具调用（需要模型支持）</string>
+    <string name="enable_deepseek_reasoning">启用 DeepSeek 推理模式</string>
+    <string name="enable_deepseek_reasoning_desc">启用后，&lt;think&gt;标签内的内容将作为reasoning_content发送给DeepSeek模型，用于支持DeepSeek-R1等推理模型的工具调用</string>
     <string name="search_sources">搜索来源</string>
     <string name="api_settings_saved">API设置已保存</string>
     <string name="save_api_settings">保存API设置</string>
@@ -3187,9 +3210,9 @@
     <string name="dialog_button_dismiss">取消</string>
     
     <!-- Chat binding announcement -->
-    <string name="chat_binding_announcement_title">对话已绑定角色卡</string>
-    <string name="chat_binding_announcement_body">本次更新后，所有对话都会绑定一个角色卡。\n\n此前的聊天记录已自动归类到「默认角色卡」，你可以前往「设置 &gt; 聊天管理」批量调整、重命名或重新分组。</string>
-    <string name="chat_binding_announcement_primary_button">前往</string>
+    <string name="chat_binding_announcement_title">autoglm 自动操作兼容说明</string>
+    <string name="chat_binding_announcement_body">现已完成 autoglm 自动操作的兼容，前往用户手册查看具体教程。</string>
+    <string name="chat_binding_announcement_primary_button">前往用户手册</string>
     <string name="chat_binding_announcement_acknowledge">我知道了</string>
     <string name="chat_binding_announcement_acknowledge_countdown">我知道了（%1$ds后可点击）</string>
 
@@ -3246,6 +3269,9 @@
     <string name="configure_windows_app">配置Windows应用</string>
     <string name="package_name_label">包名</string>
     <string name="app_name_label">应用名称</string>
+
+    <string name="version_name">版本名称</string>
+    <string name="version_code">版本号</string>
     <string name="app_icon">应用图标:</string>
     <string name="click_select_icon">点击选择图标</string>
     <string name="exporting">导出中</string>
@@ -3429,4 +3455,105 @@
     <string name="status_info_block">状态信息</string>
     <string name="html_content_block">HTML内容</string>
     <string name="mood_tag_block">情绪标签</string>
+    
+    <!-- 备份设置界面 -->
+    <string name="backup_data_overview">数据概览</string>
+    <string name="backup_current_profile">当前配置：%1$s</string>
+    <string name="backup_chat_count">聊天记录</string>
+    <string name="backup_memory_count">记忆条目</string>
+    <string name="backup_memory_link_count">记忆关联</string>
+    
+    <string name="backup_files_statistics">备份文件统计</string>
+    <string name="backup_files_statistics_subtitle">Operit 导出目录中的备份文件</string>
+    <string name="backup_refresh">刷新</string>
+    <string name="backup_scanning">扫描中</string>
+    <string name="backup_chat_files">聊天记录</string>
+    <string name="backup_memory_files">记忆库</string>
+    <string name="backup_model_config_files">模型配置</string>
+    <string name="backup_files_location_hint">提示：备份文件保存在 Download/Operit 文件夹</string>
+    
+    <string name="backup_chat_history">聊天记录</string>
+    <string name="backup_chat_history_subtitle">跨格式备份、导出与恢复</string>
+    <string name="backup_chat_current_count">当前共有 %1$d 条聊天记录。</string>
+    <string name="backup_export">导出</string>
+    <string name="backup_import">导入</string>
+    <string name="backup_delete_all">删除全部</string>
+    
+    <string name="backup_memory_library">记忆库</string>
+    <string name="backup_memory_library_subtitle">跨配置备份与恢复，保持思维链一致</string>
+    <string name="backup_memory_current_count">当前共有 %1$d 条记忆和 %2$d 个链接。</string>
+    
+    <string name="backup_model_config">模型配置</string>
+    <string name="backup_model_config_subtitle">备份与恢复所有模型设置，包括API密钥和参数</string>
+    <string name="backup_model_config_current_count">当前共有 %1$d 个模型配置。</string>
+    
+    <string name="backup_exporting">正在导出%1$s...</string>
+    <string name="backup_importing">正在导入%1$s...</string>
+    <string name="backup_deleting">正在清除聊天记录...</string>
+    <string name="backup_export_success">导出成功</string>
+    <string name="backup_import_success">导入成功</string>
+    <string name="backup_delete_success">清除成功</string>
+    <string name="backup_operation_failed">操作失败</string>
+    
+    <string name="backup_faq_title">常见问题</string>
+    <string name="backup_faq_subtitle">了解备份与导入时的注意事项，避免常见误区。</string>
+    <string name="backup_faq_why">为什么要备份数据？</string>
+    <string name="backup_faq_why_answer">备份聊天记录可以防止应用卸载或数据丢失时，您的重要内容丢失。定期备份是个好习惯！</string>
+    <string name="backup_faq_where">导出的文件保存在哪里？</string>
+    <string name="backup_faq_where_answer">导出的备份文件会保存在您手机的「下载/Operit」文件夹中，文件名包含导出的数据类型、日期和时间。</string>
+    <string name="backup_faq_duplicate">导入后会出现重复的数据吗？</string>
+    <string name="backup_faq_duplicate_answer">系统会根据记录ID判断，相同ID的记录会被更新而不是重复导入。不同ID的记录会作为新记录添加。</string>
+    
+    <!-- 导出格式选择 -->
+    <string name="backup_select_export_format">选择导出格式</string>
+    <string name="backup_select_format_hint">请选择要导出的聊天记录格式：</string>
+    <string name="backup_format_json">JSON（推荐）</string>
+    <string name="backup_format_json_desc">Operit 原生格式，完整保留所有数据</string>
+    <string name="backup_format_markdown">Markdown</string>
+    <string name="backup_format_markdown_desc">轻量级标记格式，便于阅读和编辑</string>
+    <string name="backup_format_html">HTML</string>
+    <string name="backup_format_html_desc">网页格式，适合在浏览器中查看</string>
+    <string name="backup_format_txt">纯文本</string>
+    <string name="backup_format_txt_desc">简单的文本格式，便于分享</string>
+    
+    <!-- 导入格式选择 -->
+    <string name="backup_select_import_format">选择导入格式</string>
+    <string name="backup_import_format_hint">请选择要导入的聊天记录格式：</string>
+    <string name="backup_format_operit">Operit JSON（推荐）</string>
+    <string name="backup_format_operit_desc">本应用的原生格式，完整保留所有数据</string>
+    <string name="backup_format_chatgpt">ChatGPT</string>
+    <string name="backup_format_chatgpt_desc">OpenAI ChatGPT conversations.json 导出格式</string>
+    <string name="backup_format_chatbox">ChatBox</string>
+    <string name="backup_format_chatbox_desc">ChatBox 桌面应用导出格式</string>
+    <string name="backup_format_generic_json">通用 JSON</string>
+    <string name="backup_format_generic_json_desc">标准 role-content 结构的 JSON（支持 Claude、LibreChat 等）</string>
+    
+    <string name="backup_import_result_success">成功导入 %1$s 格式：\n- 新增记录：%2$d条\n- 更新记录：%3$d条%4$s</string>
+    <string name="backup_import_result_skipped">\n- 跳过无效记录：%1$d条</string>
+    <string name="backup_import_result_failed">导入失败：未找到有效的聊天记录</string>
+    <string name="backup_export_result_success">成功导出到：%1$s</string>
+    
+    <!-- 删除确认对话框 -->
+    <string name="backup_delete_confirm_title">确认删除</string>
+    <string name="backup_delete_confirm_message">删除所有聊天记录将无法恢复。建议在执行此操作前先导出备份。\n\n确定要删除吗？</string>
+    <string name="backup_delete_result_success">成功清除 %1$d 条聊天记录</string>
+    
+    <!-- 模型配置导出安全警告 -->
+    <string name="backup_model_config_warning_title">安全提示</string>
+    <string name="backup_model_config_warning_contains">该配置文件包含以下敏感信息：</string>
+    <string name="backup_model_config_warning_api_key">API 密钥</string>
+    <string name="backup_model_config_warning_api_endpoint">API 端点地址</string>
+    <string name="backup_model_config_warning_model_params">模型参数配置</string>
+    <string name="backup_model_config_warning_custom_params">自定义参数设置</string>
+    <string name="backup_model_config_warning_security_tips">安全建议：</string>
+    <string name="backup_model_config_warning_tips">• 请勿将此文件分享给他人\n• 请勿上传到公共云存储\n• 建议将文件移动到安全位置\n• 建议使用加密工具保护文件</string>
+    <string name="backup_model_config_warning_export_path">导出位置：</string>
+    <string name="backup_model_config_warning_confirm">我知道了</string>
+    
+    <!-- 记忆库导入策略 -->
+    <string name="backup_memory_import_strategy_title">选择导入策略</string>
+    <string name="backup_memory_import_profile_title">选择配置</string>
+    <string name="backup_confirm">确认</string>
+    <string name="backup_cancel">取消</string>
+    <string name="provider_doubao">豆包（火山模型）</string>
 </resources>

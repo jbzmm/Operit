@@ -90,7 +90,8 @@ fun ToolboxScreen(
         onToolTesterSelected: () -> Unit,
         onAgreementSelected: () -> Unit,
         onDefaultAssistantGuideSelected: () -> Unit,
-        onProcessLimitRemoverSelected: () -> Unit
+        onProcessLimitRemoverSelected: () -> Unit,
+        onHtmlPackagerSelected: () -> Unit
 ) {
         // 屏幕配置信息，用于响应式布局
         val configuration = LocalConfiguration.current
@@ -199,6 +200,13 @@ fun ToolboxScreen(
                                 description = stringResource(R.string.tool_process_limit_remover_desc),
                                 category = ToolCategory.SYSTEM,
                                 onClick = onProcessLimitRemoverSelected
+                        ),
+                        Tool(
+                                name = stringResource(R.string.tool_html_packager),
+                                icon = Icons.Default.Html,
+                                description = stringResource(R.string.tool_html_packager_desc),
+                                category = ToolCategory.DEVELOPMENT,
+                                onClick = onHtmlPackagerSelected
                         )
                 )
 

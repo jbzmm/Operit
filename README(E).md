@@ -155,7 +155,18 @@ Rich MCP ecosystem
 <tr><th>Version</th><th>Release Date</th><th>Core Updates</th></tr>
 
 <tr>
-<td><b>v1.6.2</b><br><sub>Latest</sub></td>
+<td><b>v1.6.3</b><br><sub>Latest</sub></td>
+<td>2025-12-08</td>
+<td>
+• <b>Native ToolCall Support</b>: Added support for native model tool calls and DeepSeek's thinking tools<br>
+• <b>Workspace & Terminal Enhancements</b>: Select project type on creation, connect to external SSH filesystems, accessibility support for terminal<br>
+• <b>Model & Message Display</b>: Multi-select for model configs, display model name/provider on messages<br>
+• <b>Optimizations & Fixes</b>: Improved floating window, fixed terminal lag, migrated workspace to internal data
+</td>
+</tr>
+
+<tr>
+<td><b>v1.6.2</b></td>
 <td>2025-11-20</td>
 <td>
 • <b>Conversation Management</b>: Long-press branching, classified history display, batch migration<br>

@@ -20,6 +20,7 @@ enum class ApiProviderType {
         OPENROUTER, // OpenRouter (多模型聚合)
         INFINIAI, // 无问芯穹
         ALIPAY_BAILING, // 支付宝百灵大模型
+        DOUBAO, // 豆包（火山模型）
         LMSTUDIO, // LM Studio本地模型服务
         MNN, // MNN本地推理引擎
         PPINFRA, // 派欧云
@@ -101,7 +102,10 @@ data class ModelConfigData(
         val enableGoogleSearch: Boolean = false, // 是否启用Google Search Grounding (仅Gemini支持)
 
         // Tool Call配置
-        val enableToolCall: Boolean = false // 是否启用Tool Call接口调用工具（使用模型原生工具调用而非XML格式）
+        val enableToolCall: Boolean = false, // 是否启用Tool Call接口调用工具（使用模型原生工具调用而非XML格式）
+
+        // DeepSeek特定配置
+        val enableDeepseekReasoning: Boolean = false // 是否启用DeepSeek推理模式（将<think>内容作为reasoning_content发送）
 )
 
 /** 简化版的模型配置数据，用于列表显示 */

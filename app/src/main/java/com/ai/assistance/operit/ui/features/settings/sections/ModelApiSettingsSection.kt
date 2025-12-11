@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.ui.features.settings.sections
 
 import android.annotation.SuppressLint
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -86,6 +86,7 @@ fun ModelApiSettingsSection(
             ApiProviderType.OPENROUTER -> "google/gemini-pro"
             ApiProviderType.INFINIAI -> "infini-mini"
             ApiProviderType.ALIPAY_BAILING -> "Ling-1T"
+            ApiProviderType.DOUBAO -> "Doubao-pro-4k"
             ApiProviderType.LMSTUDIO -> "meta-llama-3.1-8b-instruct"
             ApiProviderType.MNN -> ""
             ApiProviderType.PPINFRA -> "gpt-4o-mini"
@@ -116,6 +117,9 @@ fun ModelApiSettingsSection(
     
     // Tool Call配置状态
     var enableToolCallInput by remember(config.id) { mutableStateOf(config.enableToolCall) }
+    
+    // DeepSeek推理模式配置状态 (仅DeepSeek)
+    var enableDeepseekReasoningInput by remember(config.id) { mutableStateOf(config.enableDeepseekReasoning) }
 
     // 保存设置的通用函数
     val saveSettings = {
@@ -123,7 +127,7 @@ fun ModelApiSettingsSection(
             // 允许用户自定义模型名称，即使使用默认API密钥
             val modelToSave = modelNameInput
 
-            Log.d(
+            AppLogger.d(
                     TAG,
                     "保存API设置: apiKey=${apiKeyInput.take(5)}..., endpoint=$apiEndpointInput, model=$modelToSave, providerType=${selectedApiProvider.name}"
             )
@@ -156,13 +160,19 @@ fun ModelApiSettingsSection(
                     configId = config.id,
                     enableToolCall = enableToolCallInput
             )
+            
+            // 更新 DeepSeek推理模式配置 (仅DeepSeek)
+            configManager.updateDeepseekReasoning(
+                    configId = config.id,
+                    enableDeepseekReasoning = enableDeepseekReasoningInput
+            )
 
             // 刷新所有AI服务实例，确保使用最新配置
             EnhancedAIService.refreshAllServices(
                     configManager.appContext
             )
 
-            Log.d(TAG, "API设置保存完成并刷新服务")
+            AppLogger.d(TAG, "API设置保存完成并刷新服务")
             showNotification(context.getString(R.string.api_settings_saved))
         }
     }
@@ -193,6 +203,7 @@ fun ModelApiSettingsSection(
             ApiProviderType.OPENROUTER -> "https://openrouter.ai/api/v1/chat/completions"
             ApiProviderType.INFINIAI -> "https://cloud.infini-ai.com/maas/v1/chat/completions"
             ApiProviderType.ALIPAY_BAILING -> "https://api.tbox.cn/api/llm/v1/chat/completions"
+            ApiProviderType.DOUBAO -> "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
             ApiProviderType.LMSTUDIO -> "http://localhost:1234/v1/chat/completions"
             ApiProviderType.MNN -> "" // MNN本地推理不需要endpoint
             ApiProviderType.PPINFRA -> "https://api.ppinfra.com/openai/v1/chat/completions"
@@ -207,16 +218,16 @@ fun ModelApiSettingsSection(
 
     // 当API提供商改变时更新端点
     LaunchedEffect(selectedApiProvider) {
-        Log.d("ModelApiSettingsSection", "API提供商改变")
+        AppLogger.d("ModelApiSettingsSection", "API提供商改变")
         if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.GOOGLE
             || selectedApiProvider == ApiProviderType.ANTHROPIC || selectedApiProvider == ApiProviderType.MISTRAL) {
             val inChina = LocationUtils.isDeviceInMainlandChina(context)
             showRegionWarning = inChina
             if (inChina) {
-                Log.d("ModelApiSettingsSection", "检测到位于中国大陆")
+                AppLogger.d("ModelApiSettingsSection", "检测到位于中国大陆")
                 showNotification(context.getString(R.string.overseas_provider_warning))
             } else {
-                Log.d("ModelApiSettingsSection", "检测到位于海外")
+                AppLogger.d("ModelApiSettingsSection", "检测到位于海外")
             }
         } else {
             showRegionWarning = false
@@ -253,6 +264,28 @@ fun ModelApiSettingsSection(
                     icon = Icons.Default.Api,
                     title = stringResource(R.string.api_settings)
             )
+
+            var showApiProviderDialog by remember { mutableStateOf(false) }
+
+            SettingsSelectorRow(
+                    title = stringResource(R.string.api_provider),
+                    subtitle = stringResource(R.string.select_api_provider),
+                    value = getProviderDisplayName(selectedApiProvider, context),
+                    onClick = { showApiProviderDialog = true }
+            )
+
+            if (showApiProviderDialog) {
+                ApiProviderDialog(
+                        onDismissRequest = { showApiProviderDialog = false },
+                        onProviderSelected = { provider ->
+                            selectedApiProvider = provider
+                            if (modelNameInput.isEmpty() || isDefaultModelName(modelNameInput)) {
+                                modelNameInput = getDefaultModelName(provider)
+                            }
+                            showApiProviderDialog = false
+                        }
+                )
+            }
 
             AnimatedVisibility(visible = showRegionWarning) {
                 SettingsInfoBanner(text = stringResource(R.string.overseas_provider_warning))
@@ -333,7 +366,7 @@ fun ModelApiSettingsSection(
                 IconButton(
                         onClick = {
                                     if (isMnnProvider) {
-                                        Log.d(TAG, "获取MNN本地模型列表")
+                                        AppLogger.d(TAG, "获取MNN本地模型列表")
                                         val gettingModelsText =
                                                 context.getString(R.string.getting_models_list)
                                         val modelsListSuccessText =
@@ -348,7 +381,7 @@ fun ModelApiSettingsSection(
                                                 val result = ModelListFetcher.getMnnLocalModels(context)
                                                 if (result.isSuccess) {
                                                     val models = result.getOrThrow()
-                                                    Log.d(TAG, "MNN模型列表获取成功，共 ${models.size} 个模型")
+                                                    AppLogger.d(TAG, "MNN模型列表获取成功，共 ${models.size} 个模型")
                                                     modelsList = models
                                                     showModelsDialog = true
                                                     showNotification(modelsListSuccessText.format(models.size))
@@ -356,7 +389,7 @@ fun ModelApiSettingsSection(
                                                     val errorMsg =
                                                             result.exceptionOrNull()?.message
                                                                     ?: context.getString(R.string.unknown_error)
-                                                    Log.e(TAG, "MNN模型列表获取失败: $errorMsg")
+                                                    AppLogger.e(TAG, "MNN模型列表获取失败: $errorMsg")
                                                     modelLoadError =
                                                             context.getString(
                                                                     R.string.get_models_list_failed,
@@ -365,7 +398,7 @@ fun ModelApiSettingsSection(
                                                     showNotification(modelLoadError!!)
                                                 }
                                             } catch (e: Exception) {
-                                                Log.e(TAG, "获取MNN模型列表发生异常", e)
+                                                AppLogger.e(TAG, "获取MNN模型列表发生异常", e)
                                                 modelLoadError =
                                                         context.getString(
                                                                 R.string.get_models_list_failed,
@@ -377,7 +410,7 @@ fun ModelApiSettingsSection(
                                             }
                                         }
                                     } else {
-                            Log.d(
+                            AppLogger.d(
                                     TAG,
                                     "模型列表按钮被点击 - API端点: $apiEndpointInput, API类型: ${selectedApiProvider.name}"
                             )
@@ -398,7 +431,7 @@ fun ModelApiSettingsSection(
                                 ) {
                                     isLoadingModels = true
                                     modelLoadError = null
-                                    Log.d(
+                                    AppLogger.d(
                                             TAG,
                                             "开始获取模型列表: 端点=$apiEndpointInput, API类型=${selectedApiProvider.name}"
                                     )
@@ -412,30 +445,30 @@ fun ModelApiSettingsSection(
                                                 )
                                         if (result.isSuccess) {
                                             val models = result.getOrThrow()
-                                            Log.d(TAG, "模型列表获取成功，共 ${models.size} 个模型")
+                                            AppLogger.d(TAG, "模型列表获取成功，共 ${models.size} 个模型")
                                             modelsList = models
                                             showModelsDialog = true
                                             showNotification(modelsListSuccessText.format(models.size))
                                         } else {
                                             val errorMsg =
                                                     result.exceptionOrNull()?.message ?: unknownErrorText
-                                            Log.e(TAG, "模型列表获取失败: $errorMsg")
+                                            AppLogger.e(TAG, "模型列表获取失败: $errorMsg")
                                             modelLoadError = getModelsFailedText.format(errorMsg)
                                             showNotification(modelLoadError ?: getModelsFailedText.format(""))
                                         }
                                     } catch (e: Exception) {
-                                        Log.e(TAG, "获取模型列表发生异常", e)
+                                        AppLogger.e(TAG, "获取模型列表发生异常", e)
                                         modelLoadError = getModelsFailedText.format(e.message ?: "")
                                         showNotification(modelLoadError ?: getModelsFailedText.format(""))
                                     } finally {
                                         isLoadingModels = false
-                                        Log.d(TAG, "模型列表获取流程完成")
+                                        AppLogger.d(TAG, "模型列表获取流程完成")
                                     }
                                 } else if (isUsingDefaultApiKey) {
-                                    Log.d(TAG, "使用默认配置，不获取模型列表")
+                                    AppLogger.d(TAG, "使用默认配置，不获取模型列表")
                                     showNotification(defaultConfigNoModelsText)
                                 } else {
-                                    Log.d(TAG, "API端点或密钥为空")
+                                    AppLogger.d(TAG, "API端点或密钥为空")
                                     showNotification(fillEndpointKeyText)
                                 }
                                 }
@@ -467,27 +500,6 @@ fun ModelApiSettingsSection(
                     }
             )
 
-            var showApiProviderDialog by remember { mutableStateOf(false) }
-
-            SettingsSelectorRow(
-                    title = stringResource(R.string.api_provider),
-                    subtitle = stringResource(R.string.select_api_provider),
-                    value = getProviderDisplayName(selectedApiProvider, context),
-                    onClick = { showApiProviderDialog = true }
-            )
-
-            if (showApiProviderDialog) {
-                ApiProviderDialog(
-                        onDismissRequest = { showApiProviderDialog = false },
-                        onProviderSelected = { provider ->
-                            selectedApiProvider = provider
-                            if (modelNameInput.isEmpty() || isDefaultModelName(modelNameInput)) {
-                                modelNameInput = getDefaultModelName(provider)
-                            }
-                            showApiProviderDialog = false
-                        }
-                )
-            }
 
             if (selectedApiProvider != ApiProviderType.MNN) {
                 SettingsSwitchRow(
@@ -515,6 +527,16 @@ fun ModelApiSettingsSection(
                         subtitle = stringResource(R.string.enable_tool_call_desc),
                             checked = enableToolCallInput,
                             onCheckedChange = { enableToolCallInput = it }
+                    )
+            }
+            
+            // DeepSeek推理模式开关 (仅DeepSeek)
+            if (selectedApiProvider == ApiProviderType.DEEPSEEK) {
+                SettingsSwitchRow(
+                        title = stringResource(R.string.enable_deepseek_reasoning),
+                        subtitle = stringResource(R.string.enable_deepseek_reasoning_desc),
+                            checked = enableDeepseekReasoningInput,
+                            onCheckedChange = { enableDeepseekReasoningInput = it }
                     )
             }
 
@@ -792,7 +814,7 @@ fun ModelApiSettingsSection(
                                     // 将选中的模型用逗号连接
                                     modelNameInput = selectedModels.value.joinToString(",")
                                     if (selectedApiProvider == ApiProviderType.MNN) {
-                                        Log.d(TAG, "选择MNN模型: $modelNameInput")
+                                        AppLogger.d(TAG, "选择MNN模型: $modelNameInput")
                                     }
                                     showModelsDialog = false
                                 },
@@ -829,6 +851,7 @@ private fun getProviderDisplayName(provider: ApiProviderType, context: android.c
         ApiProviderType.OPENROUTER -> context.getString(R.string.provider_openrouter)
         ApiProviderType.INFINIAI -> context.getString(R.string.provider_infiniai)
         ApiProviderType.ALIPAY_BAILING -> context.getString(R.string.provider_alipay_bailing)
+        ApiProviderType.DOUBAO -> context.getString(R.string.provider_doubao)
         ApiProviderType.LMSTUDIO -> context.getString(R.string.provider_lmstudio)
         ApiProviderType.MNN -> context.getString(R.string.provider_mnn)
         ApiProviderType.PPINFRA -> context.getString(R.string.provider_ppinfra)
@@ -1352,6 +1375,7 @@ private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.gra
         ApiProviderType.OPENROUTER -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)
         ApiProviderType.INFINIAI -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         ApiProviderType.ALIPAY_BAILING -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
+        ApiProviderType.DOUBAO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
         ApiProviderType.LMSTUDIO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
         ApiProviderType.MNN -> MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
         ApiProviderType.PPINFRA -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)

@@ -1,17 +1,19 @@
 /* METADATA
 {
     "name": "Automatic_ui_base",
-    "description": "提供基本的UI自动化工具，用于模拟用户在设备屏幕上的交互。",
+    "description": "提供基本的UI自动化工具，能够按照用户的要求帮助操作设备屏幕（如点击、滑动、输入等）。",
     "tools": [
         {
             "name": "usage_advice",
-            "description": "UI自动化建议：\\n- 元素定位选项：\\n  • 列表：使用index参数（例如，“点击索引为2的列表项”）\\n  • 文本：使用bounds或partialMatch进行模糊匹配（例如，“点击包含‘登录’文字的按钮”）\\n- 操作链：组合多个操作以完成复杂任务（例如，“获取页面信息，然后点击元素”）\\n- 错误处理：如果操作失败，分析页面信息找出原因，并尝试其他方法。\\n- **并行调用**：建议在一次响应中进行并行调用，以减少批次数。例如，可以连续输出多个工具调用：点击按钮 → sleep → 获取屏幕内容，将这三个操作放在一个响应中执行，而不是分多次调用。",
+            "description": "UI自动化建议：\\n- 元素定位选项：\\n  • 列表：使用index参数（例如，“点击索引为2的列表项”）\\n  • 文本：使用bounds或partialMatch进行模糊匹配（例如，“点击包含‘登录’文字的按钮”）\\n- 操作链：组合多个操作以完成复杂任务（例如，“获取页面信息，然后点击元素”）\\n- 错误处理：如果操作失败，分析页面信息找出原因，并尝试其他方法。\\n- **组合调用（推荐）**：强烈建议在一次响应中组合调用2~3个真实存在的工具，例如依次调用tap → get_page_info，或 click_element → sleep → get_page_info，一次性输出完整的操作序列。软件会自动按顺序依次执行这些工具调用，无需等待上一轮结果再继续.",
             "parameters": []
         },
         {
-            "name": "app_launch_guide",
-            "description": "应用启动指南：想要启动应用时，请使用系统工具启动，而不是在桌面查找应用。应使用 Tools.System.startApp(packageName) 直接启动应用，这样更快速、可靠。",
-            "parameters": []
+            "name": "app_launch",
+            "description": "根据应用包名直接启动应用。如果未找到该包名对应的应用，则返回当前设备的软件安装列表，供你选择其他应用。",
+            "parameters": [
+                { "name": "package_name", "description": "应用包名，例如'com.tencent.mm'", "type": "string", "required": true }
+            ]
         },
         {
             "name": "get_page_info",
@@ -22,8 +24,29 @@
             ]
         },
         {
+            "name": "get_page_screenshot_image",
+            "description": "获取当前屏幕内容的图片版本（截图），返回保存路径。",
+            "parameters": []
+        },
+        {
             "name": "tap",
             "description": "在特定坐标模拟点击。",
+            "parameters": [
+                { "name": "x", "description": "X坐标", "type": "number", "required": true },
+                { "name": "y", "description": "Y坐标", "type": "number", "required": true }
+            ]
+        },
+        {
+            "name": "double_tap",
+            "description": "在特定坐标模拟双击（快速连续点击两次）。",
+            "parameters": [
+                { "name": "x", "description": "X坐标", "type": "number", "required": true },
+                { "name": "y", "description": "Y坐标", "type": "number", "required": true }
+            ]
+        },
+        {
+            "name": "long_press",
+            "description": "在特定坐标模拟长按操作。适用于呼出上下文菜单、拖拽前的按住等场景。",
             "parameters": [
                 { "name": "x", "description": "X坐标", "type": "number", "required": true },
                 { "name": "y", "description": "Y坐标", "type": "number", "required": true }
@@ -82,9 +105,59 @@ const UIAutomationTools = (function () {
         return { success: true, message: '成功获取页面信息', data: result };
     }
 
+    async function get_page_screenshot_image(params: {}): Promise<ToolResponse> {
+        try {
+            const screenshotDir = "/sdcard/Download/Operit/cleanOnExit";
+
+            // Ensure the directory exists
+            await Tools.Files.mkdir(screenshotDir, true);
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filePath = `${screenshotDir}/ui_screenshot_${timestamp}.png`;
+
+            console.log(`截取当前UI屏幕并保存到: ${filePath}`);
+
+            const result = await Tools.System.shell(`screencap -p ${filePath}`);
+
+            const imageLink = NativeInterface.registerImageFromPath(filePath);
+
+            return {
+                success: true,
+                message: `截图已保存到 ${filePath}`,
+                data: {
+                    file_path: filePath,
+                    image_link: imageLink,
+                    raw_result: result,
+                },
+            };
+        } catch (error: any) {
+            console.error(`获取屏幕截图失败: ${error.message}`);
+            return {
+                success: false,
+                message: `获取屏幕截图失败: ${error.message}`,
+            };
+        }
+    }
+
     async function tap(params: { x: number, y: number }): Promise<ToolResponse> {
         const result = await Tools.UI.tap(params.x, params.y);
         return { success: true, message: '点击操作成功', data: result };
+    }
+
+    async function double_tap(params: { x: number, y: number }): Promise<ToolResponse> {
+        const first = await Tools.UI.tap(params.x, params.y);
+        await Tools.System.sleep(120);
+        const second = await Tools.UI.tap(params.x, params.y);
+        return {
+            success: true,
+            message: '双击操作成功',
+            data: { first, second },
+        };
+    }
+
+    async function long_press(params: { x: number, y: number }): Promise<ToolResponse> {
+        const result = await Tools.UI.longPress(params.x, params.y);
+        return { success: true, message: '长按操作成功', data: result };
     }
 
     async function click_element(params: { resourceId?: string, className?: string, index?: number, partialMatch?: boolean, bounds?: string }): Promise<ToolResponse> {
@@ -105,6 +178,54 @@ const UIAutomationTools = (function () {
     async function swipe(params: { start_x: number, start_y: number, end_x: number, end_y: number, duration?: number }): Promise<ToolResponse> {
         const result = await Tools.UI.swipe(params.start_x, params.start_y, params.end_x, params.end_y);
         return { success: true, message: '滑动操作成功', data: result };
+    }
+
+    async function app_launch(params: { package_name: string }): Promise<ToolResponse> {
+        if (!params.package_name) {
+            return { success: false, message: '必须提供package_name参数' };
+        }
+
+        try {
+            const startResult = await Tools.System.startApp(params.package_name);
+
+            if (startResult && startResult.success) {
+                return {
+                    success: true,
+                    message: '应用启动成功',
+                    data: {
+                        operation: startResult,
+                    },
+                };
+            }
+
+            const appList = await Tools.System.listApps(false);
+            return {
+                success: false,
+                message: '未能启动应用，可能未安装或无法找到启动入口。已返回当前安装的应用列表。',
+                data: {
+                    operation: startResult,
+                    installed_apps: appList,
+                },
+            };
+        } catch (error: any) {
+            console.error(`app_launch 执行失败: ${error.message}`);
+            try {
+                const appList = await Tools.System.listApps(false);
+                return {
+                    success: false,
+                    message: `启动应用时发生错误: ${error.message}。已返回当前安装的应用列表。`,
+                    data: {
+                        installed_apps: appList,
+                    },
+                };
+            } catch (listError: any) {
+                console.error(`获取应用列表失败: ${listError.message}`);
+                return {
+                    success: false,
+                    message: `启动应用失败且无法获取应用列表: ${listError.message}`,
+                };
+            }
+        }
     }
 
     async function wrapToolExecution<P>(func: (params: P) => Promise<ToolResponse>, params: P) {
@@ -203,19 +324,28 @@ const UIAutomationTools = (function () {
 
     return {
         get_page_info: (params: { format?: 'xml' | 'json', detail?: 'minimal' | 'summary' | 'full' }) => wrapToolExecution(get_page_info, params),
+        app_launch: (params: { package_name: string }) => wrapToolExecution(app_launch, params),
+        get_page_screenshot_image: () => wrapToolExecution(get_page_screenshot_image, {}),
         tap: (params: { x: number, y: number }) => wrapToolExecution(tap, params),
+        double_tap: (params: { x: number, y: number }) => wrapToolExecution(double_tap, params),
+        long_press: (params: { x: number, y: number }) => wrapToolExecution(long_press, params),
         click_element: (params: { resourceId?: string, className?: string, index?: number, partialMatch?: boolean, bounds?: string }) => wrapToolExecution(click_element, params),
         set_input_text: (params: { text: string }) => wrapToolExecution(set_input_text, params),
         press_key: (params: { key_code: string }) => wrapToolExecution(press_key, params),
         swipe: (params: { start_x: number, start_y: number, end_x: number, end_y: number, duration?: number }) => wrapToolExecution(swipe, params),
+
         main,
     };
 })();
 
 exports.get_page_info = UIAutomationTools.get_page_info;
+exports.app_launch = UIAutomationTools.app_launch;
+exports.get_page_screenshot_image = UIAutomationTools.get_page_screenshot_image;
 exports.tap = UIAutomationTools.tap;
+exports.double_tap = UIAutomationTools.double_tap;
+exports.long_press = UIAutomationTools.long_press;
 exports.click_element = UIAutomationTools.click_element;
 exports.set_input_text = UIAutomationTools.set_input_text;
 exports.press_key = UIAutomationTools.press_key;
 exports.swipe = UIAutomationTools.swipe;
-exports.main = UIAutomationTools.main; 
+exports.main = UIAutomationTools.main;

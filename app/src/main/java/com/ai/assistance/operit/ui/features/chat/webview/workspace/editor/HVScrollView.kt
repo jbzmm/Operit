@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.Handler
+import android.os.Looper
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.AttributeSet
@@ -20,7 +21,7 @@ import android.view.animation.TranslateAnimation
 import android.widget.FrameLayout
 import android.widget.Scroller
 import androidx.customview.view.AbsSavedState as BaseSavedState
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 
 /**
  * 具有弹性效果的全方向ScrollView,参考ScrollView与HorizontalScrollView源码
@@ -132,7 +133,7 @@ open class HVScrollView : FrameLayout {
     }
     
     override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-        Log.d(TAG, "requestDisallowInterceptTouchEvent(disallow: $disallowIntercept)")
+        AppLogger.d(TAG, "requestDisallowInterceptTouchEvent(disallow: $disallowIntercept)")
         super.requestDisallowInterceptTouchEvent(disallowIntercept)
     }
 
@@ -303,7 +304,7 @@ open class HVScrollView : FrameLayout {
         ta.duration = 200
         inner!!.startAnimation(ta)
         // 设置回到正常的布局位置
-        Handler().postDelayed({
+        Handler(Looper.getMainLooper()).postDelayed({
             inner!!.clearAnimation()
             inner!!.layout(normal.left, normal.top, normal.right, normal.bottom)
             normal.setEmpty()
@@ -413,7 +414,7 @@ open class HVScrollView : FrameLayout {
     }
     
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        Log.d(TAG, "onInterceptTouchEvent: received action=${ev.action}")
+        AppLogger.d(TAG, "onInterceptTouchEvent: received action=${ev.action}")
         // 这个方法只确定我们是否要拦截动作。
         // 如果我们返回true，onMotionEvent将被调用，我们在那里进行实际的滚动。
 
@@ -475,7 +476,7 @@ open class HVScrollView : FrameLayout {
         }
 
         // 我们只想在拖动模式下拦截动作事件。
-        Log.d(TAG, "onInterceptTouchEvent: returning mIsBeingDragged=$mIsBeingDragged for action=${ev.action}")
+        AppLogger.d(TAG, "onInterceptTouchEvent: returning mIsBeingDragged=$mIsBeingDragged for action=${ev.action}")
         return mIsBeingDragged
     }
     

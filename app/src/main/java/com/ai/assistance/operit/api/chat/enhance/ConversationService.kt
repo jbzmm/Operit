@@ -1,7 +1,7 @@
 package com.ai.assistance.operit.api.chat.enhance
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.config.SystemPromptConfig
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
@@ -94,7 +94,7 @@ class ConversationService(
                 ${previousSummary.trim()}
                 请将以上摘要中的关键信息，与本次新的对话内容相融合，生成一份全新的、更完整的摘要。
                 """
-                Log.d(TAG, "添加上一条摘要内容到系统提示")
+                AppLogger.d(TAG, "添加上一条摘要内容到系统提示")
             }
 
             val finalMessages = listOf(Pair("system", systemPrompt)) + messages
@@ -134,20 +134,20 @@ class ConversationService(
 
             // 将总结token计数添加到用户偏好分析的token统计中
             try {
-                Log.d(TAG, "总结生成使用了输入token: $inputTokens, 缓存token: $cachedInputTokens, 输出token: $outputTokens")
+                AppLogger.d(TAG, "总结生成使用了输入token: $inputTokens, 缓存token: $cachedInputTokens, 输出token: $outputTokens")
                 apiPreferences.updateTokensForProviderModel(summaryService.providerModel, inputTokens, outputTokens, cachedInputTokens)
                 
                 // Update request count for summary generation
                 apiPreferences.incrementRequestCountForProviderModel(summaryService.providerModel)
                 
-                Log.d(TAG, "已将总结token统计添加到用户偏好分析token计数中")
+                AppLogger.d(TAG, "已将总结token统计添加到用户偏好分析token计数中")
             } catch (e: Exception) {
-                Log.e(TAG, "更新token统计失败", e)
+                AppLogger.e(TAG, "更新token统计失败", e)
             }
 
             return summaryContent
         } catch (e: Exception) {
-            Log.e(TAG, "生成总结时出错", e)
+            AppLogger.e(TAG, "生成总结时出错", e)
             // return "对话摘要：生成摘要时出错，但对话仍在继续。"
             throw e
         }
@@ -162,7 +162,7 @@ class ConversationService(
      * @param promptFunctionType 提示函数类型
      * @param thinkingGuidance 是否需要思考指导
      * @param enableMemoryQuery Whether the AI is allowed to query memories.
-     * @param hasImageRecognition Whether image recognition service is configured
+     * @param hasImageRecognition Whether a backend image recognition service is configured
      * @return 准备好的对话历史列表
      */
     suspend fun prepareConversationHistory(
@@ -175,7 +175,8 @@ class ConversationService(
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean = true,
             hasImageRecognition: Boolean = false,
-            useToolCallApi: Boolean = false
+            useToolCallApi: Boolean = false,
+            chatModelHasDirectImage: Boolean = false
     ): List<Pair<String, String>> {
         val preparedHistory = mutableListOf<Pair<String, String>>()
         conversationMutex.withLock {
@@ -207,24 +208,24 @@ class ConversationService(
                 val enableTools = apiPreferences.enableToolsFlow.first()
 
                 // 获取系统提示词，现在传入workspacePath和识图配置状态
-                val systemPrompt =
-                        SystemPromptConfig.getSystemPromptWithCustomPrompts(
-                        packageManager,
-                        workspacePath,
-                        introPrompt,
-                                thinkingGuidance,
-                                finalCustomSystemPromptTemplate,
-                                enableTools,
-                                enableMemoryQuery,
-                                hasImageRecognition,
-                                useToolCallApi
+                val systemPrompt = SystemPromptConfig.getSystemPromptWithCustomPrompts(
+                    packageManager,
+                    workspacePath,
+                    introPrompt,
+                    thinkingGuidance,
+                    finalCustomSystemPromptTemplate,
+                    enableTools,
+                    enableMemoryQuery,
+                    hasImageRecognition,
+                    useToolCallApi,
+                    chatModelHasDirectImage
                 )
 
                 // 构建waifu特殊规则
                 val waifuRulesText = if(waifuPreferences.enableWaifuModeFlow.first()) buildWaifuRulesText() else ""
                 // 桌宠模式：添加<mood>标签协议（仅桌宠环境生效）
                 val desktopPetRulesText = if (promptFunctionType == PromptFunctionType.DESKTOP_PET) buildDesktopPetMoodRulesText() else ""
-                Log.d("petRules", desktopPetRulesText)
+                AppLogger.d("petRules", desktopPetRulesText)
 
                 // 构建最终的系统提示词
                 val finalSystemPrompt = buildString {
@@ -331,7 +332,7 @@ class ConversationService(
                 results.add(listOf(tagNames[i], tagContents[i]))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "使用Stream解析XML标签时出错", e)
+            AppLogger.e(TAG, "使用Stream解析XML标签时出错", e)
         }
 
         return results
@@ -368,6 +369,10 @@ class ConversationService(
 
             // 根据标签类型分配角色
             when (tagName) {
+                "think", "thinking" -> {
+                    // 保留完整的think标签（用于DeepSeek推理模式）
+                    segments.add(Pair("assistant", tagContent))
+                }
                 "status" -> {
                     // 判断status类型
                     if (tagContent.contains("type=\"complete\"") ||
@@ -618,7 +623,7 @@ class ConversationService(
             val availableCategories = try {
                 customEmojiRepository.getAllCategories().first()
             } catch (e: Exception) {
-                android.util.Log.e("ConversationService", "获取表情分组失败", e)
+                com.ai.assistance.operit.util.AppLogger.e("ConversationService", "获取表情分组失败", e)
                 emptyList()
             }
             
@@ -894,7 +899,7 @@ $toolList
                 result
             }
         } catch (e: Exception) {
-            Log.e(TAG, "生成工具包描述时出错", e)
+            AppLogger.e(TAG, "生成工具包描述时出错", e)
             return ""
         }
     }
@@ -945,7 +950,7 @@ $toolList
             
             result.toString()
         } catch (e: Exception) {
-            Log.e(TAG, "识图分析失败", e)
+            AppLogger.e(TAG, "识图分析失败", e)
             "识图分析失败: ${e.message}"
         }
     }

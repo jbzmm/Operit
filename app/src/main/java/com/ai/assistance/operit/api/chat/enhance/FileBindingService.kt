@@ -1,10 +1,11 @@
 package com.ai.assistance.operit.api.chat.enhance
 
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.FunctionType
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils
+import java.util.concurrent.*
 
 class FileBindingService(context: Context) {
 
@@ -14,6 +15,7 @@ class FileBindingService(context: Context) {
             """\[START-(REPLACE|DELETE)\]\s*\n(.*?)\[END-\1\]""".toRegex(
                 RegexOption.DOT_MATCHES_ALL
             )
+        private const val PARALLEL_MIN_ITERATIONS = 2000
     }
 
     private enum class EditAction {
@@ -25,6 +27,14 @@ class FileBindingService(context: Context) {
             val action: EditAction,
             val oldContent: String,
             val newContent: String
+    )
+
+    private data class MatchSearchResult(
+            val bestScore: Double,
+            val startLine: Int,
+            val endLine: Int,
+            val windows: Int,
+            val lcsCalculations: Int
     )
 
     /**
@@ -41,31 +51,31 @@ class FileBindingService(context: Context) {
      * @param originalContent The original content of the file.
      * @param aiGeneratedCode The AI-generated code, containing either edit blocks or full content.
      * @return A Pair containing the final merged content and a diff string.
-      */
-     suspend fun processFileBinding(
-             originalContent: String,
-             aiGeneratedCode: String
-     ): Pair<String, String> {
-         if (aiGeneratedCode.contains("[START-")) {
-             Log.d(TAG, "Structured edit blocks detected. Attempting fuzzy patch.")
-             try {
-                 val (success, resultString) = applyFuzzyPatch(originalContent, aiGeneratedCode)
+     */
+    suspend fun processFileBinding(
+            originalContent: String,
+            aiGeneratedCode: String
+    ): Pair<String, String> {
+        if (aiGeneratedCode.contains("[START-")) {
+            AppLogger.d(TAG, "Structured edit blocks detected. Attempting fuzzy patch.")
+            try {
+                val (success, resultString) = applyFuzzyPatch(originalContent, aiGeneratedCode)
                 if (success) {
-                    Log.d(TAG, "Fuzzy patch succeeded.")
+                    AppLogger.d(TAG, "Fuzzy patch succeeded.")
                     val diffString = generateDiff(originalContent.replace("\r\n", "\n"), resultString)
                     return Pair(resultString, diffString)
                 } else {
-                    Log.w(TAG, "Fuzzy patch application failed. Reason: $resultString")
+                    AppLogger.w(TAG, "Fuzzy patch application failed. Reason: $resultString")
                     return Pair(originalContent, "Error: Could not apply patch. Reason: $resultString")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error during fuzzy patch process.", e)
+                AppLogger.e(TAG, "Error during fuzzy patch process.", e)
                 return Pair(originalContent, "Error: An unexpected exception occurred during the patching process: ${e.message}")
             }
         }
 
         // Default to full file replacement if no special instructions are found
-        Log.d(TAG, "No structured blocks found. Assuming full file replacement.")
+        AppLogger.d(TAG, "No structured blocks found. Assuming full file replacement.")
         val normalizedOriginalContent = originalContent.replace("\r\n", "\n")
         val normalizedAiGeneratedCode = aiGeneratedCode.replace("\r\n", "\n").trim()
         val diffString = generateDiff(normalizedOriginalContent, normalizedAiGeneratedCode)
@@ -161,7 +171,7 @@ class FileBindingService(context: Context) {
      *
      * @return A Pair of (Boolean, String) indicating success and the modified content, or failure
      * and a detailed error message.
-      */
+     */
     private fun applyFuzzyPatch(
         originalContent: String,
         aiPatchCode: String
@@ -178,8 +188,12 @@ class FileBindingService(context: Context) {
             for (op in operations) {
                 val (start, end) = findBestMatchRange(originalLines, op.oldContent)
                 if (start == -1) {
-                    Log.w(TAG, "Could not find a suitable match for OLD block: ${op.oldContent.take(100)}...")
+                    AppLogger.w(TAG, "Could not find a suitable match for OLD block: ${op.oldContent.take(100)}...")
                     return Pair(false, "Could not find a match for an OLD block. The file may have changed too much.")
+                }
+                if (hasMultiplePerfectMatches(originalContent, op.oldContent)) {
+                    AppLogger.w(TAG, "Multiple perfect matches found for OLD block; aborting to avoid ambiguous replacement.")
+                    return Pair(false, "Found multiple perfect matches for an OLD block in the target file. Please refine the patch so it only matches a single location.")
                 }
                 enrichedOps.add(Triple(op, start, end))
             }
@@ -188,7 +202,7 @@ class FileBindingService(context: Context) {
             enrichedOps.sortByDescending { it.second }
 
             for ((op, start, end) in enrichedOps) {
-                Log.d(TAG, "Applying ${op.action} at lines ${start + 1}-${end + 1}")
+                AppLogger.d(TAG, "Applying ${op.action} at lines ${start + 1}-${end + 1}")
                 
                 // Remove the old lines
                 for (i in end downTo start) {
@@ -203,7 +217,7 @@ class FileBindingService(context: Context) {
 
             return Pair(true, originalLines.joinToString("\n"))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to apply fuzzy patch", e)
+            AppLogger.e(TAG, "Failed to apply fuzzy patch", e)
             return Pair(false, "Failed to apply fuzzy patch due to an exception: ${e.message}")
         }
     }
@@ -269,88 +283,195 @@ class FileBindingService(context: Context) {
     }
 
     private fun findBestMatchRange(originalLines: List<String>, oldContent: String): Pair<Int, Int> {
-        val normalizedOldContent = oldContent.replace(Regex("\\s+"), "")
-        if (normalizedOldContent.isEmpty()) return -1 to -1
-
-        val oldContentLines = oldContent.lines().filter { it.isNotBlank() }
+        val oldContentLines = oldContent.lines()
         val numOldLines = oldContentLines.size
+        if (numOldLines == 0) return -1 to -1
+        if (originalLines.isEmpty()) return -1 to -1
+
+        AppLogger.d(TAG, "开始查找最佳匹配范围，原始文件行数: ${originalLines.size}, 目标块行数: $numOldLines")
+        val startTime = System.currentTimeMillis()
+        var totalWindows = 0
+        var lcsCalculations = 0
+
+        // --- 优化1：预计算与规范化 ---
+        AppLogger.d(TAG, "开始预计算与规范化...")
+        val normalizedOldContent = oldContent.replace(Regex("\\s+"), "")
+        val lineStartIndices = mutableListOf<Int>()
+        val normalizedOriginalContent = buildString {
+            originalLines.forEachIndexed { index, line ->
+                if (index % 1000 == 0 && index > 0) {
+                    AppLogger.d(TAG, "正在预处理行: $index/${originalLines.size}")
+                }
+                lineStartIndices.add(length)
+                append(line.replace(Regex("\\s+"), ""))
+            }
+            lineStartIndices.add(length) // 添加一个末尾索引，方便计算最后一行
+        }
+        AppLogger.d(TAG, "预计算完成，规范化后字符数: ${normalizedOriginalContent.length}")
+
+        // --- 阶段一：计算目标窗口尺寸范围 ---
+        val delta = (numOldLines * 0.2).toInt() + 2 // 扩大到20%的容错范围，并确保至少有2行的浮动
+        val targetSizes = (maxOf(1, numOldLines - delta))..(numOldLines + delta)
 
         var bestMatchScore = 0.0
         var bestMatchRange = -1 to -1
 
-        for (i in 0 until originalLines.size) {
-            for (j in i until originalLines.size) {
-                val windowLines = originalLines.subList(i, j + 1)
-                val normalizedWindow = windowLines.joinToString("").replace(Regex("\\s+"), "")
-                
-                // Heuristic: if the line counts are drastically different, it's unlikely to be a good match.
-                if (kotlin.math.abs(windowLines.size - numOldLines) > 5 && numOldLines > 5) continue
+        // --- 阶段二：并行滑动窗口搜索 ---
+        val totalIterations = originalLines.size * targetSizes.count()
+        AppLogger.d(TAG, "开始滑动窗口匹配（并行），总迭代次数: $totalIterations")
 
-                val score = jaroWinklerDistance(normalizedOldContent, normalizedWindow)
+        val availableCores = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
+        val threadCount = minOf(availableCores, originalLines.size)
+        val segmentSize = (originalLines.size + threadCount - 1) / threadCount
+        val foundPerfectMatch = java.util.concurrent.atomic.AtomicBoolean(false)
 
-                if (score > bestMatchScore) {
-                    bestMatchScore = score
-                    bestMatchRange = i to j
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount)
+        try {
+            val tasks = mutableListOf<java.util.concurrent.Future<MatchSearchResult>>()
+
+            for (threadIndex in 0 until threadCount) {
+                val startLine = threadIndex * segmentSize
+                val endExclusive = minOf(originalLines.size, startLine + segmentSize)
+                if (startLine >= endExclusive) continue
+
+                val task = java.util.concurrent.Callable {
+                    var localBestScore = 0.0
+                    var localBestStart = -1
+                    var localBestEnd = -1
+                    var localWindows = 0
+                    var localLcs = 0
+
+                    for (i in startLine until endExclusive) {
+                        if (foundPerfectMatch.get()) {
+                            break
+                        }
+
+                        for (size in targetSizes) {
+                            if (foundPerfectMatch.get()) {
+                                break
+                            }
+
+                            val endLine = i + size
+                            if (endLine > originalLines.size) {
+                                break
+                            }
+
+                            localWindows++
+
+                            val startCharIndex = lineStartIndices[i]
+                            val endCharIndex = lineStartIndices[endLine]
+                            val normalizedWindow =
+                                    normalizedOriginalContent.substring(startCharIndex, endCharIndex)
+
+                            localLcs++
+                            val score = lcsRatio(normalizedOldContent, normalizedWindow)
+
+                            if (score > localBestScore) {
+                                localBestScore = score
+                                localBestStart = i
+                                localBestEnd = endLine - 1
+                                val matchPercentage = (localBestScore * 100).toInt()
+                                AppLogger.d(
+                                        TAG,
+                                        "并行块[$threadIndex] 发现更佳匹配: 行 ${i + 1}-$endLine, 相似度: $matchPercentage%"
+                                )
+
+                                if (localBestScore == 1.0) {
+                                    foundPerfectMatch.set(true)
+                                    AppLogger.d(TAG, "并行块[$threadIndex] 已找到100%匹配，提前结束该块搜索。")
+                                    return@Callable MatchSearchResult(
+                                            localBestScore,
+                                            localBestStart,
+                                            localBestEnd,
+                                            localWindows,
+                                            localLcs
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    MatchSearchResult(localBestScore, localBestStart, localBestEnd, localWindows, localLcs)
+                }
+
+                tasks.add(executor.submit(task))
+            }
+
+            for (future in tasks) {
+                try {
+                    val result = future.get()
+                    totalWindows += result.windows
+                    lcsCalculations += result.lcsCalculations
+
+                    if (result.bestScore > bestMatchScore) {
+                        bestMatchScore = result.bestScore
+                        bestMatchRange = result.startLine to result.endLine
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Error getting file binding search result", e)
                 }
             }
+
+            if (bestMatchScore == 1.0) {
+                AppLogger.d(TAG, "并行模式下已找到100%匹配。")
+            }
+        } finally {
+            executor.shutdown()
         }
 
-        // Confidence threshold
-        return if (bestMatchScore > 0.9) bestMatchRange else -1 to -1
-    }
-
-    private fun jaroWinklerDistance(s1: String, s2: String): Double {
-        val jaroDist = jaroDistance(s1, s2)
-        if (jaroDist == 0.0) return 0.0
-
-        var prefixLength = 0
-        while (prefixLength < s1.length && prefixLength < s2.length && s1[prefixLength] == s2[prefixLength]) {
-            prefixLength++
+        // 记录最终结果
+        val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
+        val result = if (bestMatchScore > 0.9) {
+            val (start, end) = bestMatchRange
+            AppLogger.d(TAG, "匹配完成! 最佳匹配: 行 ${start + 1}-${end + 1}, 相似度: ${(bestMatchScore * 100).toInt()}%, " +
+                    "总耗时: ${String.format("%.2f", totalTime)}s, " +
+                    "总窗口数: $totalWindows, 总LCS计算: $lcsCalculations")
+            bestMatchRange
+        } else {
+            AppLogger.w(TAG, "未找到足够好的匹配 (最高相似度: ${(bestMatchScore * 100).toInt()}% < 90%)")
+            -1 to -1
         }
-        prefixLength = minOf(4, prefixLength)
 
-        return jaroDist + (prefixLength * 0.1 * (1.0 - jaroDist))
+        return result
     }
 
-    private fun jaroDistance(s1: String, s2: String): Double {
-        if (s1 == s2) return 1.0
-        if (s1.isEmpty() || s2.isEmpty()) return 0.0
-
+    private fun lcsRatio(s1: String, s2: String): Double {
         val len1 = s1.length
         val len2 = s2.length
-        val matchDistance = maxOf(len1, len2) / 2 - 1
+        if (len1 == 0 || len2 == 0) return 0.0
 
-        val s1Matches = BooleanArray(len1)
-        val s2Matches = BooleanArray(len2)
-        var matches = 0
+        // 动态规划表
+        val dp = Array(len1 + 1) { IntArray(len2 + 1) }
 
-        for (i in 0 until len1) {
-            val start = maxOf(0, i - matchDistance)
-            val end = minOf(i + matchDistance + 1, len2)
-            for (j in start until end) {
-                if (!s2Matches[j] && s1[i] == s2[j]) {
-                    s1Matches[i] = true
-                    s2Matches[j] = true
-                    matches++
-                    break
+        for (i in 1..len1) {
+            for (j in 1..len2) {
+                if (s1[i - 1] == s2[j - 1]) {
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                } else {
+                    dp[i][j] = maxOf(dp[i - 1][j], dp[i][j - 1])
                 }
             }
         }
+        
+        val lcsLength = dp[len1][len2]
+        return (2.0 * lcsLength) / (len1 + len2)
+    }
 
-        if (matches == 0) return 0.0
+    private fun hasMultiplePerfectMatches(originalContent: String, oldContent: String): Boolean {
+        val normalizedOld = oldContent.replace(Regex("\\s+"), "")
+        if (normalizedOld.isEmpty()) return false
 
-        var t = 0.0
-        var k = 0
-        for (i in 0 until len1) {
-            if (s1Matches[i]) {
-                while (!s2Matches[k]) k++
-                if (s1[i] != s2[k]) t++
-                k++
+        val normalizedOriginal = originalContent.replace(Regex("\\s+"), "")
+        var count = 0
+        var index = normalizedOriginal.indexOf(normalizedOld)
+        while (index >= 0) {
+            count++
+            if (count > 1) {
+                return true
             }
+            index = normalizedOriginal.indexOf(normalizedOld, index + normalizedOld.length)
         }
-
-        val transpositions = t / 2.0
-        return ((matches.toDouble() / len1) + (matches.toDouble() / len2) + ((matches - transpositions) / matches)) / 3.0
+        return false
     }
 
     private fun String.trimTrailingNewline(): String = this.trimEnd('\n', '\r')

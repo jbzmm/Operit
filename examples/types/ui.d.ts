@@ -22,6 +22,13 @@ export namespace UI {
      */
     function tap(x: number, y: number): Promise<UIActionResultData>;
 
+    /**
+     * Long press at coordinates
+     * @param x - X coordinate
+     * @param y - Y coordinate
+     */
+    function longPress(x: number, y: number): Promise<UIActionResultData>;
+
 
 
     /**
@@ -109,6 +116,13 @@ export namespace UI {
      * @param endY - End Y coordinate
      */
     function swipe(startX: number, startY: number, endX: number, endY: number, duration?: number): Promise<UIActionResultData>;
+
+    /**
+     * Run the built-in UI automation subagent.
+     * @param intent - High-level task description for the subagent (e.g. "打开微信并发送一条消息").
+     * @param maxSteps - Optional maximum number of steps (default 20).
+     */
+    function runSubAgent(intent: string, maxSteps?: number): Promise<AutomationExecutionResultData>;
 }
 
 /**
@@ -303,6 +317,11 @@ export class UINode {
     click(): Promise<UIActionResultData>;
 
     /**
+     * Long press on this node
+     */
+    longPress(): Promise<UIActionResultData>;
+
+    /**
      * Set text in this node (typically an input field)
      * @param text - Text to enter
      */
@@ -319,6 +338,12 @@ export class UINode {
      * @param ms - Milliseconds to wait after clicking
      */
     clickAndWait(ms?: number): Promise<UINode>;
+
+    /**
+     * Long press this node and wait for the UI to update
+     * @param ms - Milliseconds to wait after long pressing
+     */
+    longPressAndWait(ms?: number): Promise<UINode>;
 
     // Utility Methods
 
@@ -379,4 +404,11 @@ export class UINode {
      * @param delayMs - Milliseconds to wait
      */
     static clickAndWait(query: object, delayMs?: number): Promise<UINode>;
-} 
+
+    /**
+     * Long press an element, wait, and return updated UI state
+     * @param query - Element to long press (search parameters)
+     * @param delayMs - Milliseconds to wait
+     */
+    static longPressAndWait(query: object, delayMs?: number): Promise<UINode>;
+}

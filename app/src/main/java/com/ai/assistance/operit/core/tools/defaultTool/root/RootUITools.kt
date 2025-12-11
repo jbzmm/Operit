@@ -3,7 +3,7 @@ package com.ai.assistance.operit.core.tools.defaultTool.root
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.util.Log
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.SimplifiedUINode
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.UIActionResultData
@@ -48,12 +48,12 @@ open class RootUITools(context: Context) : AdminUITools(context) {
         withContext(Dispatchers.Main) { overlay.showTap(x, y) }
 
         try {
-            Log.d(TAG, "Attempting to tap at coordinates: ($x, $y) via shell command")
+            AppLogger.d(TAG, "Attempting to tap at coordinates: ($x, $y) via shell command")
             val command = "input tap $x $y"
             val result = AndroidShellExecutor.executeShellCommand(command)
 
             return if (result.success) {
-                Log.d(TAG, "Tap successful at coordinates: ($x, $y)")
+                AppLogger.d(TAG, "Tap successful at coordinates: ($x, $y)")
                 // 成功后主动隐藏overlay
                 withContext(Dispatchers.Main) { overlay.hide() }
                 ToolResult(
@@ -67,7 +67,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                         )
                 )
             } else {
-                Log.e(TAG, "Tap failed at coordinates: ($x, $y), error: ${result.stderr}")
+                AppLogger.e(TAG, "Tap failed at coordinates: ($x, $y), error: ${result.stderr}")
                 withContext(Dispatchers.Main) { overlay.hide() }
                 ToolResult(
                     toolName = tool.name,
@@ -77,13 +77,71 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error tapping at coordinates ($x, $y)", e)
+            AppLogger.e(TAG, "Error tapping at coordinates ($x, $y)", e)
             withContext(Dispatchers.Main) { overlay.hide() }
             return ToolResult(
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
                 error = "Error tapping at coordinates: ${e.message ?: "Unknown exception"}"
+            )
+        }
+    }
+
+    override suspend fun longPress(tool: AITool): ToolResult {
+        val x = tool.parameters.find { it.name == "x" }?.value?.toIntOrNull()
+        val y = tool.parameters.find { it.name == "y" }?.value?.toIntOrNull()
+
+        if (x == null || y == null) {
+            return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                error = "Missing or invalid coordinates. Both 'x' and 'y' must be valid integers."
+            )
+        }
+
+        val overlay = operationOverlay
+        withContext(Dispatchers.Main) { overlay.showTap(x, y) }
+
+        val durationMs = 800
+
+        try {
+            AppLogger.d(TAG, "Attempting to long press at coordinates: ($x, $y) via shell swipe command")
+            val command = "input swipe $x $y $x $y $durationMs"
+            val result = AndroidShellExecutor.executeShellCommand(command)
+
+            return if (result.success) {
+                AppLogger.d(TAG, "Long press successful at coordinates: ($x, $y)")
+                withContext(Dispatchers.Main) { overlay.hide() }
+                ToolResult(
+                        toolName = tool.name,
+                        success = true,
+                        result =
+                                UIActionResultData(
+                                        actionType = "long_press",
+                            actionDescription = "Successfully long pressed at ($x, $y) via shell command",
+                                        coordinates = Pair(x, y)
+                        )
+                )
+            } else {
+                AppLogger.e(TAG, "Long press failed at coordinates: ($x, $y), error: ${result.stderr}")
+                withContext(Dispatchers.Main) { overlay.hide() }
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Failed to long press at ($x, $y): ${result.stderr ?: "Unknown error"}"
+                )
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error long pressing at coordinates ($x, $y)", e)
+            withContext(Dispatchers.Main) { overlay.hide() }
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Error long pressing at coordinates: ${e.message ?: "Unknown exception"}"
             )
         }
     }
@@ -110,12 +168,12 @@ open class RootUITools(context: Context) : AdminUITools(context) {
         withContext(Dispatchers.Main) { overlay.showSwipe(startX, startY, endX, endY) }
 
         try {
-            Log.d(TAG, "Swiping from ($startX, $startY) to ($endX, $endY) via shell")
+            AppLogger.d(TAG, "Swiping from ($startX, $startY) to ($endX, $endY) via shell")
             val command = "input swipe $startX $startY $endX $endY $duration"
             val result = AndroidShellExecutor.executeShellCommand(command)
 
             return if (result.success) {
-                Log.d(TAG, "Swipe successful")
+                AppLogger.d(TAG, "Swipe successful")
                 // 成功后主动隐藏overlay
                 withContext(Dispatchers.Main) { overlay.hide() }
                 ToolResult(
@@ -128,7 +186,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                         )
                 )
             } else {
-                Log.e(TAG, "Swipe failed: ${result.stderr}")
+                AppLogger.e(TAG, "Swipe failed: ${result.stderr}")
                 withContext(Dispatchers.Main) { overlay.hide() }
                 ToolResult(
                     toolName = tool.name,
@@ -138,7 +196,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error performing swipe", e)
+            AppLogger.e(TAG, "Error performing swipe", e)
             withContext(Dispatchers.Main) { overlay.hide() }
             return ToolResult(
                 toolName = tool.name,
@@ -193,7 +251,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 overlay.showTextInput(displayMetrics.widthPixels / 2, displayMetrics.heightPixels / 2, text)
             }
 
-            Log.d(TAG, "Clearing text field with KEYCODE_CLEAR")
+            AppLogger.d(TAG, "Clearing text field with KEYCODE_CLEAR")
             AndroidShellExecutor.executeShellCommand("input keyevent KEYCODE_CLEAR")
             delay(300)
 
@@ -207,7 +265,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 )
             }
 
-            Log.d(TAG, "Setting text to clipboard and pasting via ADB: $text")
+            AppLogger.d(TAG, "Setting text to clipboard and pasting via ADB: $text")
             withContext(Dispatchers.Main) {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("operit_input", text))
@@ -237,7 +295,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting input text", e)
+            AppLogger.e(TAG, "Error setting input text", e)
             val overlay = operationOverlay
             withContext(Dispatchers.Main) { overlay.hide() }
             return ToolResult(
@@ -276,7 +334,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error pressing key", e)
+            AppLogger.e(TAG, "Error pressing key", e)
             return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -309,7 +367,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
 
             ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting page info", e)
+            AppLogger.e(TAG, "Error getting page info", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -323,29 +381,29 @@ open class RootUITools(context: Context) : AdminUITools(context) {
 
     private suspend fun getUIDataFromShell(): UIData? {
         return try {
-            Log.d(TAG, "Getting UI data via ADB")
+            AppLogger.d(TAG, "Getting UI data via ADB")
             val dumpResult = AndroidShellExecutor.executeShellCommand("uiautomator dump /sdcard/window_dump.xml")
             if (!dumpResult.success) {
-                Log.e(TAG, "uiautomator dump failed: ${dumpResult.stderr}")
+                AppLogger.e(TAG, "uiautomator dump failed: ${dumpResult.stderr}")
                 return null
             }
 
             val readResult = AndroidShellExecutor.executeShellCommand("cat /sdcard/window_dump.xml")
             if (!readResult.success) {
-                Log.e(TAG, "Reading UI dump file failed: ${readResult.stderr}")
+                AppLogger.e(TAG, "Reading UI dump file failed: ${readResult.stderr}")
                 return null
             }
 
             var windowInfo = getWindowInfoFromShell()
             if (windowInfo.isEmpty()) {
-                Log.w(TAG, "Failed to get window info, retrying after 500ms")
+                AppLogger.w(TAG, "Failed to get window info, retrying after 500ms")
                 delay(500)
                 windowInfo = getWindowInfoFromShell()
             }
 
             UIData(readResult.stdout, windowInfo)
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting UI data", e)
+            AppLogger.e(TAG, "Error getting UI data", e)
             null
         }
     }
@@ -361,14 +419,14 @@ open class RootUITools(context: Context) : AdminUITools(context) {
             try {
                 val result = AndroidShellExecutor.executeShellCommand(command)
                 if (result.success && result.stdout.isNotBlank()) {
-                    Log.d(TAG, "Successfully got window info with: $command")
+                    AppLogger.d(TAG, "Successfully got window info with: $command")
                     return result.stdout
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Command failed: '$command'", e)
+                AppLogger.e(TAG, "Command failed: '$command'", e)
             }
         }
-        Log.e(TAG, "All attempts to get window info failed.")
+        AppLogger.e(TAG, "All attempts to get window info failed.")
         return ""
     }
 
@@ -408,7 +466,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
             }
             rootNode?.toUINodeSimplified() ?: SimplifiedUINode(null, null, null, null, null, false, emptyList())
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing XML layout", e)
+            AppLogger.e(TAG, "Error parsing XML layout", e)
             SimplifiedUINode(null, null, null, null, null, false, emptyList())
         }
     }
@@ -433,7 +491,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
     private fun extractFocusInfoFromShell(windowInfo: String): FocusInfoShell {
         val result = FocusInfoShell()
         if (windowInfo.isBlank()) {
-            Log.w(TAG, "Window info is empty, cannot extract focus.")
+            AppLogger.w(TAG, "Window info is empty, cannot extract focus.")
             return result
         }
 
@@ -449,17 +507,17 @@ open class RootUITools(context: Context) : AdminUITools(context) {
             if (match != null && match.groupValues.size >= 3) {
                 result.packageName = match.groupValues[1]
                 result.activityName = match.groupValues[2]
-                Log.d(TAG, "Extracted from pattern ${patterns.indexOf(pattern)}: ${result.packageName}/${result.activityName}")
+                AppLogger.d(TAG, "Extracted from pattern ${patterns.indexOf(pattern)}: ${result.packageName}/${result.activityName}")
                 return result
             }
         }
 
-        Log.w(TAG, "Could not extract focus info from window data.")
+        AppLogger.w(TAG, "Could not extract focus info from window data.")
         return result
     }
 
     private suspend fun clickElementWithUiautomator(tool: AITool): ToolResult {
-        Log.d(TAG, "Using uiautomator to click element")
+        AppLogger.d(TAG, "Using uiautomator to click element")
         val resourceId = tool.parameters.find { it.name == "resourceId" }?.value
         val className = tool.parameters.find { it.name == "className" }?.value
         val contentDesc = tool.parameters.find { it.name == "contentDesc" }?.value
@@ -514,7 +572,7 @@ open class RootUITools(context: Context) : AdminUITools(context) {
             return tap(AITool("tap", listOf(ToolParameter("x", centerX.toString()), ToolParameter("y", centerY.toString()))))
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error clicking with uiautomator", e)
+            AppLogger.e(TAG, "Error clicking with uiautomator", e)
             return ToolResult(tool.name, false, StringResultData(""), "Error clicking element: ${e.message}")
         } finally {
             AndroidShellExecutor.executeShellCommand("rm /sdcard/window_dump.xml")
