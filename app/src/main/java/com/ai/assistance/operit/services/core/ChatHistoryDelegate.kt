@@ -102,6 +102,15 @@ class ChatHistoryDelegate(
 
     private suspend fun loadChatMessages(chatId: String) {
         try {
+            // 检查当前内存中是否有正在流式传输的消息
+            val hasActiveStream = _chatHistory.value.any { it.contentStream != null }
+            
+            if (hasActiveStream) {
+                // 如果有正在进行的流式响应，不从数据库重新加载，保留内存中的状态
+                Log.d(TAG, "检测到活跃的流式响应，跳过从数据库加载聊天 $chatId")
+                return
+            }
+            
             // 直接从数据库加载消息
             val messages = chatHistoryManager.loadChatMessages(chatId)
             AppLogger.d(TAG, "加载聊天 $chatId 的消息：${messages.size} 条")
@@ -137,6 +146,15 @@ class ChatHistoryDelegate(
     suspend fun reloadChatMessagesSmart(chatId: String) {
         historyUpdateMutex.withLock {
             try {
+                // 检查当前内存中是否有正在流式传输的消息
+                val hasActiveStream = _chatHistory.value.any { it.contentStream != null }
+                
+                if (hasActiveStream) {
+                    // 如果有正在进行的流式响应，不重新加载，保留内存中的状态
+                    Log.d(TAG, "检测到活跃的流式响应，跳过智能重新加载聊天 $chatId")
+                    return@withLock
+                }
+                
                 // 从数据库加载最新消息
                 val newMessages = chatHistoryManager.loadChatMessages(chatId)
                 val currentMessages = _chatHistory.value
@@ -178,6 +196,15 @@ class ChatHistoryDelegate(
         AppLogger.d(TAG, "开始同步开场白，聊天ID: $chatId")
         
         historyUpdateMutex.withLock {
+            // 检查当前内存中是否有正在流式传输的消息
+            val hasActiveStream = _chatHistory.value.any { it.contentStream != null }
+            
+            if (hasActiveStream) {
+                // 如果有正在进行的流式响应，不同步开场白，保留内存中的状态
+                Log.d(TAG, "检测到活跃的流式响应，跳过开场白同步")
+                return@withLock
+            }
+            
             // 在互斥锁内，先从数据库加载最新消息，确保数据一致性
             // 这样可以避免竞态条件：如果内存中的_chatHistory还未加载，直接从数据库检查
             val dbMessages = chatHistoryManager.loadChatMessages(chatId)
@@ -572,9 +599,8 @@ class ChatHistoryDelegate(
                         }
                     }
                     _chatHistory.value = updatedMessages
+                    chatHistoryManager.updateMessage(targetChatId, message)
                 }
-
-                chatHistoryManager.updateMessage(targetChatId, message)
             } else {
                 AppLogger.d(
                     TAG,
