@@ -121,11 +121,6 @@ object ChatMarkupRegex {
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
 
-    val memoryTag = Regex(
-        "<memory>.*?</memory>",
-        RegexOption.DOT_MATCHES_ALL
-    )
-
     val replyToTag = Regex(
         "<reply_to\\s+sender=\"([^\"]+)\"\\s+timestamp=\"([^\"]+)\">([^<]*)</reply_to>"
     )

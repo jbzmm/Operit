@@ -59,6 +59,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import android.widget.Toast
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.core.config.SystemToolPrompts
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigSummary
@@ -73,6 +74,7 @@ import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.PromptPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.common.ToolPkgUiIconResolver
 import com.ai.assistance.operit.ui.permissions.PermissionLevel
 import com.ai.assistance.operit.util.LocaleUtils
 import java.text.DecimalFormat
@@ -97,8 +99,6 @@ fun ClassicChatSettingsBar(
     baseContextLengthInK: Float,
     maxContextLengthInK: Float,
     onContextLengthChange: (Float) -> Unit,
-    enableMemoryQuery: Boolean,
-    onToggleMemoryQuery: () -> Unit,
     enableMaxContextMode: Boolean,
     onToggleEnableMaxContextMode: () -> Unit,
     summaryTokenThreshold: Float,
@@ -119,7 +119,8 @@ fun ClassicChatSettingsBar(
     onToggleDisableUserPreferenceDescription: () -> Unit,
     disableLatexDescription: Boolean,
     onToggleDisableLatexDescription: () -> Unit,
-    onManualMemoryUpdate: () -> Unit,
+    settingBarExtensions: List<PackageManager.ToolPkgChatSettingBarExtension> = emptyList(),
+    onTriggerSettingBarEntry: (String) -> Unit = {},
     onManualSummarizeConversation: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -203,14 +204,6 @@ fun ClassicChatSettingsBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                AnimatedVisibility(visible = enableMemoryQuery) {
-                    Icon(
-                        imageVector = Icons.Rounded.Link,
-                        contentDescription = stringResource(R.string.memory_attachment_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
                 AnimatedVisibility(visible = enableThinkingMode) {
                     Icon(
                         imageVector = Icons.Rounded.Psychology,
@@ -482,69 +475,33 @@ fun ClassicChatSettingsBar(
                                             )
                             )
 
-                            // ========== 记忆相关 ==========
-                            // 记忆附着
-                            SettingItem(
-                                title = stringResource(R.string.memory_attachment),
-                                    icon =
-                                            if (enableMemoryQuery) Icons.Rounded.Link
-                                            else Icons.Outlined.LinkOff,
-                                    iconTint =
-                                            if (enableMemoryQuery)
-                                                    MaterialTheme.colorScheme.primary
-                                            else
-                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                            alpha = 0.7f
-                                                    ),
-                                isChecked = enableMemoryQuery,
-                                onToggle = onToggleMemoryQuery,
-                                onInfoClick = {
-                                        infoPopupContent =
-                                                context.getString(R.string.memory_attachment) to context.getString(R.string.memory_attachment_desc)
-                                    showMenu = false
+                            if (settingBarExtensions.isNotEmpty()) {
+                                settingBarExtensions.forEach { extension ->
+                                    ActionSettingItem(
+                                        title = extension.title,
+                                        icon = ToolPkgUiIconResolver.resolve(extension.icon),
+                                        iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        onClick = {
+                                            onTriggerSettingBarEntry(extension.id)
+                                            showMenu = false
+                                        },
+                                        onInfoClick = {
+                                            infoPopupContent =
+                                                extension.title to extension.handler
+                                            showMenu = false
+                                        }
+                                    )
                                 }
-                            )
 
-                            // 手动更新记忆
-                            ActionSettingItem(
-                                title = stringResource(R.string.manual_memory_update),
-                                icon = Icons.Outlined.Save,
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                onClick = {
-                                    onManualMemoryUpdate()
-                                    showMenu = false
-                                },
-                                onInfoClick = {
-                                    infoPopupContent =
-                                        context.getString(R.string.manual_memory_update) to context.getString(R.string.manual_memory_update_desc)
-                                    showMenu = false
-                                }
-                            )
-
-                            // 手动总结对话
-                            ActionSettingItem(
-                                title = stringResource(R.string.manual_conversation_summary),
-                                icon = Icons.Outlined.History,
-                                iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                onClick = {
-                                    onManualSummarizeConversation()
-                                    showMenu = false
-                                },
-                                onInfoClick = {
-                                    infoPopupContent =
-                                        context.getString(R.string.manual_conversation_summary) to context.getString(R.string.manual_conversation_summary_desc)
-                                    showMenu = false
-                                }
-                            )
-
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                thickness = 0.5.dp,
-                                    color =
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.2f
-                                            )
-                            )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    thickness = 0.5.dp,
+                                        color =
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                        alpha = 0.2f
+                                                )
+                                )
+                            }
 
                             // ========== 输出相关 ==========
                             // 自动朗读

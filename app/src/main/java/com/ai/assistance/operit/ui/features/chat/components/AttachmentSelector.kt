@@ -2,6 +2,7 @@ package com.ai.assistance.operit.ui.features.chat.components
 
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import com.ai.assistance.operit.util.AppLogger
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,11 +39,9 @@ import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.ScreenshotMonitor
-import androidx.compose.material.icons.filled.VideoCameraBack
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,12 +65,17 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.services.core.AttachmentDelegate
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.data.model.AITool
+import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.ui.common.ToolPkgUiIconResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.core.content.FileProvider
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** 简约风格的附件选择器组件 */
 @OptIn(ExperimentalFoundationApi::class)
@@ -83,18 +87,14 @@ fun AttachmentSelectorPanel(
         onAttachScreenContent: () -> Unit,
         onAttachNotifications: () -> Unit = {},
         onAttachLocation: () -> Unit = {},
-        onAttachMemory: () -> Unit = {},
         onTakePhoto: (Uri) -> Unit,
         userQuery: String = "",
         onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
-    // 获取AttachmentDelegate实例
-    val attachmentManager = remember {
-        AttachmentDelegate(context, AIToolHandler.getInstance(context))
-    }
+    val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val packageManager = remember { PackageManager.getInstance(context, toolHandler) }
 
     // 文件/图片选择器启动器
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -183,7 +183,7 @@ fun AttachmentSelectorPanel(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                val panelItems =
+                val builtInPanelItems =
                         listOf(
                                 AttachmentPanelItem(
                                         icon = Icons.Default.Image,
@@ -197,14 +197,6 @@ fun AttachmentSelectorPanel(
                                             val uri = getTmpFileUri(context)
                                             tempCameraUri = uri
                                             takePictureLauncher.launch(uri)
-                                        }
-                                ),
-                                AttachmentPanelItem(
-                                        icon = Icons.Default.Memory,
-                                        label = context.getString(R.string.attachment_memory),
-                                        onClick = {
-                                            onAttachMemory()
-                                            onDismiss()
                                         }
                                 ),
                                 AttachmentPanelItem(
@@ -242,6 +234,28 @@ fun AttachmentSelectorPanel(
                                         }
                                 )
                         )
+
+                val extensionPanelItems =
+                        packageManager.getToolPkgAttachmentExtensions().map { extension ->
+                                AttachmentPanelItem(
+                                        icon = ToolPkgUiIconResolver.resolve(extension.icon),
+                                        label = extension.title,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                triggerAttachmentExtension(
+                                                    context = context,
+                                                    toolHandler = toolHandler,
+                                                    extension = extension,
+                                                    userQuery = userQuery,
+                                                    onAttachFile = onAttachFile,
+                                                    onDismiss = onDismiss
+                                                )
+                                            }
+                                        }
+                                )
+                        }
+
+                val panelItems = builtInPanelItems + extensionPanelItems
 
                 val pages = panelItems.chunked(8).ifEmpty { listOf(emptyList()) }
                 val pagerState = rememberPagerState(pageCount = { pages.size })
@@ -338,14 +352,16 @@ fun AttachmentSelectorPopupPanel(
         onAttachScreenContent: () -> Unit,
         onAttachNotifications: () -> Unit = {},
         onAttachLocation: () -> Unit = {},
-        onAttachMemory: () -> Unit = {},
         onTakePhoto: (Uri) -> Unit,
+        userQuery: String = "",
         onDismiss: () -> Unit
 ) {
     if (!visible) return
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val packageManager = remember { PackageManager.getInstance(context, toolHandler) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.GetMultipleContents()
@@ -398,7 +414,7 @@ fun AttachmentSelectorPopupPanel(
         return FileProvider.getUriForFile(context, authority, tmpFile)
     }
 
-    val panelItems =
+    val builtInPanelItems =
             listOf(
                     AttachmentPanelItem(
                             icon = Icons.Default.Image,
@@ -412,14 +428,6 @@ fun AttachmentSelectorPopupPanel(
                                 val uri = getTmpFileUri(context)
                                 tempCameraUri = uri
                                 takePictureLauncher.launch(uri)
-                            }
-                    ),
-                    AttachmentPanelItem(
-                            icon = Icons.Default.Memory,
-                            label = context.getString(R.string.attachment_memory),
-                            onClick = {
-                                onAttachMemory()
-                                onDismiss()
                             }
                     ),
                     AttachmentPanelItem(
@@ -457,6 +465,28 @@ fun AttachmentSelectorPopupPanel(
                             }
                     )
             )
+
+    val extensionPanelItems =
+            packageManager.getToolPkgAttachmentExtensions().map { extension ->
+                AttachmentPanelItem(
+                    icon = ToolPkgUiIconResolver.resolve(extension.icon),
+                    label = extension.title,
+                    onClick = {
+                        coroutineScope.launch {
+                            triggerAttachmentExtension(
+                                context = context,
+                                toolHandler = toolHandler,
+                                extension = extension,
+                                userQuery = userQuery,
+                                onAttachFile = onAttachFile,
+                                onDismiss = onDismiss
+                            )
+                        }
+                    }
+                )
+            }
+
+    val panelItems = builtInPanelItems + extensionPanelItems
 
     Popup(
             alignment = Alignment.TopStart,
@@ -525,6 +555,106 @@ fun AttachmentSelectorPopupPanel(
             }
         }
     }
+}
+
+private suspend fun triggerAttachmentExtension(
+    context: Context,
+    toolHandler: AIToolHandler,
+    extension: PackageManager.ToolPkgAttachmentExtension,
+    userQuery: String,
+    onAttachFile: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val parameters =
+        buildList {
+            if (userQuery.isNotBlank()) {
+                add(ToolParameter("user_query", userQuery))
+            }
+        }
+
+    val result =
+        withContext(Dispatchers.IO) {
+            toolHandler.executeTool(
+                AITool(
+                    name = extension.handler,
+                    parameters = parameters
+                )
+            )
+        }
+
+    if (!result.success) {
+        val errorText = result.error?.takeIf { it.isNotBlank() } ?: "unknown error"
+        Toast.makeText(context, "${extension.title}: $errorText", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val resolvedPaths = linkedSetOf<String>()
+    val directText = result.result.toString().trim()
+    if (isLikelyAttachmentPath(directText)) {
+        resolvedPaths.add(directText)
+    }
+
+    runCatching { JSONObject(result.result.toJson()) }
+        .getOrNull()
+        ?.let { jsonObject ->
+            collectAttachmentPathsFromJsonValue(jsonObject, null, resolvedPaths)
+        }
+
+    if (resolvedPaths.isEmpty()) {
+        Toast.makeText(context, "${extension.title} 已执行", Toast.LENGTH_SHORT).show()
+        onDismiss()
+        return
+    }
+
+    resolvedPaths.forEach { path ->
+        onAttachFile(path)
+    }
+    Toast.makeText(context, "${extension.title}: 已添加 ${resolvedPaths.size} 个附件", Toast.LENGTH_SHORT)
+        .show()
+    onDismiss()
+}
+
+private fun collectAttachmentPathsFromJsonValue(
+    value: Any?,
+    keyHint: String?,
+    output: MutableSet<String>
+) {
+    when (value) {
+        is JSONObject -> {
+            value.keys().forEach { key ->
+                collectAttachmentPathsFromJsonValue(value.opt(key), key, output)
+            }
+        }
+
+        is JSONArray -> {
+            for (index in 0 until value.length()) {
+                collectAttachmentPathsFromJsonValue(value.opt(index), keyHint, output)
+            }
+        }
+
+        is String -> {
+            val normalized = value.trim()
+            if (normalized.isBlank()) {
+                return
+            }
+            val key = keyHint?.trim()?.lowercase().orEmpty()
+            val keyLooksLikePath =
+                key.contains("path") || key.contains("uri") || key.contains("file")
+            if (keyLooksLikePath || isLikelyAttachmentPath(normalized)) {
+                output.add(normalized)
+            }
+        }
+    }
+}
+
+private fun isLikelyAttachmentPath(value: String): Boolean {
+    if (value.isBlank()) {
+        return false
+    }
+    return value.startsWith("content://") ||
+        value.startsWith("file://") ||
+        value.startsWith("/") ||
+        value.matches(Regex("^[A-Za-z]:\\\\.*"))
 }
 
 private data class AttachmentPanelItem(

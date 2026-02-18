@@ -29,7 +29,6 @@ import com.ai.assistance.operit.ui.features.assistant.screens.AssistantConfigScr
 import com.ai.assistance.operit.ui.features.chat.screens.AIChatScreen
 import com.ai.assistance.operit.ui.features.demo.screens.ShizukuDemoScreen
 import com.ai.assistance.operit.ui.features.help.screens.HelpScreen
-import com.ai.assistance.operit.ui.features.memory.screens.MemoryScreen
 import com.ai.assistance.operit.ui.features.packages.screens.PackageManagerScreen
 import com.ai.assistance.operit.ui.features.packages.screens.MCPMarketScreen
 import com.ai.assistance.operit.ui.features.packages.screens.MCPManageScreen
@@ -148,22 +147,6 @@ sealed class Screen(
                     onError = onError,
                     onGestureConsumed = onGestureConsumed
             )
-        }
-    }
-
-    data object MemoryBase : Screen(navItem = NavItem.MemoryBase, titleRes = R.string.screen_title_memory_base) {
-        @Composable
-        override fun Content(
-                navController: NavController,
-                navigateTo: ScreenNavigationHandler,
-                updateNavItem: NavItemChangeHandler,
-                onGoBack: () -> Unit,
-                hasBackgroundImage: Boolean,
-                onLoading: (Boolean) -> Unit,
-                onError: (String) -> Unit,
-                onGestureConsumed: (Boolean) -> Unit
-        ) {
-            MemoryScreen()
         }
     }
 
@@ -1039,8 +1022,11 @@ sealed class Screen(
     data class ToolPkgComposeDsl(
         val containerPackageName: String,
         val uiModuleId: String,
-        val title: String
-    ) : Screen(parentScreen = Toolbox, navItem = NavItem.Toolbox) {
+        val title: String,
+        val routeId: String? = null,
+        override val parentScreen: Screen? = Toolbox,
+        override val navItem: NavItem? = NavItem.Toolbox
+    ) : Screen(parentScreen = parentScreen, navItem = navItem) {
         @Composable
         override fun Content(
                 navController: NavController,
@@ -1438,7 +1424,6 @@ object OperitRouter {
     fun getScreenForNavItem(navItem: NavItem): Screen {
         return when (navItem) {
             NavItem.AiChat -> Screen.AiChat
-            NavItem.MemoryBase -> Screen.MemoryBase
             NavItem.Packages -> Screen.Packages
             NavItem.Toolbox -> Screen.Toolbox
             NavItem.ShizukuCommands -> Screen.ShizukuCommands

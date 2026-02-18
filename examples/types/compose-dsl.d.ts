@@ -124,6 +124,38 @@ export interface CircularProgressIndicatorProps extends ComposeCommonProps {
 
 export interface SnackbarHostProps extends ComposeCommonProps {}
 
+export interface GraphCanvasNodeData {
+  id: string;
+  label?: string;
+  x: number;
+  y: number;
+  radius?: number;
+  color?: string;
+  selected?: boolean;
+}
+
+export interface GraphCanvasEdgeData {
+  id?: string;
+  sourceId: string;
+  targetId: string;
+  weight?: number;
+  color?: string;
+  selected?: boolean;
+}
+
+export interface GraphCanvasProps extends ComposeCommonProps {
+  nodes: GraphCanvasNodeData[];
+  edges: GraphCanvasEdgeData[];
+  backgroundColor?: string;
+  gridColor?: string;
+  gridStep?: number;
+  edgeTapTolerance?: number;
+  onNodeClick?: (payload: { id: string; x: number; y: number }) => void | Promise<void>;
+  onEdgeClick?: (payload: { id: string; sourceId: string; targetId: string }) => void | Promise<void>;
+  onBackgroundClick?: (payload: { x: number; y: number }) => void | Promise<void>;
+  onNodeDragEnd?: (payload: { id: string; x: number; y: number }) => void | Promise<void>;
+}
+
 export interface ComposeNode {
   type: string;
   props?: Record<string, unknown>;
@@ -167,6 +199,72 @@ export interface ComposeResolveToolNameRequest {
   preferImported?: boolean;
 }
 
+export interface ComposeRouteInfo {
+  id: string;
+  uiModuleId?: string;
+  title?: string;
+  navGroup?: string;
+  order?: number;
+  icon?: string;
+}
+
+export interface ComposeAttachmentEntryInfo {
+  id: string;
+  title?: string;
+  icon?: string;
+  handler?: string;
+}
+
+export interface ComposeChatSettingBarEntryInfo {
+  id: string;
+  title?: string;
+  icon?: string;
+  handler?: string;
+}
+
+export interface ComposeDatastoreBatchEntry {
+  key: string;
+  value: unknown;
+}
+
+export interface ComposeSqlOperation {
+  sql: string;
+  params?: unknown[];
+}
+
+export interface ComposeAppBridge {
+  listRoutes(): Promise<ComposeRouteInfo[]> | ComposeRouteInfo[];
+  navigateToRoute(routeId: string, args?: Record<string, unknown>): Promise<void> | void;
+  getActiveProfileId(): Promise<string> | string;
+}
+
+export interface ComposeChatBridge {
+  listAttachmentEntries():
+    | Promise<ComposeAttachmentEntryInfo[]>
+    | ComposeAttachmentEntryInfo[];
+  triggerAttachment(
+    entryId: string,
+    payload?: Record<string, unknown>
+  ): Promise<unknown> | unknown;
+  listSettingBarEntries():
+    | Promise<ComposeChatSettingBarEntryInfo[]>
+    | ComposeChatSettingBarEntryInfo[];
+  triggerSettingBar(
+    entryId: string,
+    payload?: Record<string, unknown>
+  ): Promise<unknown> | unknown;
+}
+
+export interface ComposeDatastoreBridge {
+  get(namespace: string, key: string): Promise<unknown> | unknown;
+  set(namespace: string, key: string, value: unknown): Promise<void> | void;
+  batchSet(namespace: string, entries: ComposeDatastoreBatchEntry[]): Promise<void> | void;
+  observe(namespace: string, keys?: string[]): Promise<Record<string, unknown>> | Record<string, unknown>;
+  sqlQuery(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]> | Record<string, unknown>[];
+  sqlExecute(sql: string, params?: unknown[]): Promise<number> | number;
+  sqlTransaction(operations: ComposeSqlOperation[]): Promise<unknown> | unknown;
+}
+
 export interface ComposeDslContext {
   useState<T>(key: string, initialValue: T): [T, (value: T) => void];
   useMemo<T>(key: string, factory: () => T, deps?: unknown[]): T;
@@ -190,6 +288,9 @@ export interface ComposeDslContext {
   getCurrentPackageName?(): string | undefined;
   getCurrentToolPkgId?(): string | undefined;
   getCurrentUiModuleId?(): string | undefined;
+  app?: ComposeAppBridge;
+  chat?: ComposeChatBridge;
+  datastore?: ComposeDatastoreBridge;
 
   /**
    * Returns current UI locale from host, e.g. zh-CN / en-US.
@@ -260,6 +361,7 @@ export interface ComposeDslContext {
   IconButton(props: IconButtonProps): ComposeNode;
   Card(props: CardProps, children?: ComposeNode[]): ComposeNode;
   Icon(props: IconProps): ComposeNode;
+  GraphCanvas(props: GraphCanvasProps): ComposeNode;
 
   LazyColumn(props: LazyColumnProps, children?: ComposeNode[]): ComposeNode;
   LinearProgressIndicator(props?: LinearProgressIndicatorProps): ComposeNode;

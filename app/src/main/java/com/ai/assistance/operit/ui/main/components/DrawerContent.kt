@@ -29,8 +29,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.ui.common.NavItem
+import com.ai.assistance.operit.ui.common.ToolPkgUiIconResolver
 import com.ai.assistance.operit.ui.main.NavGroup
+import com.ai.assistance.operit.ui.main.ToolPkgRouteNavGroup
 import com.ai.assistance.operit.ui.main.screens.OperitRouter
 import com.ai.assistance.operit.ui.main.screens.Screen
 import kotlinx.coroutines.CoroutineScope
@@ -40,13 +43,15 @@ import kotlinx.coroutines.launch
 @Composable
 fun DrawerContent(
         navGroups: List<NavGroup>,
+        toolPkgRouteGroups: List<ToolPkgRouteNavGroup>,
         currentScreen: Screen,
         selectedItem: NavItem,
         isNetworkAvailable: Boolean,
         networkType: String,
         scope: CoroutineScope,
         drawerState: androidx.compose.material3.DrawerState,
-        onScreenSelected: (Screen, NavItem) -> Unit
+        onScreenSelected: (Screen, NavItem) -> Unit,
+        onToolPkgRouteSelected: (PackageManager.ToolPkgRouteExtension) -> Unit
 ) {
         // 添加滚动功能的Column
         Column(
@@ -101,13 +106,16 @@ fun DrawerContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // 分组导航菜单
+                val dynamicRoutesByGroup = toolPkgRouteGroups.associateBy { it.key }
+                val staticGroupKeys = navGroups.map { it.key }.toSet()
+
                 navGroups.forEach { group ->
                         NavigationDrawerItemHeader(stringResource(id = group.titleResId))
                         group.items.forEach { item ->
                                 CompactNavigationDrawerItem(
                                         icon = item.icon,
                                         label = stringResource(id = item.titleResId),
-                                        selected = selectedItem == item,
+                                        selected = currentScreen.navItem == item,
                                         onClick = {
                                                 onScreenSelected(
                                                         OperitRouter.getScreenForNavItem(item),
@@ -117,6 +125,44 @@ fun DrawerContent(
                                         }
                                 )
                         }
+
+                        dynamicRoutesByGroup[group.key]?.routes?.forEach { route ->
+                                val selected =
+                                        (currentScreen as? Screen.ToolPkgComposeDsl)?.routeId
+                                                ?.equals(route.id, ignoreCase = true) == true
+                                CompactNavigationDrawerItem(
+                                        icon = ToolPkgUiIconResolver.resolve(route.icon),
+                                        label = route.title,
+                                        selected = selected,
+                                        onClick = {
+                                                onToolPkgRouteSelected(route)
+                                                scope.launch { drawerState.close() }
+                                        }
+                                )
+                        }
+                }
+
+                toolPkgRouteGroups
+                        .filterNot { staticGroupKeys.contains(it.key) }
+                        .forEach { group ->
+                                if (group.routes.isEmpty()) {
+                                        return@forEach
+                                }
+                                NavigationDrawerItemHeader(group.title)
+                                group.routes.forEach { route ->
+                                        val selected =
+                                                (currentScreen as? Screen.ToolPkgComposeDsl)?.routeId
+                                                        ?.equals(route.id, ignoreCase = true) == true
+                                        CompactNavigationDrawerItem(
+                                                icon = ToolPkgUiIconResolver.resolve(route.icon),
+                                                label = route.title,
+                                                selected = selected,
+                                                onClick = {
+                                                        onToolPkgRouteSelected(route)
+                                                        scope.launch { drawerState.close() }
+                                                }
+                                        )
+                                }
                 }
 
                 // 为了在底部留出一些空间，避免最后一个选项贴底
@@ -128,9 +174,12 @@ fun DrawerContent(
 @Composable
 fun CollapsedDrawerContent(
         navItems: List<NavItem>,
+        toolPkgRoutes: List<PackageManager.ToolPkgRouteExtension>,
+        currentScreen: Screen,
         selectedItem: NavItem,
         isNetworkAvailable: Boolean,
-        onScreenSelected: (Screen, NavItem) -> Unit
+        onScreenSelected: (Screen, NavItem) -> Unit,
+        onToolPkgRouteSelected: (PackageManager.ToolPkgRouteExtension) -> Unit
 ) {
         // 折叠状态下只显示图标
         Column(
@@ -176,7 +225,27 @@ fun CollapsedDrawerContent(
                                         imageVector = item.icon,
                                         contentDescription = stringResource(id = item.titleResId),
                                         tint =
-                                                if (selectedItem == item)
+                                                if (currentScreen.navItem == item)
+                                                        MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(24.dp)
+                                )
+                        }
+                }
+
+                for (route in toolPkgRoutes) {
+                        val selected =
+                                (currentScreen as? Screen.ToolPkgComposeDsl)?.routeId
+                                        ?.equals(route.id, ignoreCase = true) == true
+                        IconButton(
+                                onClick = { onToolPkgRouteSelected(route) },
+                                modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                                Icon(
+                                        imageVector = ToolPkgUiIconResolver.resolve(route.icon),
+                                        contentDescription = route.title,
+                                        tint =
+                                                if (selected)
                                                         MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(24.dp)

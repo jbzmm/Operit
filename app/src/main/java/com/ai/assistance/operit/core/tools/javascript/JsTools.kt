@@ -466,58 +466,6 @@ fun getJsToolsDefinition(): String {
                     return toolCall("run_ui_subagent", params);
                 },
             },
-            // 记忆管理
-            Memory: {
-                // 查询记忆库
-                query: (query, folderPath, threshold, limit, startTime, endTime) => {
-                    const params = { query };
-                    if (folderPath) params.folder_path = folderPath;
-                    if (startTime !== undefined) params.start_time = startTime;
-                    if (endTime !== undefined) params.end_time = endTime;
-                    if (threshold !== undefined) params.threshold = threshold;
-                    if (limit !== undefined) params.limit = limit;
-                    return toolCall("query_memory", params);
-                },
-                // 通过标题获取记忆
-                getByTitle: (title, chunkIndex, chunkRange, query) => {
-                    const params = { title };
-                    if (chunkIndex !== undefined) params.chunk_index = chunkIndex;
-                    if (chunkRange) params.chunk_range = chunkRange;
-                    if (query) params.query = query;
-                    return toolCall("get_memory_by_title", params);
-                },
-                // 创建记忆
-                create: (title, content, contentType, source, folderPath) => {
-                    const params = { title, content };
-                    if (contentType) params.content_type = contentType;
-                    if (source) params.source = source;
-                    if (folderPath) params.folder_path = folderPath;
-                    return toolCall("create_memory", params);
-                },
-                // 更新记忆
-                update: (oldTitle, updates = {}) => {
-                    const params = { old_title: oldTitle };
-                    if (updates.newTitle) params.new_title = updates.newTitle;
-                    if (updates.content) params.content = updates.content;
-                    if (updates.contentType) params.content_type = updates.contentType;
-                    if (updates.source) params.source = updates.source;
-                    if (updates.credibility !== undefined) params.credibility = updates.credibility;
-                    if (updates.importance !== undefined) params.importance = updates.importance;
-                    if (updates.folderPath) params.folder_path = updates.folderPath;
-                    if (updates.tags) params.tags = updates.tags;
-                    return toolCall("update_memory", params);
-                },
-                // 删除记忆
-                deleteMemory: (title) => toolCall("delete_memory", { title }),
-                // 链接记忆
-                link: (sourceTitle, targetTitle, linkType, weight, description) => {
-                    const params = { source_title: sourceTitle, target_title: targetTitle };
-                    if (linkType) params.link_type = linkType;
-                    if (weight !== undefined) params.weight = weight;
-                    if (description) params.description = description;
-                    return toolCall("link_memories", params);
-                }
-            },
             // 计算功能
             calc: (expression) => toolCall("calculate", { expression }),
             

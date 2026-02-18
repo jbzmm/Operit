@@ -139,13 +139,8 @@ object ToolGetter {
         return StandardTerminalCommandExecutor(context)
     }
 
-    /**
-     * 获取内存查询工具执行器
-     * @param context 应用上下文
-     * @return 内存查询工具执行器实现（只有标准版本）
-     */
-    fun getMemoryQueryToolExecutor(context: Context): MemoryQueryToolExecutor {
-        return MemoryQueryToolExecutor(context)
+    fun getUserPreferenceToolExecutor(context: Context): StandardUserPreferenceToolExecutor {
+        return StandardUserPreferenceToolExecutor(context)
     }
 
     /**

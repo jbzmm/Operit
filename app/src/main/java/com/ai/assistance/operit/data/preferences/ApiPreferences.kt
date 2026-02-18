@@ -266,7 +266,7 @@ class ApiPreferences private constructor(private val context: Context) {
         }
 
     // Flow for Memory Attachment
-    val enableMemoryQueryFlow: Flow<Boolean> =
+    val enableMemoryFeaturesFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
             preferences[ENABLE_MEMORY_QUERY] ?: DEFAULT_ENABLE_MEMORY_QUERY
         }
@@ -403,7 +403,7 @@ class ApiPreferences private constructor(private val context: Context) {
     }
 
     // Save Memory Attachment setting
-    suspend fun saveEnableMemoryQuery(isEnabled: Boolean) {
+    suspend fun saveenableMemoryFeatures(isEnabled: Boolean) {
         context.apiDataStore.edit { preferences -> preferences[ENABLE_MEMORY_QUERY] = isEnabled }
     }
 

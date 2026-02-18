@@ -399,7 +399,7 @@ fun MessageEditor(
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             Text(
-                                context.getString(R.string.update_memory),
+                                context.getString(R.string.apply_memory_changes),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium
                             )

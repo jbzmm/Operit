@@ -11,15 +11,6 @@ enum class ChatHistoryOperation {
     FAILED
 }
 
-enum class MemoryOperation {
-    IDLE,
-    EXPORTING,
-    EXPORTED,
-    IMPORTING,
-    IMPORTED,
-    FAILED
-}
-
 enum class CharacterCardOperation {
     IDLE,
     EXPORTING,

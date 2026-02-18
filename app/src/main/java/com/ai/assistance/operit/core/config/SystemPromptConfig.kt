@@ -323,7 +323,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @param thinkingGuidance Whether thinking guidance is enabled
    * @param customSystemPromptTemplate Custom system prompt template (empty means use built-in)
    * @param enableTools Whether tools are enabled
-   * @param enableMemoryQuery Whether the AI is allowed to query memories.
+   * @param enableMemoryFeatures Whether the AI is allowed to query memories.
    * @param hasImageRecognition Whether a backend image recognition service is configured
    * @param chatModelHasDirectImage Whether the chat model has direct image capability
    * @return The complete system prompt with package information
@@ -337,7 +337,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           thinkingGuidance: Boolean = false,
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
-          enableMemoryQuery: Boolean = true,
+          enableMemoryFeatures: Boolean = true,
           hasImageRecognition: Boolean = false,
           chatModelHasDirectImage: Boolean = false,
           hasAudioRecognition: Boolean = false,
@@ -439,7 +439,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     // Determine the available tools string based on memory query setting and image recognition
     // 当使用Tool Call API时，不在系统提示词中包含工具描述（工具已通过API的tools字段发送）
     val availableToolsEn = if (useToolCallApi) "" else (
-        if (enableMemoryQuery) {
+        if (enableMemoryFeatures) {
             getMemoryToolsEn(toolVisibility) +
                 getAvailableToolsEn(
                     hasImageRecognition = hasImageRecognition,
@@ -465,7 +465,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         }
     )
     val availableToolsCn = if (useToolCallApi) "" else (
-        if (enableMemoryQuery) {
+        if (enableMemoryFeatures) {
             getMemoryToolsCn(toolVisibility) +
                 getAvailableToolsCn(
                     hasImageRecognition = hasImageRecognition,
@@ -520,7 +520,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 .replace("AVAILABLE_TOOLS_SECTION", if (useEnglish) availableToolsEn else availableToolsCn)
         }
     } else {
-        if (enableMemoryQuery) {
+        if (enableMemoryFeatures) {
             // Only memory tools are available, package system is disabled
             prompt = prompt
                 .replace("TOOL_USAGE_GUIDELINES_SECTION", if (useEnglish) TOOL_USAGE_GUIDELINES_EN else TOOL_USAGE_GUIDELINES_CN)
@@ -618,7 +618,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @param thinkingGuidance Whether thinking guidance is enabled
    * @param customSystemPromptTemplate Custom system prompt template (empty means use built-in)
    * @param enableTools Whether tools are enabled
-   * @param enableMemoryQuery Whether the AI is allowed to query memories.
+   * @param enableMemoryFeatures Whether the AI is allowed to query memories.
    * @param hasImageRecognition Whether image recognition service is configured
    * @param chatModelHasDirectImage Whether the chat model has direct image capability
    * @return The complete system prompt with custom prompts and package information
@@ -633,7 +633,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           thinkingGuidance: Boolean = false,
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
-          enableMemoryQuery: Boolean = true,
+          enableMemoryFeatures: Boolean = true,
           hasImageRecognition: Boolean = false,
           chatModelHasDirectImage: Boolean = false,
           hasAudioRecognition: Boolean = false,
@@ -655,7 +655,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         thinkingGuidance = thinkingGuidance,
         customSystemPromptTemplate = customSystemPromptTemplate,
         enableTools = enableTools,
-        enableMemoryQuery = enableMemoryQuery,
+        enableMemoryFeatures = enableMemoryFeatures,
         hasImageRecognition = hasImageRecognition,
         chatModelHasDirectImage = chatModelHasDirectImage,
         hasAudioRecognition = hasAudioRecognition,
@@ -683,7 +683,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         thinkingGuidance = false,
         customSystemPromptTemplate = "",
         enableTools = true,
-        enableMemoryQuery = true,
+        enableMemoryFeatures = true,
         hasImageRecognition = false,
         chatModelHasDirectImage = false,
         hasAudioRecognition = false,

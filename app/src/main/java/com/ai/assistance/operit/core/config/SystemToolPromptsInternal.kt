@@ -482,50 +482,6 @@ object SystemToolPromptsInternal {
                 tools =
                     listOf(
                         ToolPrompt(
-                            name = "create_memory",
-                            description = "Creates a new memory node in the library. Use this when you want to save important information for future reference.",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "title", type = "string", description = "required, string", required = true),
-                                ToolParameterSchema(name = "content", type = "string", description = "required, string", required = true),
-                                ToolParameterSchema(name = "content_type", type = "string", description = "optional", required = false, default = "\"text/plain\""),
-                                ToolParameterSchema(name = "source", type = "string", description = "optional", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\"")
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "update_memory",
-                            description = "Updates an existing memory node by title. Use this to modify an existing memory's content or metadata.",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "old_title", type = "string", description = "required, string to identify the memory", required = true),
-                                ToolParameterSchema(name = "new_title", type = "string", description = "optional, string, new title if renaming", required = false),
-                                ToolParameterSchema(name = "content", type = "string", description = "optional, string", required = false),
-                                ToolParameterSchema(name = "content_type", type = "string", description = "optional, string", required = false),
-                                ToolParameterSchema(name = "source", type = "string", description = "optional, string", required = false),
-                                ToolParameterSchema(name = "credibility", type = "number", description = "optional, float 0-1", required = false),
-                                ToolParameterSchema(name = "importance", type = "number", description = "optional, float 0-1", required = false),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional, string", required = false),
-                                ToolParameterSchema(name = "tags", type = "string", description = "optional, comma-separated string", required = false)
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "delete_memory",
-                            description = "Deletes a memory node from the library by title. Use with caution as this operation is irreversible.",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "title", type = "string", description = "required, string to identify the memory", required = true)
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "link_memories",
-                            description = "Creates a semantic link between two memories in the library. Use this to establish relationships between related concepts, facts, or pieces of information. This helps build a knowledge graph structure for better memory retrieval and understanding.",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "source_title", type = "string", description = "required, string, the title of the source memory", required = true),
-                                ToolParameterSchema(name = "target_title", type = "string", description = "required, string, the title of the target memory", required = true),
-                                ToolParameterSchema(name = "link_type", type = "string", description = "optional, string, the type of relationship such as \"related\", \"causes\", \"explains\", \"part_of\", \"contradicts\", etc.", required = false, default = "\"related\""),
-                                ToolParameterSchema(name = "weight", type = "number", description = "optional, float 0.0-1.0, the strength of the link with 1.0 being strongest", required = false, default = "0.7"),
-                                ToolParameterSchema(name = "description", type = "string", description = "optional, string, additional context about the relationship", required = false, default = "\"\"")
-                            )
-                        ),
-                        ToolPrompt(
                             name = "update_user_preferences",
                             description = "Updates user preference information directly. Use this when you learn new information about the user that should be remembered (e.g., their birthday, gender, personality traits, identity, occupation, or preferred AI interaction style). This allows immediate updates without waiting for the automatic system.",
                             parametersStructured = listOf(
@@ -2196,50 +2152,6 @@ object SystemToolPromptsInternal {
                 categoryName = "拓展记忆工具",
                 tools =
                     listOf(
-                        ToolPrompt(
-                            name = "create_memory",
-                            description = "在记忆库中创建新的记忆节点。当你想保存重要信息供将来参考时使用。",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "title", type = "string", description = "必需, 字符串", required = true),
-                                ToolParameterSchema(name = "content", type = "string", description = "必需, 字符串", required = true),
-                                ToolParameterSchema(name = "content_type", type = "string", description = "可选", required = false, default = "\"text/plain\""),
-                                ToolParameterSchema(name = "source", type = "string", description = "可选", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\"")
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "update_memory",
-                            description = "通过标题更新现有的记忆节点。用于修改现有记忆的内容或元数据。",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "old_title", type = "string", description = "必需, 字符串，用于识别记忆", required = true),
-                                ToolParameterSchema(name = "new_title", type = "string", description = "可选, 字符串, 重命名时的新标题", required = false),
-                                ToolParameterSchema(name = "content", type = "string", description = "可选, 字符串", required = false),
-                                ToolParameterSchema(name = "content_type", type = "string", description = "可选, 字符串", required = false),
-                                ToolParameterSchema(name = "source", type = "string", description = "可选, 字符串", required = false),
-                                ToolParameterSchema(name = "credibility", type = "number", description = "可选, 浮点数 0-1", required = false),
-                                ToolParameterSchema(name = "importance", type = "number", description = "可选, 浮点数 0-1", required = false),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选, 字符串", required = false),
-                                ToolParameterSchema(name = "tags", type = "string", description = "可选, 逗号分隔的字符串", required = false)
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "delete_memory",
-                            description = "通过标题从记忆库中删除记忆节点。谨慎使用，此操作不可逆。",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "title", type = "string", description = "必需, 字符串，用于识别记忆", required = true)
-                            )
-                        ),
-                        ToolPrompt(
-                            name = "link_memories",
-                            description = "在记忆库中的两个记忆之间创建语义链接。用于建立相关概念、事实或信息片段之间的关系。这有助于构建知识图谱结构，以便更好地检索和理解记忆。",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "source_title", type = "string", description = "必需, 字符串, 源记忆的标题", required = true),
-                                ToolParameterSchema(name = "target_title", type = "string", description = "必需, 字符串, 目标记忆的标题", required = true),
-                                ToolParameterSchema(name = "link_type", type = "string", description = "可选, 字符串, 关系类型，如\"related\"（相关）、\"causes\"（导致）、\"explains\"（解释）、\"part_of\"（部分）、\"contradicts\"（矛盾）等", required = false, default = "\"related\""),
-                                ToolParameterSchema(name = "weight", type = "number", description = "可选, 浮点数 0.0-1.0, 链接强度，1.0表示最强", required = false, default = "0.7"),
-                                ToolParameterSchema(name = "description", type = "string", description = "可选, 字符串, 关于关系的额外上下文", required = false, default = "\"\"")
-                            )
-                        ),
                         ToolPrompt(
                             name = "update_user_preferences",
                             description = "直接更新用户偏好信息。当你了解到用户的新信息时使用（例如生日、性别、性格特征、身份、职业或首选AI交互风格）。这允许立即更新而无需等待自动系统。",

@@ -75,7 +75,7 @@ object AIMessageManager {
      *
      * @param messageText 用户输入的原始文本。
      * @param attachments 附件列表。
-     * @param enableMemoryQuery 是否允许AI查询记忆。
+     * @param enableMemoryFeatures 是否允许AI查询记忆。
      * @param enableWorkspaceAttachment 是否启用工作区附着功能。
      * @param workspacePath 工作区路径。
      * @param workspaceEnv 工作区环境。
@@ -89,7 +89,7 @@ object AIMessageManager {
         messageText: String,
         proxySenderName: String? = null,
         attachments: List<AttachmentInfo>,
-        enableMemoryQuery: Boolean,
+        enableMemoryFeatures: Boolean,
         enableWorkspaceAttachment: Boolean = false,
         workspacePath: String? = null,
         workspaceEnv: String? = null,
@@ -226,7 +226,7 @@ object AIMessageManager {
      * @param promptFunctionType 提示功能类型。
      * @param enableThinking 是否启用思考过程。
      * @param thinkingGuidance 是否启用思考引导。
-     * @param enableMemoryQuery 是否允许AI查询记忆。
+     * @param enableMemoryFeatures 是否允许AI查询记忆。
      * @param maxTokens 最大token数量。
      * @param tokenUsageThreshold token使用阈值。
      * @param onNonFatalError 非致命错误回调。
@@ -245,7 +245,7 @@ object AIMessageManager {
         promptFunctionType: PromptFunctionType,
         enableThinking: Boolean,
         thinkingGuidance: Boolean,
-        enableMemoryQuery: Boolean,
+        enableMemoryFeatures: Boolean,
         maxTokens: Int,
         tokenUsageThreshold: Double,
         onNonFatalError: suspend (error: String) -> Unit,
@@ -340,7 +340,7 @@ object AIMessageManager {
                 promptFunctionType = promptFunctionType,
                 enableThinking = enableThinking,
                 thinkingGuidance = thinkingGuidance,
-                enableMemoryQuery = enableMemoryQuery,
+                enableMemoryFeatures = enableMemoryFeatures,
                 maxTokens = maxTokens,
                 tokenUsageThreshold = tokenUsageThreshold,
                 onNonFatalError = onNonFatalError,
@@ -467,7 +467,6 @@ object AIMessageManager {
             return null
         }
 
-        val memoryTagRegex = Regex("<memory>.*?</memory>", RegexOption.DOT_MATCHES_ALL)
         val conversationReviewEntries = mutableListOf<Pair<String, String>>()
         fun normalizeForReview(text: String): String {
             return text
@@ -645,7 +644,7 @@ object AIMessageManager {
         val conversationToSummarize = messagesToSummarize.mapIndexed { index, message ->
             val role = if (message.sender == "user") "user" else "assistant"
             val cleanedContent = if (role == "user") {
-                message.content.replace(memoryTagRegex, "").trim()
+                message.content.trim()
             } else {
                 stripMediaLinksForAssistant(message.content)
             }

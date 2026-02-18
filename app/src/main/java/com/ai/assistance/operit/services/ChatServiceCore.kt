@@ -370,8 +370,8 @@ class ChatServiceCore(
     val enableThinkingGuidance: StateFlow<Boolean>
         get() = apiConfigDelegate.enableThinkingGuidance
 
-    val enableMemoryQuery: StateFlow<Boolean>
-        get() = apiConfigDelegate.enableMemoryQuery
+    val enableMemoryFeatures: StateFlow<Boolean>
+        get() = apiConfigDelegate.enableMemoryFeatures
 
     val enableAutoRead: StateFlow<Boolean>
         get() = apiConfigDelegate.enableAutoRead

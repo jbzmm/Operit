@@ -97,7 +97,6 @@ async function runTests(params = {}) {
         if (testType === "all" || testType === "basic") {
             console.log("\n🔧 Testing Basic Tools...");
             testSummary.push("Running basic tools tests");
-            await testQueryMemory(results);
             await testUsePackage(results);
             await testCalculator(results);
             await testSleep(results);
@@ -192,30 +191,6 @@ async function runTests(params = {}) {
             testSummary,
             testResults: results
         });
-    }
-}
-/**
- * Tests the query_memory tool
- */
-async function testQueryMemory(results) {
-    try {
-        console.log("\nTesting query_memory...");
-        const queryResult = await toolCall("query_memory", {
-            query: "how to use OperIT tools"
-        });
-        // Validate the result (queryResult is a string)
-        const resultString = queryResult;
-        console.log(`Query result type: ${typeof resultString}`);
-        console.log(`Query result length: ${resultString.length} characters`);
-        console.log(`Result preview: ${resultString.substring(0, 100)}...`);
-        results["query_memory"] = {
-            success: typeof resultString === 'string' && resultString.length > 0,
-            data: resultString
-        };
-    }
-    catch (err) {
-        console.error("Error testing query_memory:", err);
-        results["query_memory"] = { success: false, error: String(err) };
     }
 }
 /**
@@ -1628,7 +1603,6 @@ exports.testCategory = function (params) {
     return runTests(params);
 };
 // Add exports for these functions
-exports.testQueryMemory = testQueryMemory;
 exports.testUsePackage = testUsePackage;
 exports.testCalculator = testCalculator;
 exports.testSleep = testSleep;

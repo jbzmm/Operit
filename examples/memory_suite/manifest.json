@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "toolpkg_id": "com.operit.memory_suite",
+  "version": "0.2.0",
+  "display_name": {
+    "zh": "记忆套件",
+    "en": "Memory Suite"
+  },
+  "description": {
+    "zh": "记忆中心、记忆设置、附着与总结的 ToolPkg 骨架",
+    "en": "ToolPkg scaffold for memory center/settings/attachment/summary"
+  },
+  "subpackages": [
+    {
+      "id": "memory_runtime",
+      "entry": "packages/memory_runtime.js"
+    }
+  ],
+  "ui_modules": [
+    {
+      "id": "memory_center",
+      "runtime": "compose_dsl",
+      "entry": "ui/memory_center/index.ui.js",
+      "title": {
+        "zh": "记忆中心",
+        "en": "Memory Center"
+      },
+      "permissions": [
+        "tool.call",
+        "env.read",
+        "env.write",
+        "datastore.read",
+        "datastore.write"
+      ],
+      "show_in_package_manager": true
+    },
+    {
+      "id": "memory_settings",
+      "runtime": "compose_dsl",
+      "entry": "ui/memory_settings/index.ui.js",
+      "title": {
+        "zh": "记忆设置",
+        "en": "Memory Settings"
+      },
+      "permissions": [
+        "tool.call",
+        "env.read",
+        "env.write",
+        "datastore.read",
+        "datastore.write"
+      ],
+      "show_in_package_manager": true
+    },
+    {
+      "id": "memory_attachment",
+      "runtime": "compose_dsl",
+      "entry": "ui/memory_attachment/index.ui.js",
+      "title": {
+        "zh": "记忆附着",
+        "en": "Memory Attachment"
+      },
+      "permissions": [
+        "tool.call",
+        "datastore.read",
+        "datastore.write"
+      ],
+      "show_in_package_manager": false
+    },
+    {
+      "id": "memory_summary",
+      "runtime": "compose_dsl",
+      "entry": "ui/memory_summary/index.ui.js",
+      "title": {
+        "zh": "记忆总结",
+        "en": "Memory Summary"
+      },
+      "permissions": [
+        "tool.call",
+        "datastore.read",
+        "datastore.write"
+      ],
+      "show_in_package_manager": false
+    }
+  ],
+  "extensions": {
+    "routes": [
+      {
+        "id": "memory_center",
+        "ui_module_id": "memory_center",
+        "nav_group": "primary",
+        "order": 220,
+        "icon": "history"
+      },
+      {
+        "id": "memory_settings",
+        "ui_module_id": "memory_settings",
+        "nav_group": "system",
+        "order": 260,
+        "icon": "tune"
+      }
+    ],
+    "attachments": [
+      {
+        "id": "memory_scope_attach",
+        "title": {
+          "zh": "记忆范围",
+          "en": "Memory Scope"
+        },
+        "icon": "memory",
+        "handler": "memory_runtime:attachment_select_scope"
+      }
+    ],
+    "chat_setting_bars": [
+      {
+        "id": "memory_settings_entry",
+        "title": {
+          "zh": "记忆设置",
+          "en": "Memory Settings"
+        },
+        "icon": "tune",
+        "handler": "memory_runtime:chatbar_open_memory_settings"
+      },
+      {
+        "id": "memory_summary_entry",
+        "title": {
+          "zh": "记忆总结",
+          "en": "Memory Summary"
+        },
+        "icon": "history",
+        "handler": "memory_runtime:chatbar_run_memory_summary"
+      }
+    ],
+    "chat_hooks": [
+      {
+        "id": "memory_summary_hook",
+        "event": "after_assistant_reply",
+        "handler": "memory_runtime:hooks_after_reply"
+      },
+      {
+        "id": "memory_manual_hook",
+        "event": "manual_action",
+        "handler": "memory_runtime:hooks_after_reply"
+      }
+    ]
+  }
+}

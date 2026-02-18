@@ -110,6 +110,41 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val moduleSpec: Map<String, Any?>
     )
 
+    data class ToolPkgRouteExtension(
+        val containerPackageName: String,
+        val id: String,
+        val uiModuleId: String,
+        val navGroup: String,
+        val order: Int,
+        val icon: String,
+        val runtime: String,
+        val entry: String,
+        val title: String
+    )
+
+    data class ToolPkgAttachmentExtension(
+        val containerPackageName: String,
+        val id: String,
+        val title: String,
+        val icon: String,
+        val handler: String
+    )
+
+    data class ToolPkgChatSettingBarExtension(
+        val containerPackageName: String,
+        val id: String,
+        val title: String,
+        val icon: String,
+        val handler: String
+    )
+
+    data class ToolPkgChatHookExtension(
+        val containerPackageName: String,
+        val id: String,
+        val event: String,
+        val handler: String
+    )
+
 
     @Volatile
     private var isInitialized = false
@@ -316,6 +351,153 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                     ToolPkgToolboxUiModule::title,
                     ToolPkgToolboxUiModule::containerPackageName,
                     ToolPkgToolboxUiModule::uiModuleId
+                )
+            )
+    }
+
+    fun getToolPkgRouteExtensions(
+        runtime: String = "compose_dsl",
+        resolveContext: Context? = null
+    ): List<ToolPkgRouteExtension> {
+        ensureInitialized()
+        val localizationContext = resolveContext ?: context
+        val importedSet = getImportedPackages().toSet()
+        fun resolveLocalized(text: com.ai.assistance.operit.core.tools.LocalizedText): String {
+            return text.resolve(localizationContext)
+        }
+
+        return toolPkgContainers.values
+            .filter { container -> importedSet.contains(container.packageName) }
+            .flatMap { container ->
+                container.extensions.routes.mapNotNull { extension ->
+                    val uiModule =
+                        container.uiModules.firstOrNull { module ->
+                            module.id.equals(extension.uiModuleId, ignoreCase = true) &&
+                                module.runtime.equals(runtime, ignoreCase = true)
+                        } ?: return@mapNotNull null
+
+                    ToolPkgRouteExtension(
+                        containerPackageName = container.packageName,
+                        id = extension.id,
+                        uiModuleId = extension.uiModuleId,
+                        navGroup = extension.navGroup,
+                        order = extension.order,
+                        icon = extension.icon,
+                        runtime = uiModule.runtime,
+                        entry = uiModule.entry,
+                        title =
+                            resolveLocalized(uiModule.title)
+                                .trim()
+                                .ifBlank { extension.id }
+                    )
+                }
+            }
+            .sortedWith(
+                compareBy(
+                    ToolPkgRouteExtension::navGroup,
+                    ToolPkgRouteExtension::order,
+                    ToolPkgRouteExtension::title,
+                    ToolPkgRouteExtension::id
+                )
+            )
+    }
+
+    fun getToolPkgAttachmentExtensions(
+        resolveContext: Context? = null
+    ): List<ToolPkgAttachmentExtension> {
+        ensureInitialized()
+        val localizationContext = resolveContext ?: context
+        val importedSet = getImportedPackages().toSet()
+        fun resolveLocalized(text: com.ai.assistance.operit.core.tools.LocalizedText): String {
+            return text.resolve(localizationContext)
+        }
+
+        return toolPkgContainers.values
+            .filter { container -> importedSet.contains(container.packageName) }
+            .flatMap { container ->
+                container.extensions.attachments.map { extension ->
+                    ToolPkgAttachmentExtension(
+                        containerPackageName = container.packageName,
+                        id = extension.id,
+                        title =
+                            resolveLocalized(extension.title)
+                                .trim()
+                                .ifBlank { extension.id },
+                        icon = extension.icon,
+                        handler = extension.handler
+                    )
+                }
+            }
+            .sortedWith(
+                compareBy(
+                    ToolPkgAttachmentExtension::title,
+                    ToolPkgAttachmentExtension::containerPackageName,
+                    ToolPkgAttachmentExtension::id
+                )
+            )
+    }
+
+    fun getToolPkgChatSettingBarExtensions(
+        resolveContext: Context? = null
+    ): List<ToolPkgChatSettingBarExtension> {
+        ensureInitialized()
+        val localizationContext = resolveContext ?: context
+        val importedSet = getImportedPackages().toSet()
+        fun resolveLocalized(text: com.ai.assistance.operit.core.tools.LocalizedText): String {
+            return text.resolve(localizationContext)
+        }
+
+        return toolPkgContainers.values
+            .filter { container -> importedSet.contains(container.packageName) }
+            .flatMap { container ->
+                container.extensions.chatSettingBars.map { extension ->
+                    ToolPkgChatSettingBarExtension(
+                        containerPackageName = container.packageName,
+                        id = extension.id,
+                        title =
+                            resolveLocalized(extension.title)
+                                .trim()
+                                .ifBlank { extension.id },
+                        icon = extension.icon,
+                        handler = extension.handler
+                    )
+                }
+            }
+            .sortedWith(
+                compareBy(
+                    ToolPkgChatSettingBarExtension::title,
+                    ToolPkgChatSettingBarExtension::containerPackageName,
+                    ToolPkgChatSettingBarExtension::id
+                )
+            )
+    }
+
+    fun getToolPkgChatHookExtensions(event: String? = null): List<ToolPkgChatHookExtension> {
+        ensureInitialized()
+        val importedSet = getImportedPackages().toSet()
+        val normalizedEvent = event?.trim().orEmpty().lowercase()
+
+        return toolPkgContainers.values
+            .filter { container -> importedSet.contains(container.packageName) }
+            .flatMap { container ->
+                container.extensions.chatHooks
+                    .filter { hook ->
+                        normalizedEvent.isBlank() || hook.event.equals(normalizedEvent, ignoreCase = true)
+                    }
+                    .map { hook ->
+                        ToolPkgChatHookExtension(
+                            containerPackageName = container.packageName,
+                            id = hook.id,
+                            event = hook.event,
+                            handler = hook.handler
+                        )
+                    }
+            }
+            .sortedWith(
+                compareBy(
+                    ToolPkgChatHookExtension::event,
+                    ToolPkgChatHookExtension::containerPackageName,
+                    ToolPkgChatHookExtension::id
                 )
             )
     }

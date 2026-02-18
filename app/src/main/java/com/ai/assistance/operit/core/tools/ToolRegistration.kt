@@ -163,35 +163,7 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
-    // 注册问题库查询工具
-    handler.registerTool(
-            name = "query_memory",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val query = tool.parameters.find { it.name == "query" }?.value ?: ""
-                s(R.string.toolreg_query_memory_desc, query)
-            },
-            executor = { tool ->
-                val problemLibraryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                problemLibraryTool.invoke(tool)
-            }
-    )
-    
-    // 注册根据标题获取单个记忆工具
-    handler.registerTool(
-            name = "get_memory_by_title",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val title = tool.parameters.find { it.name == "title" }?.value ?: ""
-                s(R.string.toolreg_get_memory_by_title_desc, title)
-            },
-            executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
-            }
-    )
-
-    // 注册用户偏好更新工具
+    // 用户偏好更新工具（保留）
     handler.registerTool(
             name = "update_user_preferences",
             dangerCheck = null,
@@ -218,67 +190,8 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 )
             },
             executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
-            }
-    )
-
-    // 注册创建记忆工具
-    handler.registerTool(
-            name = "create_memory",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val title = tool.parameters.find { it.name == "title" }?.value ?: ""
-                s(R.string.toolreg_create_memory_desc, title)
-            },
-            executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
-            }
-    )
-
-    // 注册更新记忆工具
-    handler.registerTool(
-            name = "update_memory",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val oldTitle = tool.parameters.find { it.name == "old_title" }?.value ?: ""
-                val newTitle = tool.parameters.find { it.name == "new_title" }?.value ?: oldTitle
-                s(R.string.toolreg_update_memory_desc, oldTitle, newTitle)
-            },
-            executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
-            }
-    )
-
-    // 注册删除记忆工具
-    handler.registerTool(
-            name = "delete_memory",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val title = tool.parameters.find { it.name == "title" }?.value ?: ""
-                s(R.string.toolreg_delete_memory_desc, title)
-            },
-            executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
-            }
-    )
-
-    // 注册链接记忆工具
-    handler.registerTool(
-            name = "link_memories",
-            dangerCheck = null,
-            descriptionGenerator = { tool ->
-                val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value ?: ""
-                val targetTitle = tool.parameters.find { it.name == "target_title" }?.value ?: ""
-                val linkType = tool.parameters.find { it.name == "link_type" }?.value ?: "related"
-                s(R.string.toolreg_link_memories_desc, sourceTitle, targetTitle, linkType)
-            },
-            executor = { tool ->
-                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
-                memoryTool.invoke(tool)
+                val preferencesTool = ToolGetter.getUserPreferenceToolExecutor(context)
+                preferencesTool.invoke(tool)
             }
     )
 

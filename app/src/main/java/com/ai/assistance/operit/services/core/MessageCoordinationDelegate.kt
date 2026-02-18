@@ -211,14 +211,9 @@ class MessageCoordinationDelegate(
 
         val proxySenderName = proxySenderNameOverride?.takeIf { it.isNotBlank() }
 
-        // 检测是否附着了记忆文件夹
-        val hasMemoryFolder = currentAttachments.any {
-            it.fileName == "memory_context.xml" && it.mimeType == "application/xml"
-        }
-
-        // 如果是proxy sender，视为关闭记忆附着
-        val shouldEnableMemoryQuery = if (proxySenderName.isNullOrBlank()) {
-            apiConfigDelegate.enableMemoryQuery.value || hasMemoryFolder
+        // 如果是 proxy sender，视为关闭记忆查询
+        val shouldenableMemoryFeatures = if (proxySenderName.isNullOrBlank()) {
+            apiConfigDelegate.enableMemoryFeatures.value
         } else {
             false
         }
@@ -240,7 +235,7 @@ class MessageCoordinationDelegate(
             // When guidance is enabled, we avoid enabling provider-level thinking simultaneously.
             enableThinking = apiConfigDelegate.enableThinkingMode.value && !apiConfigDelegate.enableThinkingGuidance.value,
             thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
-            enableMemoryQuery = shouldEnableMemoryQuery,
+            enableMemoryFeatures = shouldenableMemoryFeatures,
             enableWorkspaceAttachment = !workspacePath.isNullOrBlank(),
             maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt(),
             tokenUsageThreshold = tokenUsageThresholdForSend,
@@ -290,7 +285,7 @@ class MessageCoordinationDelegate(
                 AppLogger.e(TAG, "手动更新记忆失败", e)
                 uiStateDelegate.showErrorMessage(
                     context.getString(
-                        R.string.chat_manual_update_memory_failed,
+                        R.string.chat_manual_memory_sync_failed,
                         e.message ?: ""
                     )
                 )

@@ -33,6 +33,41 @@ internal data class ToolPkgUiModuleRuntime(
     val showInPackageManager: Boolean
 )
 
+internal data class ToolPkgRouteExtensionRuntime(
+    val id: String,
+    val uiModuleId: String,
+    val navGroup: String,
+    val order: Int,
+    val icon: String
+)
+
+internal data class ToolPkgAttachmentExtensionRuntime(
+    val id: String,
+    val title: LocalizedText,
+    val icon: String,
+    val handler: String
+)
+
+internal data class ToolPkgChatSettingBarExtensionRuntime(
+    val id: String,
+    val title: LocalizedText,
+    val icon: String,
+    val handler: String
+)
+
+internal data class ToolPkgChatHookExtensionRuntime(
+    val id: String,
+    val event: String,
+    val handler: String
+)
+
+internal data class ToolPkgExtensionsRuntime(
+    val routes: List<ToolPkgRouteExtensionRuntime> = emptyList(),
+    val attachments: List<ToolPkgAttachmentExtensionRuntime> = emptyList(),
+    val chatSettingBars: List<ToolPkgChatSettingBarExtensionRuntime> = emptyList(),
+    val chatHooks: List<ToolPkgChatHookExtensionRuntime> = emptyList()
+)
+
 internal data class ToolPkgSubpackageRuntime(
     val packageName: String,
     val containerPackageName: String,
@@ -52,7 +87,8 @@ internal data class ToolPkgContainerRuntime(
     val sourcePath: String,
     val subpackages: List<ToolPkgSubpackageRuntime>,
     val resources: List<ToolPkgResourceRuntime>,
-    val uiModules: List<ToolPkgUiModuleRuntime>
+    val uiModules: List<ToolPkgUiModuleRuntime>,
+    val extensions: ToolPkgExtensionsRuntime
 )
 
 internal data class ToolPkgLoadResult(
@@ -70,7 +106,8 @@ internal data class ToolPkgManifest(
     val description: LocalizedText = LocalizedText.of(""),
     val subpackages: List<ToolPkgManifestSubpackage> = emptyList(),
     @SerialName("ui_modules") val uiModules: List<ToolPkgManifestUiModule> = emptyList(),
-    val resources: List<ToolPkgManifestResource> = emptyList()
+    val resources: List<ToolPkgManifestResource> = emptyList(),
+    val extensions: ToolPkgManifestExtensions = ToolPkgManifestExtensions()
 )
 
 @Serializable
@@ -93,6 +130,48 @@ internal data class ToolPkgManifestResource(
     val key: String,
     val path: String,
     val mime: String = ""
+)
+
+@Serializable
+internal data class ToolPkgManifestExtensions(
+    val routes: List<ToolPkgManifestRouteExtension> = emptyList(),
+    val attachments: List<ToolPkgManifestAttachmentExtension> = emptyList(),
+    @SerialName("chat_setting_bars")
+    val chatSettingBars: List<ToolPkgManifestChatSettingBarExtension> = emptyList(),
+    @SerialName("chat_hooks")
+    val chatHooks: List<ToolPkgManifestChatHookExtension> = emptyList()
+)
+
+@Serializable
+internal data class ToolPkgManifestRouteExtension(
+    val id: String,
+    @SerialName("ui_module_id") val uiModuleId: String,
+    @SerialName("nav_group") val navGroup: String = "primary",
+    val order: Int = 0,
+    val icon: String = ""
+)
+
+@Serializable
+internal data class ToolPkgManifestAttachmentExtension(
+    val id: String,
+    val title: LocalizedText = LocalizedText.of(""),
+    val icon: String = "",
+    val handler: String
+)
+
+@Serializable
+internal data class ToolPkgManifestChatSettingBarExtension(
+    val id: String,
+    val title: LocalizedText = LocalizedText.of(""),
+    val icon: String = "",
+    val handler: String
+)
+
+@Serializable
+internal data class ToolPkgManifestChatHookExtension(
+    val id: String,
+    val event: String,
+    val handler: String
 )
 
 internal object ToolPkgArchiveParser {
@@ -199,14 +278,20 @@ internal object ToolPkgArchiveParser {
 
         val uiModules =
             manifest.uiModules.map { uiModule ->
+                val moduleId = uiModule.id.trim()
+                if (moduleId.isBlank()) {
+                    throw IllegalArgumentException("ui_module.id is required")
+                }
                 ToolPkgUiModuleRuntime(
-                    id = uiModule.id,
-                    runtime = uiModule.runtime,
-                    entry = uiModule.entry,
+                    id = moduleId,
+                    runtime = uiModule.runtime.trim(),
+                    entry = uiModule.entry.trim(),
                     title = uiModule.title,
                     showInPackageManager = uiModule.showInPackageManager
                 )
             }
+
+        val extensions = parseExtensions(manifest.extensions, uiModules)
 
         val containerDisplayName =
             if (hasLocalizedTextContent(manifest.displayName)) {
@@ -241,7 +326,8 @@ internal object ToolPkgArchiveParser {
                 sourcePath = sourcePath,
                 subpackages = subpackageRuntimes,
                 resources = resources,
-                uiModules = uiModules
+                uiModules = uiModules,
+                extensions = extensions
             )
 
         return ToolPkgLoadResult(
@@ -369,6 +455,131 @@ internal object ToolPkgArchiveParser {
 
         val jsonConfig = Json { ignoreUnknownKeys = true }
         return jsonConfig.decodeFromString<ToolPkgManifest>(manifestJson)
+    }
+
+    private fun parseExtensions(
+        manifestExtensions: ToolPkgManifestExtensions,
+        uiModules: List<ToolPkgUiModuleRuntime>
+    ): ToolPkgExtensionsRuntime {
+        val routeIds = linkedSetOf<String>()
+        val attachmentIds = linkedSetOf<String>()
+        val chatSettingBarIds = linkedSetOf<String>()
+        val chatHookIds = linkedSetOf<String>()
+        val availableUiModuleIds = uiModules.map { it.id }.toSet()
+
+        val routes =
+            manifestExtensions.routes.map { extension ->
+                val id = validateExtensionId(extension.id, "extensions.routes.id", routeIds)
+                val uiModuleId = extension.uiModuleId.trim()
+                if (uiModuleId.isBlank()) {
+                    throw IllegalArgumentException("extensions.routes.ui_module_id is required for '$id'")
+                }
+                if (!availableUiModuleIds.contains(uiModuleId)) {
+                    throw IllegalArgumentException(
+                        "extensions.routes.ui_module_id '$uiModuleId' not found for '$id'"
+                    )
+                }
+                ToolPkgRouteExtensionRuntime(
+                    id = id,
+                    uiModuleId = uiModuleId,
+                    navGroup = extension.navGroup.trim().ifBlank { "primary" },
+                    order = extension.order,
+                    icon = extension.icon.trim()
+                )
+            }
+
+        val attachments =
+            manifestExtensions.attachments.map { extension ->
+                val id =
+                    validateExtensionId(extension.id, "extensions.attachments.id", attachmentIds)
+                ToolPkgAttachmentExtensionRuntime(
+                    id = id,
+                    title =
+                        if (hasLocalizedTextContent(extension.title)) {
+                            extension.title
+                        } else {
+                            LocalizedText.of(id)
+                        },
+                    icon = extension.icon.trim(),
+                    handler = validateExtensionHandler(extension.handler, "extensions.attachments.handler", id)
+                )
+            }
+
+        val chatSettingBars =
+            manifestExtensions.chatSettingBars.map { extension ->
+                val id =
+                    validateExtensionId(
+                        extension.id,
+                        "extensions.chat_setting_bars.id",
+                        chatSettingBarIds
+                    )
+                ToolPkgChatSettingBarExtensionRuntime(
+                    id = id,
+                    title =
+                        if (hasLocalizedTextContent(extension.title)) {
+                            extension.title
+                        } else {
+                            LocalizedText.of(id)
+                        },
+                    icon = extension.icon.trim(),
+                    handler =
+                        validateExtensionHandler(
+                            extension.handler,
+                            "extensions.chat_setting_bars.handler",
+                            id
+                        )
+                )
+            }
+
+        val chatHooks =
+            manifestExtensions.chatHooks.map { extension ->
+                val id =
+                    validateExtensionId(extension.id, "extensions.chat_hooks.id", chatHookIds)
+                val event = extension.event.trim()
+                if (event.isBlank()) {
+                    throw IllegalArgumentException("extensions.chat_hooks.event is required for '$id'")
+                }
+                ToolPkgChatHookExtensionRuntime(
+                    id = id,
+                    event = event,
+                    handler = validateExtensionHandler(extension.handler, "extensions.chat_hooks.handler", id)
+                )
+            }
+
+        return ToolPkgExtensionsRuntime(
+            routes = routes,
+            attachments = attachments,
+            chatSettingBars = chatSettingBars,
+            chatHooks = chatHooks
+        )
+    }
+
+    private fun validateExtensionId(
+        id: String,
+        fieldName: String,
+        idRegistry: MutableSet<String>
+    ): String {
+        val normalized = id.trim()
+        if (normalized.isBlank()) {
+            throw IllegalArgumentException("$fieldName is required")
+        }
+        val duplicateKey = normalized.lowercase()
+        if (!idRegistry.add(duplicateKey)) {
+            throw IllegalArgumentException("$fieldName duplicated: $normalized")
+        }
+        return normalized
+    }
+
+    private fun validateExtensionHandler(handler: String, fieldName: String, id: String): String {
+        val normalized = handler.trim()
+        if (normalized.isBlank()) {
+            throw IllegalArgumentException("$fieldName is required for '$id'")
+        }
+        val handlerParts = normalized.split(':', limit = 2)
+        if (handlerParts.size != 2 || handlerParts[0].isBlank() || handlerParts[1].isBlank()) {
+            throw IllegalArgumentException("$fieldName must use '<package>:<tool>' format for '$id'")
+        }
+        return normalized
     }
 
     private fun hasLocalizedTextContent(text: LocalizedText?): Boolean {

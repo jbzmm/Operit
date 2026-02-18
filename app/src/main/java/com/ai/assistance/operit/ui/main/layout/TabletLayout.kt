@@ -14,8 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
+import com.ai.assistance.operit.ui.main.ToolPkgRouteNavGroup
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.CollapsedDrawerContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
@@ -32,6 +34,8 @@ fun TabletLayout(
         isLoading: Boolean,
         navGroups: List<NavGroup>,
         navItems: List<NavItem>,
+        toolPkgRouteGroups: List<ToolPkgRouteNavGroup>,
+        toolPkgRoutes: List<PackageManager.ToolPkgRouteExtension>,
         isNetworkAvailable: Boolean,
         networkType: String,
         navController: androidx.navigation.NavController,
@@ -43,6 +47,7 @@ fun TabletLayout(
         onScreenChange: (Screen) -> Unit,
         onNavItemChange: (NavItem) -> Unit,
         onDrawerItemSelected: (Screen, NavItem) -> Unit,
+        onToolPkgRouteSelected: (PackageManager.ToolPkgRouteExtension) -> Unit,
         onToggleSidebar: () -> Unit,
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
@@ -93,20 +98,25 @@ fun TabletLayout(
                         if (isTabletSidebarExpanded) {
                                 DrawerContent(
                                         navGroups = navGroups,
+                                        toolPkgRouteGroups = toolPkgRouteGroups,
                                         currentScreen = currentScreen,
                                         selectedItem = selectedItem,
                                         isNetworkAvailable = isNetworkAvailable,
                                         networkType = networkType,
                                         scope = scope,
                                         drawerState = drawerState,
-                                        onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
+                                        onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) },
+                                        onToolPkgRouteSelected = onToolPkgRouteSelected
                                 )
                         } else {
                                 CollapsedDrawerContent(
                                         navItems = navItems,
+                                        toolPkgRoutes = toolPkgRoutes,
+                                        currentScreen = currentScreen,
                                         selectedItem = selectedItem,
                                         isNetworkAvailable = isNetworkAvailable,
-                                        onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
+                                        onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) },
+                                        onToolPkgRouteSelected = onToolPkgRouteSelected
                                 )
                         }
                 }

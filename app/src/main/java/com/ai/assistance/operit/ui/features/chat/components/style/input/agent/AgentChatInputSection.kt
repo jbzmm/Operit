@@ -104,6 +104,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.tools.ToolProgressBus
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.FunctionType
@@ -117,6 +118,7 @@ import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.common.ToolPkgUiIconResolver
 import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
@@ -145,7 +147,6 @@ fun AgentChatInputSection(
     onAttachScreenContent: () -> Unit = {},
     onAttachNotifications: () -> Unit = {},
     onAttachLocation: () -> Unit = {},
-    onAttachMemory: () -> Unit = {},
     onTakePhoto: (Uri) -> Unit,
     hasBackgroundImage: Boolean = false,
     chatInputTransparent: Boolean = false,
@@ -167,8 +168,6 @@ fun AgentChatInputSection(
     onToggleAiPlanning: () -> Unit = {},
     permissionLevel: PermissionLevel = PermissionLevel.ASK,
     onTogglePermission: () -> Unit = {},
-    enableMemoryQuery: Boolean = false,
-    onToggleMemoryQuery: () -> Unit = {},
     isAutoReadEnabled: Boolean = false,
     onToggleAutoRead: () -> Unit = {},
     onToggleTools: () -> Unit = {},
@@ -180,7 +179,8 @@ fun AgentChatInputSection(
     onToggleDisableLatexDescription: () -> Unit = {},
     onNavigateToUserPreferences: () -> Unit = {},
     onNavigateToPackageManager: () -> Unit = {},
-    onManualMemoryUpdate: () -> Unit = {},
+    settingBarExtensions: List<PackageManager.ToolPkgChatSettingBarExtension> = emptyList(),
+    onTriggerSettingBarEntry: (String) -> Unit = {},
     onNavigateToModelConfig: () -> Unit = {},
 ) {
     val showTokenLimitDialog = remember { mutableStateOf(false) }
@@ -1072,8 +1072,6 @@ fun AgentChatInputSection(
                     showExtraSettingsPopup.value = false
                     onNavigateToUserPreferences()
                 },
-                enableMemoryQuery = enableMemoryQuery,
-                onToggleMemoryQuery = onToggleMemoryQuery,
                 enableAiPlanning = enableAiPlanning,
                 onToggleAiPlanning = onToggleAiPlanning,
                 isAutoReadEnabled = isAutoReadEnabled,
@@ -1092,7 +1090,8 @@ fun AgentChatInputSection(
                     showExtraSettingsPopup.value = false
                     onNavigateToPackageManager()
                 },
-                onManualMemoryUpdate = onManualMemoryUpdate,
+                settingBarExtensions = settingBarExtensions,
+                onTriggerSettingBarEntry = onTriggerSettingBarEntry,
                 onDismiss = { showExtraSettingsPopup.value = false },
             )
 
@@ -1118,8 +1117,8 @@ fun AgentChatInputSection(
                 onAttachScreenContent = onAttachScreenContent,
                 onAttachNotifications = onAttachNotifications,
                 onAttachLocation = onAttachLocation,
-                onAttachMemory = onAttachMemory,
                 onTakePhoto = onTakePhoto,
+                userQuery = userMessage.text,
                 onDismiss = { setShowAttachmentPanel(false) },
             )
 
@@ -1709,8 +1708,6 @@ private fun AgentExtraSettingsPopup(
     currentProfileId: String,
     onSelectMemory: (String) -> Unit,
     onManageMemory: () -> Unit,
-    enableMemoryQuery: Boolean,
-    onToggleMemoryQuery: () -> Unit,
     enableAiPlanning: Boolean,
     onToggleAiPlanning: () -> Unit,
     isAutoReadEnabled: Boolean,
@@ -1726,7 +1723,8 @@ private fun AgentExtraSettingsPopup(
     disableLatexDescription: Boolean,
     onToggleDisableLatexDescription: () -> Unit,
     onManageTools: () -> Unit,
-    onManualMemoryUpdate: () -> Unit,
+    settingBarExtensions: List<PackageManager.ToolPkgChatSettingBarExtension>,
+    onTriggerSettingBarEntry: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (!visible) return
@@ -1789,21 +1787,16 @@ private fun AgentExtraSettingsPopup(
                         onManageClick = onManageMemory,
                     )
 
-                    AgentSimpleToggleSettingItem(
-                        title = stringResource(R.string.memory_attachment),
-                        icon = if (enableMemoryQuery) Icons.Rounded.Link else Icons.Outlined.LinkOff,
-                        isChecked = enableMemoryQuery,
-                        onToggle = onToggleMemoryQuery,
-                    )
-
-                    AgentActionSettingItem(
-                        title = stringResource(R.string.manual_memory_update),
-                        icon = Icons.Outlined.Save,
-                        onClick = {
-                            onManualMemoryUpdate()
-                            onDismiss()
-                        },
-                    )
+                    settingBarExtensions.forEach { extension ->
+                        AgentActionSettingItem(
+                            title = extension.title,
+                            icon = ToolPkgUiIconResolver.resolve(extension.icon),
+                            onClick = {
+                                onTriggerSettingBarEntry(extension.id)
+                                onDismiss()
+                            },
+                        )
+                    }
 
                     AgentSimpleToggleSettingItem(
                         title = stringResource(R.string.ai_planning_mode),

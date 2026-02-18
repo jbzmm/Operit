@@ -1762,6 +1762,134 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun listRouteExtensionsJson(): String {
+            return JsNativeInterfaceDelegates.listRouteExtensionsJson(
+                    packageManager = packageManager
+            )
+        }
+
+        @JavascriptInterface
+        fun listAttachmentExtensionsJson(): String {
+            return JsNativeInterfaceDelegates.listAttachmentExtensionsJson(
+                    packageManager = packageManager
+            )
+        }
+
+        @JavascriptInterface
+        fun listChatSettingBarExtensionsJson(): String {
+            return JsNativeInterfaceDelegates.listChatSettingBarExtensionsJson(
+                    packageManager = packageManager
+            )
+        }
+
+        @JavascriptInterface
+        fun listChatHookExtensionsJson(event: String): String {
+            return JsNativeInterfaceDelegates.listChatHookExtensionsJson(
+                    packageManager = packageManager,
+                    event = event
+            )
+        }
+
+        @JavascriptInterface
+        fun getActiveProfileId(): String {
+            return JsNativeInterfaceDelegates.getActiveProfileId(
+                    context = context
+            )
+        }
+
+        @JavascriptInterface
+        fun navigateToRoute(routeId: String, argsJson: String): String {
+            return JsNativeInterfaceDelegates.navigateToRoute(
+                    packageManager = packageManager,
+                    routeId = routeId,
+                    argsJson = argsJson
+            )
+        }
+
+        @JavascriptInterface
+        fun triggerAttachmentEntry(entryId: String, payloadJson: String): String {
+            return JsNativeInterfaceDelegates.triggerAttachmentEntry(
+                    context = context,
+                    packageManager = packageManager,
+                    entryId = entryId,
+                    payloadJson = payloadJson
+            )
+        }
+
+        @JavascriptInterface
+        fun triggerChatSettingBarEntry(entryId: String, payloadJson: String): String {
+            return JsNativeInterfaceDelegates.triggerChatSettingBarEntry(
+                    context = context,
+                    packageManager = packageManager,
+                    entryId = entryId,
+                    payloadJson = payloadJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreGet(namespace: String, key: String): String {
+            return JsNativeInterfaceDelegates.datastoreGet(
+                    context = context,
+                    namespace = namespace,
+                    key = key
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreSet(namespace: String, key: String, valueJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreSet(
+                    context = context,
+                    namespace = namespace,
+                    key = key,
+                    valueJson = valueJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreBatchSet(namespace: String, entriesJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreBatchSet(
+                    context = context,
+                    namespace = namespace,
+                    entriesJson = entriesJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreObserve(namespace: String, keysJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreObserve(
+                    context = context,
+                    namespace = namespace,
+                    keysJson = keysJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreSqlQuery(sql: String, paramsJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreSqlQuery(
+                    context = context,
+                    sql = sql,
+                    paramsJson = paramsJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreSqlExecute(sql: String, paramsJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreSqlExecute(
+                    context = context,
+                    sql = sql,
+                    paramsJson = paramsJson
+            )
+        }
+
+        @JavascriptInterface
+        fun datastoreSqlTransaction(operationsJson: String): String {
+            return JsNativeInterfaceDelegates.datastoreSqlTransaction(
+                    context = context,
+                    operationsJson = operationsJson
+            )
+        }
+
+        @JavascriptInterface
         fun registerImageFromBase64(base64: String, mimeType: String): String {
             return try {
                 val finalMime = if (mimeType.isNotBlank()) mimeType else "image/png"

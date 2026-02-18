@@ -44,12 +44,10 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.CharacterCardChatStats
-import com.ai.assistance.operit.data.model.ImportStrategy
 import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
-import com.ai.assistance.operit.data.repository.MemoryRepository
 import com.ai.assistance.operit.ui.features.settings.components.CharacterCardAssignDialog
 import java.util.*
 import kotlinx.coroutines.flow.collectLatest

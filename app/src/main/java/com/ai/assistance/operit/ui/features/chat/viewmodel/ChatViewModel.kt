@@ -177,7 +177,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val enableThinkingMode: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingMode }
     val enableThinkingGuidance: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingGuidance }
     val thinkingQualityLevel: StateFlow<Int> by lazy { apiConfigDelegate.thinkingQualityLevel }
-    val enableMemoryQuery: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryQuery }
+    val enableMemoryFeatures: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryFeatures }
     val enableTools: StateFlow<Boolean> by lazy { apiConfigDelegate.enableTools }
     val toolPromptVisibility: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.toolPromptVisibility }
     val disableStreamOutput: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStreamOutput }
@@ -1440,38 +1440,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error capturing location", e)
                 uiStateDelegate.showToast(context.getString(R.string.chat_fetch_location_failed, e.message ?: ""))
-                val currentChatId = chatHistoryDelegate.currentChatId.value
-                if (currentChatId != null) {
-                    messageProcessingDelegate.setInputProcessingStateForChat(currentChatId, InputProcessingState.Idle)
-                }
-            }
-        }
-    }
-
-    /**
-     * 捕获记忆文件夹作为附件
-     */
-    fun captureMemoryFolders(folderPaths: List<String>) {
-        viewModelScope.launch {
-            try {
-                messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
-                val currentChatId = chatHistoryDelegate.currentChatId.value
-                if (currentChatId == null) return@launch
-                // 显示记忆文件夹附着进度
-                messageProcessingDelegate.setInputProcessingStateForChat(
-                    currentChatId,
-                    InputProcessingState.Processing(context.getString(R.string.chat_attaching_memory_folders))
-                )
-                uiStateDelegate.showToast(context.getString(R.string.chat_attaching_memory_folders))
-
-                // 直接委托给attachmentDelegate执行
-                attachmentDelegate.captureMemoryFolders(folderPaths)
-
-                // 清除进度显示
-                messageProcessingDelegate.setInputProcessingStateForChat(currentChatId, InputProcessingState.Idle)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "附着记忆文件夹失败", e)
-                uiStateDelegate.showErrorMessage(context.getString(R.string.chat_attach_memory_folders_failed, e.message ?: ""))
                 val currentChatId = chatHistoryDelegate.currentChatId.value
                 if (currentChatId != null) {
                     messageProcessingDelegate.setInputProcessingStateForChat(currentChatId, InputProcessingState.Idle)

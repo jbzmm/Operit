@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.rememberNavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.core.tools.packTool.ToolPkgRouteDispatcher
 import com.ai.assistance.operit.data.announcement.RemoteAnnouncementDisplay
 import com.ai.assistance.operit.data.announcement.RemoteAnnouncementRepository
 import com.ai.assistance.operit.data.mcp.MCPRepository
@@ -50,7 +53,13 @@ import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
 val LocalTopBarActions = compositionLocalOf<(@Composable (RowScope.() -> Unit)) -> Unit> { {} }
 
-data class NavGroup(@StringRes val titleResId: Int, val items: List<NavItem>)
+data class NavGroup(val key: String, @StringRes val titleResId: Int, val items: List<NavItem>)
+
+data class ToolPkgRouteNavGroup(
+    val key: String,
+    val title: String,
+    val routes: List<PackageManager.ToolPkgRouteExtension>
+)
 
 @Composable
 fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandler? = null) {
@@ -58,6 +67,8 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resolvedToolHandler = remember { toolHandler ?: AIToolHandler.getInstance(context) }
+    val packageManager = remember { PackageManager.getInstance(context, resolvedToolHandler) }
     val remoteAnnouncementRepository = remember { RemoteAnnouncementRepository() }
     val remoteAnnouncementPreferences = remember { RemoteAnnouncementPreferences(context) }
 
@@ -135,6 +146,33 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
         navigateTo(Screen.TokenConfig)
     }
 
+    DisposableEffect(packageManager, scope) {
+        ToolPkgRouteDispatcher.registerNavigator { routeId, _ ->
+            val extension =
+                packageManager.getToolPkgRouteExtensions()
+                    .firstOrNull { it.id.equals(routeId, ignoreCase = true) }
+                    ?: return@registerNavigator false
+
+            scope.launch {
+                navigateTo(
+                    Screen.ToolPkgComposeDsl(
+                        containerPackageName = extension.containerPackageName,
+                        uiModuleId = extension.uiModuleId,
+                        title = extension.title,
+                        routeId = extension.id,
+                        parentScreen = null,
+                        navItem = null
+                    )
+                )
+            }
+            true
+        }
+
+        onDispose {
+            ToolPkgRouteDispatcher.registerNavigator(null)
+        }
+    }
+
     // Register system back handler to use our custom back stack.
     // 只在返回栈不为空且当前屏幕不是AI对话时启用返回处理
     BackHandler(enabled = backStack.isNotEmpty() && currentScreen !is Screen.AiChat, onBack = { goBack() })
@@ -171,25 +209,27 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     // Navigation items grouped by category
     val navGroups = listOf(
         NavGroup(
-            R.string.nav_group_ai_features,
-            listOf(
+            key = "primary",
+            titleResId = R.string.nav_group_ai_features,
+            items = listOf(
                 NavItem.AiChat,
                 NavItem.AssistantConfig,
-                NavItem.Packages,
-                NavItem.MemoryBase
+                NavItem.Packages
             )
         ),
         NavGroup(
-            R.string.nav_group_tools,
-            listOf(
+            key = "tools",
+            titleResId = R.string.nav_group_tools,
+            items = listOf(
                 NavItem.Toolbox,
                 NavItem.ShizukuCommands,
                 NavItem.Workflow,
             )
         ),
         NavGroup(
-            R.string.nav_group_system,
-            listOfNotNull(
+            key = "system",
+            titleResId = R.string.nav_group_system,
+            items = listOfNotNull(
                 NavItem.Settings,
                 NavItem.Help,
                 NavItem.About,
@@ -198,8 +238,49 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
         )
     )
 
+    val toolPkgRouteExtensions = packageManager.getToolPkgRouteExtensions()
+    val builtInGroupTitles =
+        mapOf(
+            "primary" to stringResource(R.string.nav_group_ai_features),
+            "tools" to stringResource(R.string.nav_group_tools),
+            "system" to stringResource(R.string.nav_group_system)
+        )
+    val toolPkgRouteGroups =
+        toolPkgRouteExtensions
+            .groupBy { extension -> extension.navGroup.trim().lowercase().ifBlank { "extensions" } }
+            .map { (key, routes) ->
+                ToolPkgRouteNavGroup(
+                    key = key,
+                    title = builtInGroupTitles[key] ?: key,
+                    routes = routes
+                )
+            }
+            .sortedWith(
+                compareBy<ToolPkgRouteNavGroup>(
+                    { if (it.key == "primary") 0 else if (it.key == "tools") 1 else if (it.key == "system") 2 else 3 },
+                    { it.title }
+                )
+            )
+
     // Flattened list for components that need it
     val navItems = navGroups.flatMap { it.items }
+
+    fun navigateToToolPkgRoute(
+        extension: PackageManager.ToolPkgRouteExtension,
+        fromDrawer: Boolean = true
+    ) {
+        navigateTo(
+            Screen.ToolPkgComposeDsl(
+                containerPackageName = extension.containerPackageName,
+                uiModuleId = extension.uiModuleId,
+                title = extension.title,
+                routeId = extension.id,
+                parentScreen = null,
+                navItem = null
+            ),
+            fromDrawer = fromDrawer
+        )
+    }
 
     // Network state monitoring
     var isNetworkAvailable by remember { mutableStateOf(NetworkUtils.isNetworkAvailable(context)) }
@@ -256,6 +337,8 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     isLoading = isLoading,
                     navGroups = navGroups,
                     navItems = navItems,
+                    toolPkgRouteGroups = toolPkgRouteGroups,
+                    toolPkgRoutes = toolPkgRouteExtensions,
                     isNetworkAvailable = isNetworkAvailable,
                     networkType = networkType,
                     navController = navController,
@@ -270,6 +353,9 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     },
                     onDrawerItemSelected = { screen, _ ->
                         navigateTo(screen, fromDrawer = true)
+                    },
+                    onToolPkgRouteSelected = { extension ->
+                        navigateToToolPkgRoute(extension, fromDrawer = true)
                     },
                     onToggleSidebar = {
                         isTabletSidebarExpanded = !isTabletSidebarExpanded
@@ -287,6 +373,7 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     selectedItem = selectedItem,
                     isLoading = isLoading,
                     navGroups = navGroups,
+                    toolPkgRouteGroups = toolPkgRouteGroups,
                     isNetworkAvailable = isNetworkAvailable,
                     networkType = networkType,
                     drawerWidth = drawerWidth,
@@ -300,6 +387,9 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     },
                     onDrawerItemSelected = { screen, _ ->
                         navigateTo(screen, fromDrawer = true)
+                    },
+                    onToolPkgRouteSelected = { extension ->
+                        navigateToToolPkgRoute(extension, fromDrawer = true)
                     },
                     navigateToTokenConfig = ::navigateToTokenConfig,
                     canGoBack = canGoBack,

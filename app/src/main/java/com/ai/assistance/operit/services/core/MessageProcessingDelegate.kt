@@ -237,7 +237,7 @@ class MessageProcessingDelegate(
             roleCardId: String,
             enableThinking: Boolean = false,
             thinkingGuidance: Boolean = false,
-            enableMemoryQuery: Boolean = true, // 新增参数
+            enableMemoryFeatures: Boolean = true, // 新增参数
             enableWorkspaceAttachment: Boolean = false, // 新增工作区附着参数
             maxTokens: Int,
             tokenUsageThreshold: Double,
@@ -291,7 +291,7 @@ class MessageProcessingDelegate(
                 messageText,
                 proxySenderNameOverride,
                 attachments,
-                enableMemoryQuery,
+                enableMemoryFeatures,
                 enableWorkspaceAttachment,
                 workspacePath,
                 workspaceEnv,
@@ -438,7 +438,7 @@ class MessageProcessingDelegate(
                     promptFunctionType = promptFunctionType,
                     enableThinking = enableThinking,
                     thinkingGuidance = thinkingGuidance,
-                    enableMemoryQuery = enableMemoryQuery, // Pass it here
+                    enableMemoryFeatures = enableMemoryFeatures, // Pass it here
                     maxTokens = effectiveMaxTokens,
                     tokenUsageThreshold = effectiveTokenUsageThreshold,
                     onNonFatalError = { error ->

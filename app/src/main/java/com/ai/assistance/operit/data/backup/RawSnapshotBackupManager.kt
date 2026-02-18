@@ -474,14 +474,6 @@ object RawSnapshotBackupManager {
                 }
             }
 
-            if (!relNormalized.contains('/')) {
-                if (relNormalized.startsWith("memory_hnsw_") && relNormalized.endsWith(".idx")) {
-                    return true
-                }
-                if (relNormalized.startsWith("doc_index_") && relNormalized.endsWith(".hnsw")) {
-                    return true
-                }
-            }
         }
 
         return false

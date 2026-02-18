@@ -1,6 +1,11 @@
 package com.ai.assistance.operit.ui.features.toolbox.screens
 
 import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +50,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
@@ -69,6 +82,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 private const val TAG = "ToolPkgComposeDslScreen"
 
@@ -567,6 +585,13 @@ private fun RenderComposeDslNode(
                 modifier = applyCommonModifier(Modifier, props)
             )
         }
+        "graphcanvas" -> {
+            RenderGraphCanvasNode(
+                node = node,
+                onAction = onAction,
+                nodePath = nodePath
+            )
+        }
         "lazycolumn" -> {
             val spacing = props.dp("spacing")
             LazyColumn(
@@ -615,6 +640,392 @@ private fun RenderComposeDslNode(
             )
         }
     }
+}
+
+private data class GraphCanvasNodeSpec(
+    val id: String,
+    val label: String,
+    val x: Float,
+    val y: Float,
+    val radius: Float,
+    val colorToken: String?,
+    val selected: Boolean
+)
+
+private data class GraphCanvasEdgeSpec(
+    val id: String,
+    val sourceId: String,
+    val targetId: String,
+    val weight: Float,
+    val colorToken: String?,
+    val selected: Boolean
+)
+
+@Composable
+private fun RenderGraphCanvasNode(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String
+) {
+    val props = node.props
+    val nodes = remember(props["nodes"]) { parseGraphCanvasNodes(props["nodes"]) }
+    val edges = remember(props["edges"]) { parseGraphCanvasEdges(props["edges"]) }
+
+    val onNodeClickActionId = ToolPkgComposeDslParser.extractActionId(props["onNodeClick"])
+    val onEdgeClickActionId = ToolPkgComposeDslParser.extractActionId(props["onEdgeClick"])
+    val onBackgroundClickActionId = ToolPkgComposeDslParser.extractActionId(props["onBackgroundClick"])
+    val onNodeDragEndActionId = ToolPkgComposeDslParser.extractActionId(props["onNodeDragEnd"])
+
+    val baseBackground =
+        props.colorOrNull("backgroundColor")
+            ?: MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    val gridColor =
+        props.colorOrNull("gridColor")
+            ?: MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f)
+    val nodeDefaultColor = MaterialTheme.colorScheme.primaryContainer
+    val nodeSelectedColor = MaterialTheme.colorScheme.primary
+    val edgeDefaultColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.85f)
+    val edgeSelectedColor = MaterialTheme.colorScheme.error
+    val nodeStrokeColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+    val labelColor = props.colorOrNull("labelColor") ?: MaterialTheme.colorScheme.onSurface
+    val nodeColorById =
+        nodes.associate { spec ->
+            spec.id to
+                if (!spec.colorToken.isNullOrBlank()) {
+                    resolveColorToken(spec.colorToken ?: "")
+                } else {
+                    null
+                }
+        }
+    val edgeColorById =
+        edges.associate { spec ->
+            spec.id to
+                if (!spec.colorToken.isNullOrBlank()) {
+                    resolveColorToken(spec.colorToken ?: "")
+                } else {
+                    null
+                }
+        }
+
+    val layoutSignature =
+        remember(nodes) {
+            nodes.joinToString("|") { spec ->
+                "${spec.id}:${spec.x.toInt()},${spec.y.toInt()},${spec.radius.toInt()},${spec.selected}"
+            }
+        }
+    var nodeOffsets by remember(nodePath, layoutSignature) {
+        mutableStateOf(nodes.associate { it.id to Offset(it.x, it.y) })
+    }
+    LaunchedEffect(nodePath, layoutSignature) {
+        nodeOffsets = nodes.associate { it.id to Offset(it.x, it.y) }
+    }
+
+    var canvasSize by remember(nodePath) { mutableStateOf(IntSize.Zero) }
+    var draggingNodeId by remember(nodePath) { mutableStateOf<String?>(null) }
+
+    val labelPaint =
+        remember(nodePath) {
+            AndroidPaint().apply {
+                isAntiAlias = true
+                textAlign = AndroidPaint.Align.CENTER
+                textSize = 26f
+            }
+        }
+    labelPaint.color = labelColor.toArgb()
+
+    val gridStep = props.floatOrNull("gridStep")?.coerceAtLeast(16f) ?: 56f
+    val edgeTapTolerance = props.floatOrNull("edgeTapTolerance")?.coerceAtLeast(6f) ?: 16f
+
+    fun nodeAt(position: Offset): GraphCanvasNodeSpec? {
+        var best: GraphCanvasNodeSpec? = null
+        var bestDistance = Float.MAX_VALUE
+        for (spec in nodes) {
+            val center = nodeOffsets[spec.id] ?: Offset(spec.x, spec.y)
+            val distance = distanceBetween(position, center)
+            if (distance <= max(12f, spec.radius) && distance < bestDistance) {
+                best = spec
+                bestDistance = distance
+            }
+        }
+        return best
+    }
+
+    fun edgeAt(position: Offset): GraphCanvasEdgeSpec? {
+        var best: GraphCanvasEdgeSpec? = null
+        var bestDistance = Float.MAX_VALUE
+        for (spec in edges) {
+            val source = nodeOffsets[spec.sourceId] ?: continue
+            val target = nodeOffsets[spec.targetId] ?: continue
+            val distance = distanceToSegment(position, source, target)
+            if (distance <= edgeTapTolerance && distance < bestDistance) {
+                best = spec
+                bestDistance = distance
+            }
+        }
+        return best
+    }
+
+    Box(
+        modifier =
+            applyCommonModifier(Modifier.fillMaxWidth().height(props.dp("height", 360.dp)), props)
+                .background(baseBackground)
+                .onSizeChanged { canvasSize = it }
+                .pointerInput(
+                    nodePath,
+                    layoutSignature,
+                    onNodeClickActionId,
+                    onEdgeClickActionId,
+                    onBackgroundClickActionId
+                ) {
+                    detectTapGestures { tapOffset ->
+                        val tappedNode = nodeAt(tapOffset)
+                        if (tappedNode != null) {
+                            if (!onNodeClickActionId.isNullOrBlank()) {
+                                val center =
+                                    nodeOffsets[tappedNode.id] ?: Offset(tappedNode.x, tappedNode.y)
+                                onAction(
+                                    onNodeClickActionId,
+                                    mapOf(
+                                        "id" to tappedNode.id,
+                                        "x" to center.x,
+                                        "y" to center.y
+                                    )
+                                )
+                            }
+                            return@detectTapGestures
+                        }
+
+                        val tappedEdge = edgeAt(tapOffset)
+                        if (tappedEdge != null) {
+                            if (!onEdgeClickActionId.isNullOrBlank()) {
+                                onAction(
+                                    onEdgeClickActionId,
+                                    mapOf(
+                                        "id" to tappedEdge.id,
+                                        "sourceId" to tappedEdge.sourceId,
+                                        "targetId" to tappedEdge.targetId
+                                    )
+                                )
+                            }
+                            return@detectTapGestures
+                        }
+
+                        if (!onBackgroundClickActionId.isNullOrBlank()) {
+                            onAction(
+                                onBackgroundClickActionId,
+                                mapOf(
+                                    "x" to tapOffset.x,
+                                    "y" to tapOffset.y
+                                )
+                            )
+                        }
+                    }
+                }
+                .pointerInput(nodePath, layoutSignature, canvasSize.width, canvasSize.height, onNodeDragEndActionId) {
+                    detectDragGestures(
+                        onDragStart = { start ->
+                            draggingNodeId = nodeAt(start)?.id
+                        },
+                        onDragCancel = {
+                            draggingNodeId = null
+                        },
+                        onDragEnd = {
+                            val id = draggingNodeId
+                            if (!id.isNullOrBlank() && !onNodeDragEndActionId.isNullOrBlank()) {
+                                val center = nodeOffsets[id] ?: Offset.Zero
+                                onAction(
+                                    onNodeDragEndActionId,
+                                    mapOf(
+                                        "id" to id,
+                                        "x" to center.x,
+                                        "y" to center.y
+                                    )
+                                )
+                            }
+                            draggingNodeId = null
+                        }
+                    ) { change, dragAmount ->
+                        val id = draggingNodeId ?: return@detectDragGestures
+                        val current = nodeOffsets[id] ?: return@detectDragGestures
+                        val radius = nodes.firstOrNull { it.id == id }?.radius ?: 24f
+                        val maxX = max(radius, canvasSize.width.toFloat() - radius)
+                        val maxY = max(radius, canvasSize.height.toFloat() - radius)
+                        val next =
+                            Offset(
+                                x = (current.x + dragAmount.x).coerceIn(radius, maxX),
+                                y = (current.y + dragAmount.y).coerceIn(radius, maxY)
+                            )
+                        nodeOffsets =
+                            nodeOffsets.toMutableMap().apply {
+                                this[id] = next
+                            }
+                        change.consume()
+                    }
+                }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            var x = 0f
+            while (x <= size.width) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1f
+                )
+                x += gridStep
+            }
+
+            var y = 0f
+            while (y <= size.height) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f
+                )
+                y += gridStep
+            }
+
+            for (spec in edges) {
+                val source = nodeOffsets[spec.sourceId] ?: continue
+                val target = nodeOffsets[spec.targetId] ?: continue
+                val lineColor =
+                    when {
+                        spec.selected -> edgeSelectedColor
+                        edgeColorById[spec.id] != null -> edgeColorById[spec.id] ?: edgeDefaultColor
+                        else -> edgeDefaultColor
+                    }
+                val strokeWidth = (1.5f + (spec.weight.coerceAtLeast(0f) * 2f)).coerceIn(1.5f, 8f)
+                drawLine(
+                    color = lineColor,
+                    start = source,
+                    end = target,
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            for (spec in nodes) {
+                val center = nodeOffsets[spec.id] ?: Offset(spec.x, spec.y)
+                val fillColor =
+                    when {
+                        spec.selected -> nodeSelectedColor
+                        nodeColorById[spec.id] != null -> nodeColorById[spec.id] ?: nodeDefaultColor
+                        else -> nodeDefaultColor
+                    }
+                val radius = max(12f, spec.radius)
+                drawCircle(
+                    color = fillColor,
+                    radius = radius,
+                    center = center
+                )
+                drawCircle(
+                    color = nodeStrokeColor,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = 1.5f)
+                )
+                drawContext.canvas.nativeCanvas.drawText(
+                    spec.label.ifBlank { spec.id.take(8) },
+                    center.x,
+                    center.y + (labelPaint.textSize * 0.32f),
+                    labelPaint
+                )
+            }
+        }
+    }
+}
+
+private fun parseGraphCanvasNodes(value: Any?): List<GraphCanvasNodeSpec> {
+    if (value !is List<*>) {
+        return emptyList()
+    }
+    return value.mapNotNull { item ->
+        val map = item as? Map<*, *> ?: return@mapNotNull null
+        val id = map.stringValue("id")
+        if (id.isBlank()) {
+            return@mapNotNull null
+        }
+        GraphCanvasNodeSpec(
+            id = id,
+            label = map.stringValue("label").ifBlank { id.take(12) },
+            x = map.floatValue("x", 120f),
+            y = map.floatValue("y", 120f),
+            radius = map.floatValue("radius", 24f).coerceAtLeast(10f),
+            colorToken = map.stringValueOrNull("color"),
+            selected = map.boolValue("selected", false)
+        )
+    }
+}
+
+private fun parseGraphCanvasEdges(value: Any?): List<GraphCanvasEdgeSpec> {
+    if (value !is List<*>) {
+        return emptyList()
+    }
+    return value.mapNotNull { item ->
+        val map = item as? Map<*, *> ?: return@mapNotNull null
+        val sourceId = map.stringValue("sourceId")
+        val targetId = map.stringValue("targetId")
+        if (sourceId.isBlank() || targetId.isBlank()) {
+            return@mapNotNull null
+        }
+        GraphCanvasEdgeSpec(
+            id = map.stringValue("id").ifBlank { "${sourceId}_$targetId" },
+            sourceId = sourceId,
+            targetId = targetId,
+            weight = map.floatValue("weight", 1f),
+            colorToken = map.stringValueOrNull("color"),
+            selected = map.boolValue("selected", false)
+        )
+    }
+}
+
+private fun Map<*, *>.stringValue(key: String): String {
+    return this[key]?.toString()?.trim().orEmpty()
+}
+
+private fun Map<*, *>.stringValueOrNull(key: String): String? {
+    val normalized = stringValue(key)
+    return if (normalized.isBlank()) null else normalized
+}
+
+private fun Map<*, *>.floatValue(key: String, defaultValue: Float): Float {
+    val value = this[key] ?: return defaultValue
+    return when (value) {
+        is Number -> value.toFloat()
+        else -> value.toString().toFloatOrNull() ?: defaultValue
+    }
+}
+
+private fun Map<*, *>.boolValue(key: String, defaultValue: Boolean): Boolean {
+    val value = this[key] ?: return defaultValue
+    return when (value) {
+        is Boolean -> value
+        is Number -> value.toInt() != 0
+        else -> value.toString().equals("true", ignoreCase = true)
+    }
+}
+
+private fun distanceBetween(left: Offset, right: Offset): Float {
+    return sqrt((left.x - right.x).pow(2) + (left.y - right.y).pow(2))
+}
+
+private fun distanceToSegment(point: Offset, segmentStart: Offset, segmentEnd: Offset): Float {
+    val dx = segmentEnd.x - segmentStart.x
+    val dy = segmentEnd.y - segmentStart.y
+    if (abs(dx) < 0.0001f && abs(dy) < 0.0001f) {
+        return distanceBetween(point, segmentStart)
+    }
+    val t =
+        (((point.x - segmentStart.x) * dx) + ((point.y - segmentStart.y) * dy)) /
+            ((dx * dx) + (dy * dy))
+    val clamped = min(1f, max(0f, t))
+    val projection =
+        Offset(
+            x = segmentStart.x + (clamped * dx),
+            y = segmentStart.y + (clamped * dy)
+        )
+    return distanceBetween(point, projection)
 }
 
 private fun applyCommonModifier(base: Modifier, props: Map<String, Any?>): Modifier {

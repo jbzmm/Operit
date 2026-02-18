@@ -177,7 +177,6 @@ android {
 }
 
 dependencies {
-    implementation("com.github.jelmerk:hnswlib-core:1.2.1")
     implementation(project(":dragonbones"))
     implementation(project(":terminal"))
     implementation(project(":mnn"))
@@ -289,10 +288,6 @@ dependencies {
     // 中文分词库 - Jieba Android
     implementation(libs.jieba)
 
-    // 向量搜索库 - 轻量级实现，适合Android
-    implementation(libs.hnswlib.core)
-    implementation(libs.hnswlib.utils)
-    
     // 用于向量嵌入的TF Lite (如果需要自定义嵌入)
     implementation(libs.tensorflow.lite)
     implementation(libs.mediapipe.tasks.text)

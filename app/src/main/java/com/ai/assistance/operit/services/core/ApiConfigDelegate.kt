@@ -58,9 +58,9 @@ class ApiConfigDelegate(
             MutableStateFlow(ApiPreferences.DEFAULT_THINKING_QUALITY_LEVEL)
     val thinkingQualityLevel: StateFlow<Int> = _thinkingQualityLevel.asStateFlow()
 
-    private val _enableMemoryQuery =
+    private val _enableMemoryFeatures =
             MutableStateFlow(ApiPreferences.DEFAULT_ENABLE_MEMORY_QUERY)
-    val enableMemoryQuery: StateFlow<Boolean> = _enableMemoryQuery.asStateFlow()
+    val enableMemoryFeatures: StateFlow<Boolean> = _enableMemoryFeatures.asStateFlow()
 
     private val _enableAutoRead =
             MutableStateFlow(ApiPreferences.DEFAULT_ENABLE_AUTO_READ)
@@ -233,8 +233,8 @@ class ApiConfigDelegate(
 
         // Collect memory attachment setting
         coroutineScope.launch {
-            apiPreferences.enableMemoryQueryFlow.collect { enabled ->
-                _enableMemoryQuery.value = enabled
+            apiPreferences.enableMemoryFeaturesFlow.collect { enabled ->
+                _enableMemoryFeatures.value = enabled
             }
         }
 
@@ -399,9 +399,9 @@ class ApiConfigDelegate(
     /** 切换记忆附着 */
     fun toggleMemoryQuery() {
         coroutineScope.launch {
-            val newValue = !_enableMemoryQuery.value
-            apiPreferences.saveEnableMemoryQuery(newValue)
-            _enableMemoryQuery.value = newValue
+            val newValue = !_enableMemoryFeatures.value
+            apiPreferences.saveenableMemoryFeatures(newValue)
+            _enableMemoryFeatures.value = newValue
         }
     }
 

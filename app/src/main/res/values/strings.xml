@@ -4331,7 +4331,7 @@
     <string name="add_tag">添加标签</string>
     <string name="add_to_tag_library">将 \'%1$s\' 添加到你的标签库中。</string>
     <string name="save_and_resend">保存并重发</string>
-    <string name="update_memory">更新记忆</string>
+    <string name="apply_memory_changes">更新记忆</string>
     <string name="chat_message">聊天消息</string>
     <string name="share_failed_log">分享失败</string>
     <string name="generate_image_failed">生成图片失败: %1$s</string>
@@ -4821,8 +4821,6 @@
     <string name="toolreg_execute_in_terminal_session_desc">在终端会话「%1$s」中执行: %2$s</string>
     <string name="toolreg_close_terminal_session_desc">关闭终端会话: %1$s</string>
     <string name="toolreg_input_in_terminal_session_desc">向终端会话「%1$s」写入输入（control=%2$s）</string>
-    <string name="toolreg_query_memory_desc">查询问题库: %1$s</string>
-    <string name="toolreg_get_memory_by_title_desc">根据标题获取记忆: %1$s</string>
 
     <string name="toolreg_user_pref_birth_date">生日</string>
     <string name="toolreg_user_pref_gender">性别</string>
@@ -4832,10 +4830,6 @@
     <string name="toolreg_user_pref_ai_style">AI风格</string>
     <string name="toolreg_list_separator">、</string>
     <string name="toolreg_update_user_preferences_desc">更新用户偏好: %1$s</string>
-    <string name="toolreg_create_memory_desc">创建记忆: %1$s</string>
-    <string name="toolreg_update_memory_desc">更新记忆: %1$s -&gt; %2$s</string>
-    <string name="toolreg_delete_memory_desc">删除记忆: %1$s</string>
-    <string name="toolreg_link_memories_desc">链接记忆: 「%1$s」 -&gt; 「%2$s」 (类型: %3$s)</string>
     <string name="toolreg_use_package_desc">使用工具包: %1$s</string>
     <string name="toolreg_calculate_desc">计算表达式: %1$s</string>
     <string name="toolreg_visit_web_search_link_desc">访问先前搜索结果中的链接 #%1$s (Visit Key: %2$s...)</string>
@@ -5042,13 +5036,9 @@
     <string name="memory_error_move_memories">移动记忆失败</string>
     <string name="memory_error_move_memories_detail">移动记忆失败: %1$s</string>
     <string name="memory_error_import_document">导入文档失败: %1$s</string>
-    <string name="memory_error_create_memory">创建记忆失败: %1$s</string>
-    <string name="memory_error_update_memory">更新记忆失败: %1$s</string>
-    <string name="memory_error_delete_memory">删除记忆失败: %1$s</string>
     <string name="memory_error_delete_selected">批量删除失败: %1$s</string>
     <string name="memory_error_update_link">更新连接失败: %1$s</string>
     <string name="memory_error_delete_link">删除连接失败: %1$s</string>
-    <string name="memory_error_link_memories">连接记忆失败: %1$s</string>
 
     <!-- Memory Repository -->
     <string name="memory_repository_document_node_content">这是一个文档节点，包含了文件 \'%1$s\' 的内容。</string>
@@ -6150,7 +6140,7 @@
     <string name="chat_ai_service_unavailable_memory">AI服务不可用，无法更新记忆</string>
     <string name="chat_history_empty_no_update">聊天历史为空，无需更新记忆</string>
     <string name="chat_memory_manually_updated">记忆已手动更新</string>
-    <string name="chat_manual_update_memory_failed">手动更新记忆失败: %1$s</string>
+    <string name="chat_manual_memory_sync_failed">手动更新记忆失败: %1$s</string>
     <string name="chat_summarizing_please_wait">正在总结中，请稍候</string>
     <string name="chat_conversation_summary_generated">对话总结已生成</string>
     <string name="chat_compressing_history">正在压缩历史记录...</string>

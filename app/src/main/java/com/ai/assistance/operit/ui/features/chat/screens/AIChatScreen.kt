@@ -45,6 +45,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.core.tools.packTool.ToolPkgRouteDispatcher
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
@@ -78,6 +80,9 @@ import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextRange
@@ -110,6 +115,8 @@ fun AIChatScreen(
     val focusManager = LocalFocusManager.current
 // Correctly initialize ViewModel using the viewModel() composable function
 val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(context.applicationContext) }
+    val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val packageManager = remember { PackageManager.getInstance(context, toolHandler) }
 
     // 设置权限系统的颜色方案
     LaunchedEffect(colorScheme) { actualViewModel.setPermissionSystemColorScheme(colorScheme) }
@@ -211,7 +218,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
     val thinkingQualityLevel by actualViewModel.thinkingQualityLevel.collectAsState()
-    val enableMemoryQuery by actualViewModel.enableMemoryQuery.collectAsState()
     val enableMaxContextMode by actualViewModel.enableMaxContextMode.collectAsState()
     val enableTools by actualViewModel.enableTools.collectAsState()
     val toolPromptVisibility by actualViewModel.toolPromptVisibility.collectAsState()
@@ -238,9 +244,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // 添加模型建议对话框状态
     var showModelSuggestionDialog by remember { mutableStateOf(false) }
     
-    // 添加记忆文件夹选择对话框状态
-    var showMemoryFolderDialog by remember { mutableStateOf(false) }
-
     // 当模型名称加载后，检查是否为建议更换的模型
     LaunchedEffect(modelName) {
         if (modelName.isNotBlank() && modelName.contains("deepseek-r1-0528-qwen3-8b:free", ignoreCase = true)) {
@@ -298,6 +301,40 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val historyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val settingBarExtensions = packageManager.getToolPkgChatSettingBarExtensions()
+    val triggerSettingBarEntry: (String) -> Unit = trigger@{ entryId ->
+        val extension =
+            settingBarExtensions.firstOrNull { it.id.equals(entryId, ignoreCase = true) }
+        if (extension == null) {
+            actualViewModel.showToast("未找到设置项: $entryId")
+            return@trigger
+        }
+        coroutineScope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    toolHandler.executeTool(
+                        AITool(
+                            name = extension.handler,
+                            parameters = emptyList()
+                        )
+                    )
+                }
+            if (!result.success) {
+                actualViewModel.showToast(result.error ?: "${extension.title} 执行失败")
+                return@launch
+            }
+
+            val routeId =
+                runCatching {
+                    JSONObject(result.result.toString())
+                        .optString("routeId")
+                        .trim()
+                }.getOrDefault("")
+            if (routeId.isNotBlank()) {
+                ToolPkgRouteDispatcher.dispatch(routeId, "{}")
+            }
+        }
+    }
     
 
 
@@ -583,7 +620,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                             actualViewModel.captureNotifications()
                                         },
                                         onAttachLocation = { actualViewModel.captureLocation() },
-                                        onAttachMemory = { showMemoryFolderDialog = true },
                                         onTakePhoto = { uri ->
                                             actualViewModel.handleTakenPhoto(uri)
                                         },
@@ -619,8 +655,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                                         .collectAsState()
                                                         .value,
                                         onTogglePermission = { actualViewModel.toggleMasterPermission() },
-                                        enableMemoryQuery = enableMemoryQuery,
-                                        onToggleMemoryQuery = { actualViewModel.toggleMemoryQuery() },
                                         isAutoReadEnabled = isAutoReadEnabled,
                                         onToggleAutoRead = { actualViewModel.toggleAutoRead() },
                                         onToggleTools = { actualViewModel.toggleTools() },
@@ -639,9 +673,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         },
                                         onNavigateToUserPreferences = onNavigateToUserPreferences,
                                         onNavigateToPackageManager = onNavigateToPackageManager,
-                                        onManualMemoryUpdate = {
-                                            actualViewModel.manuallyUpdateMemory()
-                                        },
+                                        settingBarExtensions = settingBarExtensions,
+                                        onTriggerSettingBarEntry = triggerSettingBarEntry,
                                         onNavigateToModelConfig = onNavigateToModelConfig,
                                 )
                             } else {
@@ -688,7 +721,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                             actualViewModel.captureNotifications()
                                         },
                                         onAttachLocation = { actualViewModel.captureLocation() },
-                                        onAttachMemory = { showMemoryFolderDialog = true },
                                         onTakePhoto = { uri ->
                                             actualViewModel.handleTakenPhoto(uri)
                                         },
@@ -842,10 +874,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     onContextLengthChange = {
                                         actualViewModel.updateContextLength(it)
                                     },
-                                    enableMemoryQuery = enableMemoryQuery,
-                                    onToggleMemoryQuery = {
-                                        actualViewModel.toggleMemoryQuery()
-                                    },
                                     enableMaxContextMode = enableMaxContextMode,
                                     onToggleEnableMaxContextMode = {
                                         actualViewModel.toggleEnableMaxContextMode()
@@ -879,9 +907,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     onToggleDisableLatexDescription = {
                                         actualViewModel.toggleDisableLatexDescription()
                                     },
-                                    onManualMemoryUpdate = {
-                                        actualViewModel.manuallyUpdateMemory()
-                                    },
+                                    settingBarExtensions = settingBarExtensions,
+                                    onTriggerSettingBarEntry = triggerSettingBarEntry,
                                     onManualSummarizeConversation = {
                                         actualViewModel.manuallySummarizeConversation()
                                     }
@@ -1150,14 +1177,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         }
     }
     
-    // 记忆文件夹选择对话框
-    MemoryFolderSelectionDialog(
-        visible = showMemoryFolderDialog,
-        onDismiss = { showMemoryFolderDialog = false },
-        onConfirm = { selectedFolders ->
-            actualViewModel.captureMemoryFolders(selectedFolders)
-        }
-    )
 }
 
 private tailrec fun Context.findActivity(): Activity? =

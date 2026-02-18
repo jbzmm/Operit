@@ -43,7 +43,6 @@ uuid = "0.8.2"
 gson = "2.10.1"
 hjson = "3.0.0"
 jieba = "1.0.2"
-hnswlib = "0.0.46"
 tensorflow = "2.10.0"
 room = "2.6.1"
 commons-compress-v2 = "1.24.0"
@@ -168,9 +167,6 @@ hjson = { group = "org.hjson", name = "hjson", version.ref = "hjson" }
 
 # NLP
 jieba = { group = "com.huaban", name = "jieba-analysis", version.ref = "jieba" }
-hnswlib-core = { group = "com.github.jelmerk", name = "hnswlib-core", version.ref = "hnswlib" }
-hnswlib-utils = { group = "com.github.jelmerk", name = "hnswlib-utils", version.ref = "hnswlib" }
-
 # Machine learning
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflow" }
 mediapipe-tasks-text = { group = "com.google.mediapipe", name = "tasks-text", version.ref = "mediapipe" }

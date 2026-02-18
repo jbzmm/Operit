@@ -342,9 +342,7 @@ data class ImageLinkData(
  * in the text Extracts trailing attachments that appear at the end of the message
  */
 private fun parseMessageContent(context: android.content.Context, content: String): MessageParseResult {
-    // First, strip out any <memory> tags so they are not displayed in the UI.
-    var cleanedContent =
-        content.replace(ChatMarkupRegex.memoryTag, "").trim()
+    var cleanedContent = content.trim()
 
     val proxySenderMatch = ChatMarkupRegex.proxySenderTag.find(cleanedContent)
     val proxySenderName = proxySenderMatch?.groupValues?.getOrNull(1)

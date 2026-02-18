@@ -36,8 +36,10 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
+import com.ai.assistance.operit.ui.main.ToolPkgRouteNavGroup
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
 import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
@@ -53,6 +55,7 @@ fun PhoneLayout(
         selectedItem: NavItem,
         isLoading: Boolean,
         navGroups: List<NavGroup>,
+        toolPkgRouteGroups: List<ToolPkgRouteNavGroup>,
         isNetworkAvailable: Boolean,
         networkType: String,
         drawerWidth: Dp,
@@ -63,6 +66,7 @@ fun PhoneLayout(
         onScreenChange: (Screen) -> Unit,
         onNavItemChange: (NavItem) -> Unit,
         onDrawerItemSelected: (Screen, NavItem) -> Unit,
+        onToolPkgRouteSelected: (PackageManager.ToolPkgRouteExtension) -> Unit,
         navigateToTokenConfig: () -> Unit,
         canGoBack: Boolean,
         onGoBack: () -> Unit,
@@ -141,17 +145,26 @@ fun PhoneLayout(
         var cachedDrawerContent by remember { mutableStateOf<@Composable () -> Unit>({}) }
 
         // 仅在相关数据变化时更新抽屉内容
-        LaunchedEffect(navGroups, currentScreen, selectedItem, isNetworkAvailable, networkType) {
+        LaunchedEffect(
+                navGroups,
+                toolPkgRouteGroups,
+                currentScreen,
+                selectedItem,
+                isNetworkAvailable,
+                networkType
+        ) {
                 cachedDrawerContent = {
                         DrawerContent(
                                 navGroups = navGroups,
+                                toolPkgRouteGroups = toolPkgRouteGroups,
                                 currentScreen = currentScreen,
                                 selectedItem = selectedItem,
                                 isNetworkAvailable = isNetworkAvailable,
                                 networkType = networkType,
                                 scope = scope,
                                 drawerState = drawerState,
-                                onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
+                                onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) },
+                                onToolPkgRouteSelected = onToolPkgRouteSelected
                         )
                 }
         }

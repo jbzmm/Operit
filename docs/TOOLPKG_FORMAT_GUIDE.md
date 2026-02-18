@@ -109,6 +109,40 @@ windows_control.toolpkg (ZIP 压缩包)
       "path": "resources/pc_agent/operit-pc-agent.zip",
       "mime": "application/zip"
     }
+  ],
+  "extensions": {
+    "routes": [
+      {
+        "id": "memory_center",
+        "ui_module_id": "memory_center",
+        "nav_group": "primary",
+        "order": 220,
+        "icon": "history"
+      }
+    ],
+    "attachments": [
+      {
+        "id": "memory_scope_attach",
+        "title": { "zh": "记忆范围", "en": "Memory Scope" },
+        "icon": "memory",
+        "handler": "memory_runtime:attachment.select_scope"
+      }
+    ],
+    "chat_setting_bars": [
+      {
+        "id": "memory_settings_entry",
+        "title": { "zh": "记忆设置", "en": "Memory Settings" },
+        "icon": "tune",
+        "handler": "memory_runtime:chatbar.open_memory_settings"
+      }
+    ],
+    "chat_hooks": [
+      {
+        "id": "memory_summary_hook",
+        "event": "after_assistant_reply",
+        "handler": "memory_runtime:hooks.after_reply"
+      }
+    ]
   ]
 }
 ```
@@ -127,6 +161,7 @@ windows_control.toolpkg (ZIP 压缩包)
 | `subpackages` | array | 否 | 子包列表，每个子包是一个独立的工具集 |
 | `ui_modules` | array | 否 | UI 模块列表，用于提供可视化界面 |
 | `resources` | array | 否 | 资源文件列表，可以是任意类型的文件 |
+| `extensions` | object | 否 | 通用扩展声明（routes/attachments/chat_setting_bars/chat_hooks） |
 
 #### 3.2.2 LocalizedText 类型
 
@@ -239,6 +274,62 @@ UI 模块提供可视化界面，用于配置、管理或展示包的功能。
 **访问资源**：
 - 在子包脚本中：通过 PackageManager API 访问
 - 在 UI 模块中：通过 `ctx.readResource(key)` 访问
+
+#### 3.2.6 Extensions（扩展入口）
+
+`extensions` 用于声明由宿主动态注册的通用入口，支持 4 类：
+
+```json
+"extensions": {
+  "routes": [
+    {
+      "id": "memory_center",
+      "ui_module_id": "memory_center",
+      "nav_group": "primary",
+      "order": 220,
+      "icon": "history"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "memory_scope_attach",
+      "title": { "zh": "记忆范围", "en": "Memory Scope" },
+      "icon": "memory",
+      "handler": "memory_runtime:attachment.select_scope"
+    }
+  ],
+  "chat_setting_bars": [
+    {
+      "id": "memory_settings_entry",
+      "title": { "zh": "记忆设置", "en": "Memory Settings" },
+      "icon": "tune",
+      "handler": "memory_runtime:chatbar.open_memory_settings"
+    }
+  ],
+  "chat_hooks": [
+    {
+      "id": "memory_summary_hook",
+      "event": "after_assistant_reply",
+      "handler": "memory_runtime:hooks.after_reply"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `routes` | array | 否 | 侧边栏/路由扩展项 |
+| `attachments` | array | 否 | 聊天附件扩展项 |
+| `chat_setting_bars` | array | 否 | 聊天输入区设置栏扩展项 |
+| `chat_hooks` | array | 否 | 聊天生命周期 Hook 扩展项 |
+
+`chat_hooks.event` 当前支持：
+- `before_send`
+- `before_model_request`
+- `after_assistant_reply`
+- `manual_action`
+
+`handler` 统一使用 `<subpackage_id>:<tool_name>` 格式，由宿主按运行时解析并调用。
 
 ## 4. 创建 ToolPkg
 
@@ -549,6 +640,57 @@ const toolName = await ctx.resolveToolName({
 await ctx.showToast('消息内容');
 await ctx.navigate('/route', { param: value });
 ctx.reportError(error);
+```
+
+#### 应用路由（`ctx.app`）
+```javascript
+const routes = await ctx.app.listRoutes();
+await ctx.app.navigateToRoute('memory_center', { from: 'chat' });
+const profileId = await ctx.app.getActiveProfileId();
+```
+
+#### 聊天扩展入口（`ctx.chat`）
+```javascript
+const entries = await ctx.chat.listAttachmentEntries();
+await ctx.chat.triggerAttachment('memory_scope_attach', { source: 'manual' });
+
+const bars = await ctx.chat.listSettingBarEntries();
+await ctx.chat.triggerSettingBar('memory_settings_entry');
+```
+
+#### 通用存储（`ctx.datastore`）
+```javascript
+const value = await ctx.datastore.get('memory.ui', 'panel_state');
+await ctx.datastore.set('memory.ui', 'panel_state', { expanded: true });
+await ctx.datastore.batchSet('memory.ui', [
+  { key: 'left_width', value: 320 },
+  { key: 'show_graph', value: true }
+]);
+const snapshot = await ctx.datastore.observe('memory.ui');
+```
+
+#### SQL 接口（`ctx.datastore.sql*`）
+```javascript
+const rows = await ctx.datastore.sqlQuery(
+  'SELECT id, title FROM memory_nodes WHERE folder_path = ? ORDER BY updated_at DESC LIMIT 50',
+  ['work/project-a']
+);
+
+await ctx.datastore.sqlExecute(
+  'UPDATE memory_nodes SET title = ?, updated_at = ? WHERE id = ?',
+  ['new title', Date.now(), nodeId]
+);
+
+await ctx.datastore.sqlTransaction([
+  {
+    sql: 'INSERT INTO memory_nodes(id, title, content, created_at, updated_at) VALUES(?,?,?,?,?)',
+    params: [id, title, content, now, now]
+  },
+  {
+    sql: 'INSERT INTO memory_embeddings(id, target_type, target_id, provider, model, dimension, vector_json, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
+    params: [embId, 'node', id, provider, model, dim, vectorJson, now, now]
+  }
+]);
 ```
 
 #### 其他

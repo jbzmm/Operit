@@ -63,7 +63,6 @@ import { FFmpeg as FFmpegType } from './ffmpeg';
 import { Tasker as TaskerType } from './tasker';
 import { Workflow as WorkflowType } from './workflow';
 import { Chat as ChatType } from './chat';
-import { Memory as MemoryType } from './memory';
 
 export { Net } from './network';
 export { System } from './system';
@@ -72,7 +71,6 @@ export { FFmpegVideoCodec, FFmpegAudioCodec, FFmpegResolution, FFmpegBitrate } f
 export { Tasker } from './tasker';
 export { Workflow } from './workflow';
 export { Chat } from './chat';
-export { Memory } from './memory';
 
 // Export Android utilities
 export {
@@ -231,7 +229,6 @@ declare global {
         Tasker: typeof TaskerType;
         Workflow: WorkflowType.Runtime;
         Chat: typeof ChatType;
-        Memory: typeof MemoryType;
         calc: (expression: string) => Promise<CalculationResultData>;
     };
 

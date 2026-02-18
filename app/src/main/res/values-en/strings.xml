@@ -4369,7 +4369,7 @@
     <string name="add_tag">Add Tag</string>
     <string name="add_to_tag_library">Add \'%1$s\' to your tag library.</string>
     <string name="save_and_resend">Save and Resend</string>
-    <string name="update_memory">Update Memory</string>
+    <string name="apply_memory_changes">Update Memory</string>
     <string name="chat_message">Chat Message</string>
     <string name="share_failed_log">Share Failed</string>
     <string name="generate_image_failed">Failed to generate image: %1$s</string>
@@ -4872,8 +4872,6 @@
     <string name="toolreg_execute_in_terminal_session_desc">Execute in terminal session [%1$s]: %2$s</string>
     <string name="toolreg_close_terminal_session_desc">Close terminal session: %1$s</string>
     <string name="toolreg_input_in_terminal_session_desc">Write input to terminal session [%1$s] (control=%2$s)</string>
-    <string name="toolreg_query_memory_desc">Query memory library: %1$s</string>
-    <string name="toolreg_get_memory_by_title_desc">Get memory by title: %1$s</string>
 
     <string name="toolreg_user_pref_birth_date">Birth date</string>
     <string name="toolreg_user_pref_gender">Gender</string>
@@ -4883,10 +4881,6 @@
     <string name="toolreg_user_pref_ai_style">AI style</string>
     <string name="toolreg_list_separator">, </string>
     <string name="toolreg_update_user_preferences_desc">Update user preferences: %1$s</string>
-    <string name="toolreg_create_memory_desc">Create memory: %1$s</string>
-    <string name="toolreg_update_memory_desc">Update memory: %1$s -&gt; %2$s</string>
-    <string name="toolreg_delete_memory_desc">Delete memory: %1$s</string>
-    <string name="toolreg_link_memories_desc">Link memories: [%1$s] -&gt; [%2$s] (type: %3$s)</string>
     <string name="toolreg_use_package_desc">Use tool package: %1$s</string>
     <string name="toolreg_calculate_desc">Calculate expression: %1$s</string>
     <string name="toolreg_visit_web_search_link_desc">Visit link #%1$s from previous search results (Visit Key: %2$s...)</string>
@@ -5194,13 +5188,9 @@
     <string name="memory_error_move_memories">Failed to move memories</string>
     <string name="memory_error_move_memories_detail">Failed to move memories: %1$s</string>
     <string name="memory_error_import_document">Failed to import document: %1$s</string>
-    <string name="memory_error_create_memory">Failed to create memory: %1$s</string>
-    <string name="memory_error_update_memory">Failed to update memory: %1$s</string>
-    <string name="memory_error_delete_memory">Failed to delete memory: %1$s</string>
     <string name="memory_error_delete_selected">Failed to batch delete: %1$s</string>
     <string name="memory_error_update_link">Failed to update link: %1$s</string>
     <string name="memory_error_delete_link">Failed to delete link: %1$s</string>
-    <string name="memory_error_link_memories">Failed to link memories: %1$s</string>
 
     <!-- Memory Repository -->
     <string name="memory_repository_document_node_content">This is a document node containing the content of file \'%1$s\'.</string>
@@ -6162,7 +6152,7 @@
     <string name="chat_ai_service_unavailable_memory">AI service unavailable, cannot update memory</string>
     <string name="chat_history_empty_no_update">Chat history is empty, no need to update memory</string>
     <string name="chat_memory_manually_updated">Memory has been manually updated</string>
-    <string name="chat_manual_update_memory_failed">Manual memory update failed: %1$s</string>
+    <string name="chat_manual_memory_sync_failed">Manual memory update failed: %1$s</string>
     <string name="chat_summarizing_please_wait">Summarizing, please wait</string>
     <string name="chat_conversation_summary_generated">Conversation summary generated</string>
     <string name="chat_compressing_history">Compressing history records...</string>
