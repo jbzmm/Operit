@@ -220,6 +220,12 @@ fun ChatArea(
     horizontalPadding: Dp = 16.dp, // 水平内边距，可自定义
     bubbleUserImageStyle: BubbleImageStyleConfig? = null,
     bubbleAiImageStyle: BubbleImageStyleConfig? = null,
+    bubbleUserRoundedCornersEnabled: Boolean = true,
+    bubbleAiRoundedCornersEnabled: Boolean = true,
+    bubbleUserContentPaddingLeft: Float = 12f,
+    bubbleUserContentPaddingRight: Float = 12f,
+    bubbleAiContentPaddingLeft: Float = 12f,
+    bubbleAiContentPaddingRight: Float = 12f,
     showChatFloatingDotsAnimation: Boolean = true,
 ) {
     // 记住当前深度状态，但当chatHistory发生变化时重置为1
@@ -311,6 +317,12 @@ fun ChatArea(
                         messageIndex = actualIndex, // 传递消息索引
                         bubbleUserImageStyle = bubbleUserImageStyle,
                         bubbleAiImageStyle = bubbleAiImageStyle,
+                        bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                        bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                        bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                        bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                        bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                        bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                     )
                 }
 
@@ -388,6 +400,12 @@ private fun MessageItem(
     messageIndex: Int, // 消息索引，用于进入多选时自动选中
     bubbleUserImageStyle: BubbleImageStyleConfig? = null,
     bubbleAiImageStyle: BubbleImageStyleConfig? = null,
+    bubbleUserRoundedCornersEnabled: Boolean = true,
+    bubbleAiRoundedCornersEnabled: Boolean = true,
+    bubbleUserContentPaddingLeft: Float = 12f,
+    bubbleUserContentPaddingRight: Float = 12f,
+    bubbleAiContentPaddingLeft: Float = 12f,
+    bubbleAiContentPaddingRight: Float = 12f,
 ) {
     val context = LocalContext.current
     var showContextMenu by remember { mutableStateOf(false) }
@@ -454,6 +472,12 @@ private fun MessageItem(
                     systemTextColor = systemTextColor,
                     userBubbleImageStyle = bubbleUserImageStyle,
                     aiBubbleImageStyle = bubbleAiImageStyle,
+                    bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                    bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                    bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                    bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                    bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                    bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                     isHidden = isHidden,
                     onRoleAvatarLongPress = onMentionRoleFromAvatar
                 )

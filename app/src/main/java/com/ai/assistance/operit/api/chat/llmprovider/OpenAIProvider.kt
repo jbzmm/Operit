@@ -1345,6 +1345,7 @@ open class OpenAIProvider(
         var lastLogTime: Long = System.currentTimeMillis(),
         var isInReasoningMode: Boolean = false,
         var hasEmittedThinkStart: Boolean = false,
+        var hasEmittedRegularContent: Boolean = false,
         var isFirstResponse: Boolean = true,
         val accumulatedToolCalls: MutableMap<Int, JSONObject> = mutableMapOf(),
         val toolCallState: ToolCallState = ToolCallState(),
@@ -1736,7 +1737,7 @@ open class OpenAIProvider(
         val hasRegular = regularContent.isNotNullOrEmpty()
 
         // 处理思考内容
-        if (hasReasoning) {
+        if (hasReasoning && !state.hasEmittedRegularContent) {
             if (!state.isInReasoningMode) {
                 state.isInReasoningMode = true
                 if (!state.hasEmittedThinkStart) {
@@ -1754,6 +1755,9 @@ open class OpenAIProvider(
                 emitter.emitTag("</think>")
                 state.hasEmittedThinkStart = false
             }
+
+            // 硬切策略：正文一旦开始输出，后续到达的推理内容全部忽略
+            state.hasEmittedRegularContent = true
 
             // 当收到第一个有效内容时，标记不再是首次响应
             if (state.isFirstResponse) {
@@ -1817,11 +1821,12 @@ open class OpenAIProvider(
                 val regularContent = message.optString("content", "")
 
                 // 先处理思考内容（如果有）
-                if (reasoningContent.isNotNullOrEmpty()) {
+                if (reasoningContent.isNotNullOrEmpty() && !state.hasEmittedRegularContent) {
                     emitter.emitThinkContent(reasoningContent)
                 }
                 // 然后处理常规内容
                 if (regularContent.isNotNullOrEmpty()) {
+                    state.hasEmittedRegularContent = true
                     emitter.emitContent(regularContent)
                 }
             }
@@ -2063,6 +2068,7 @@ open class OpenAIProvider(
                             AppLogger.d("AIService", "收到完整响应，长度: ${responseText.length}")
 
                             val emitter = StreamEmitter(receivedContent, ::emit, onTokensUpdated)
+                            var hasEmittedRegularContent = false
 
                             try {
                                 val jsonResponse = JSONObject(responseText)
@@ -2074,13 +2080,14 @@ open class OpenAIProvider(
                                     if (!handledImages) {
                                         parsed.textChunks.forEach { textChunk ->
                                             if (textChunk.isNotEmpty()) {
+                                                hasEmittedRegularContent = true
                                                 emitter.emitContent(textChunk)
                                             }
                                         }
                                     }
 
                                     parsed.reasoningChunks.forEach { reasoningChunk ->
-                                        if (reasoningChunk.isNotEmpty()) {
+                                        if (reasoningChunk.isNotEmpty() && !hasEmittedRegularContent) {
                                             emitter.emitThinkContent(reasoningChunk)
                                         }
                                     }
@@ -2121,12 +2128,13 @@ open class OpenAIProvider(
                                             val regularContent = messageObj.optString("content", "")
 
                                             // 处理思考内容（如果有）
-                                            if (reasoningContent.isNotNullOrEmpty()) {
+                                            if (reasoningContent.isNotNullOrEmpty() && !hasEmittedRegularContent) {
                                                 emitter.emitThinkContent(reasoningContent)
                                             }
 
                                             // 处理常规内容
                                             if (regularContent.isNotNullOrEmpty()) {
+                                                hasEmittedRegularContent = true
                                                 emitter.emitContent(regularContent)
                                             }
                                         }

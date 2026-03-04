@@ -22,6 +22,12 @@ fun BubbleStyleChatMessage(
     systemTextColor: Color,
     userBubbleImageStyle: BubbleImageStyleConfig? = null,
     aiBubbleImageStyle: BubbleImageStyleConfig? = null,
+    bubbleUserRoundedCornersEnabled: Boolean = true,
+    bubbleAiRoundedCornersEnabled: Boolean = true,
+    bubbleUserContentPaddingLeft: Float = 12f,
+    bubbleUserContentPaddingRight: Float = 12f,
+    bubbleAiContentPaddingLeft: Float = 12f,
+    bubbleAiContentPaddingRight: Float = 12f,
     isHidden: Boolean = false,
     onDeleteMessage: ((Int) -> Unit)? = null,
     index: Int = -1,
@@ -35,6 +41,9 @@ fun BubbleStyleChatMessage(
                 backgroundColor = userMessageColor,
                 textColor = userTextColor,
                 bubbleImageStyle = userBubbleImageStyle,
+                bubbleRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                bubbleContentPaddingLeft = bubbleUserContentPaddingLeft,
+                bubbleContentPaddingRight = bubbleUserContentPaddingRight,
                 enableDialogs = enableDialogs
             )
         }
@@ -44,6 +53,9 @@ fun BubbleStyleChatMessage(
                 backgroundColor = aiMessageColor,
                 textColor = aiTextColor,
                 bubbleImageStyle = aiBubbleImageStyle,
+                bubbleRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                bubbleContentPaddingLeft = bubbleAiContentPaddingLeft,
+                bubbleContentPaddingRight = bubbleAiContentPaddingRight,
                 isHidden = isHidden,
                 enableDialogs = enableDialogs,
                 onAvatarLongPressMention = onRoleAvatarLongPress

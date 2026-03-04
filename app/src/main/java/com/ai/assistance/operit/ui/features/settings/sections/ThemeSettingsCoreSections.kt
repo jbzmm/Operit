@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.ui.features.settings.sections
 
+import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,10 +35,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
@@ -47,6 +55,11 @@ import com.ai.assistance.operit.ui.features.chat.components.ChatStyle
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageBackgroundSurface
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageStyleConfig
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal typealias SaveThemeSettingsAction = (suspend () -> Unit) -> Unit
 
@@ -238,6 +251,8 @@ internal fun ThemeSettingsChatStyleSection(
     cursorUserBubbleColorInput: Int,
     bubbleUserBubbleColorInput: Int,
     bubbleAiBubbleColorInput: Int,
+    previewUserAvatarUri: String?,
+    previewAiAvatarUri: String?,
     onShowColorPicker: (String) -> Unit,
     bubbleUserUseImageInput: Boolean,
     onBubbleUserUseImageInputChange: (Boolean) -> Unit,
@@ -261,6 +276,12 @@ internal fun ThemeSettingsChatStyleSection(
     onBubbleUserImageRepeatStartInputChange: (Float) -> Unit,
     bubbleUserImageRepeatEndInput: Float,
     onBubbleUserImageRepeatEndInputChange: (Float) -> Unit,
+    bubbleUserImageRepeatYStartInput: Float,
+    onBubbleUserImageRepeatYStartInputChange: (Float) -> Unit,
+    bubbleUserImageRepeatYEndInput: Float,
+    onBubbleUserImageRepeatYEndInputChange: (Float) -> Unit,
+    bubbleUserImageScaleInput: Float,
+    onBubbleUserImageScaleInputChange: (Float) -> Unit,
     bubbleAiImageCropLeftInput: Float,
     onBubbleAiImageCropLeftInputChange: (Float) -> Unit,
     bubbleAiImageCropTopInput: Float,
@@ -273,6 +294,26 @@ internal fun ThemeSettingsChatStyleSection(
     onBubbleAiImageRepeatStartInputChange: (Float) -> Unit,
     bubbleAiImageRepeatEndInput: Float,
     onBubbleAiImageRepeatEndInputChange: (Float) -> Unit,
+    bubbleAiImageRepeatYStartInput: Float,
+    onBubbleAiImageRepeatYStartInputChange: (Float) -> Unit,
+    bubbleAiImageRepeatYEndInput: Float,
+    onBubbleAiImageRepeatYEndInputChange: (Float) -> Unit,
+    bubbleAiImageScaleInput: Float,
+    onBubbleAiImageScaleInputChange: (Float) -> Unit,
+    bubbleImageRenderModeInput: String,
+    onBubbleImageRenderModeInputChange: (String) -> Unit,
+    bubbleUserRoundedCornersEnabledInput: Boolean,
+    onBubbleUserRoundedCornersEnabledInputChange: (Boolean) -> Unit,
+    bubbleAiRoundedCornersEnabledInput: Boolean,
+    onBubbleAiRoundedCornersEnabledInputChange: (Boolean) -> Unit,
+    bubbleUserContentPaddingLeftInput: Float,
+    onBubbleUserContentPaddingLeftInputChange: (Float) -> Unit,
+    bubbleUserContentPaddingRightInput: Float,
+    onBubbleUserContentPaddingRightInputChange: (Float) -> Unit,
+    bubbleAiContentPaddingLeftInput: Float,
+    onBubbleAiContentPaddingLeftInputChange: (Float) -> Unit,
+    bubbleAiContentPaddingRightInput: Float,
+    onBubbleAiContentPaddingRightInputChange: (Float) -> Unit,
     saveThemeSettingsWithCharacterCard: SaveThemeSettingsAction,
     preferencesManager: UserPreferencesManager,
 ) {
@@ -423,6 +464,74 @@ internal fun ThemeSettingsChatStyleSection(
                 }
             }
 
+            val previewUserImageStyle =
+                remember(
+                    bubbleUserUseImageInput,
+                    bubbleUserImageUriInput,
+                    bubbleUserImageCropLeftInput,
+                    bubbleUserImageCropTopInput,
+                    bubbleUserImageCropRightInput,
+                    bubbleUserImageCropBottomInput,
+                    bubbleUserImageRepeatStartInput,
+                    bubbleUserImageRepeatEndInput,
+                    bubbleUserImageRepeatYStartInput,
+                    bubbleUserImageRepeatYEndInput,
+                    bubbleUserImageScaleInput,
+                    bubbleImageRenderModeInput,
+                ) {
+                    val imageUri = bubbleUserImageUriInput
+                    if (bubbleUserUseImageInput && !imageUri.isNullOrBlank()) {
+                        BubbleImageStyleConfig(
+                            imageUri = imageUri,
+                            cropLeftRatio = bubbleUserImageCropLeftInput,
+                            cropTopRatio = bubbleUserImageCropTopInput,
+                            cropRightRatio = bubbleUserImageCropRightInput,
+                            cropBottomRatio = bubbleUserImageCropBottomInput,
+                            repeatXStartRatio = bubbleUserImageRepeatStartInput,
+                            repeatXEndRatio = bubbleUserImageRepeatEndInput,
+                            repeatYStartRatio = bubbleUserImageRepeatYStartInput,
+                            repeatYEndRatio = bubbleUserImageRepeatYEndInput,
+                            imageScale = bubbleUserImageScaleInput,
+                            renderMode = bubbleImageRenderModeInput,
+                        )
+                    } else {
+                        null
+                    }
+                }
+            val previewAiImageStyle =
+                remember(
+                    bubbleAiUseImageInput,
+                    bubbleAiImageUriInput,
+                    bubbleAiImageCropLeftInput,
+                    bubbleAiImageCropTopInput,
+                    bubbleAiImageCropRightInput,
+                    bubbleAiImageCropBottomInput,
+                    bubbleAiImageRepeatStartInput,
+                    bubbleAiImageRepeatEndInput,
+                    bubbleAiImageRepeatYStartInput,
+                    bubbleAiImageRepeatYEndInput,
+                    bubbleAiImageScaleInput,
+                    bubbleImageRenderModeInput,
+                ) {
+                    val imageUri = bubbleAiImageUriInput
+                    if (bubbleAiUseImageInput && !imageUri.isNullOrBlank()) {
+                        BubbleImageStyleConfig(
+                            imageUri = imageUri,
+                            cropLeftRatio = bubbleAiImageCropLeftInput,
+                            cropTopRatio = bubbleAiImageCropTopInput,
+                            cropRightRatio = bubbleAiImageCropRightInput,
+                            cropBottomRatio = bubbleAiImageCropBottomInput,
+                            repeatXStartRatio = bubbleAiImageRepeatStartInput,
+                            repeatXEndRatio = bubbleAiImageRepeatEndInput,
+                            repeatYStartRatio = bubbleAiImageRepeatYStartInput,
+                            repeatYEndRatio = bubbleAiImageRepeatYEndInput,
+                            imageScale = bubbleAiImageScaleInput,
+                            renderMode = bubbleImageRenderModeInput,
+                        )
+                    } else {
+                        null
+                    }
+                }
             if (chatStyleInput == UserPreferencesManager.CHAT_STYLE_BUBBLE) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -452,6 +561,125 @@ internal fun ThemeSettingsChatStyleSection(
                             }
                         },
                     )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(
+                    text = stringResource(id = R.string.chat_style_bubble_image_render_mode_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                Text(
+                    text = stringResource(id = R.string.chat_style_bubble_image_render_mode_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ChatStyleOption(
+                        title =
+                            stringResource(
+                                id = R.string.chat_style_bubble_image_render_mode_nine_patch,
+                            ),
+                        selected =
+                            bubbleImageRenderModeInput ==
+                                UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_NINE_PATCH,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        val mode = UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_NINE_PATCH
+                        onBubbleImageRenderModeInputChange(mode)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleImageRenderMode = mode,
+                            )
+                        }
+                    }
+                    ChatStyleOption(
+                        title =
+                            stringResource(
+                                id = R.string.chat_style_bubble_image_render_mode_tiled,
+                            ),
+                        selected =
+                            bubbleImageRenderModeInput ==
+                                UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        val mode =
+                            UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE
+                        onBubbleImageRenderModeInputChange(mode)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleImageRenderMode = mode,
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(
+                    text = stringResource(id = R.string.chat_style_bubble_rounded_corners),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text =
+                        stringResource(
+                            id = R.string.chat_style_bubble_rounded_corners_desc,
+                        ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = stringResource(id = R.string.chat_style_bubble_rounded_corners_user),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Switch(
+                            checked = bubbleUserRoundedCornersEnabledInput,
+                            onCheckedChange = {
+                                onBubbleUserRoundedCornersEnabledInputChange(it)
+                                saveThemeSettingsWithCharacterCard {
+                                    preferencesManager.saveThemeSettings(
+                                        bubbleUserRoundedCornersEnabled = it,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = stringResource(id = R.string.chat_style_bubble_rounded_corners_ai),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Switch(
+                            checked = bubbleAiRoundedCornersEnabledInput,
+                            onCheckedChange = {
+                                onBubbleAiRoundedCornersEnabledInputChange(it)
+                                saveThemeSettingsWithCharacterCard {
+                                    preferencesManager.saveThemeSettings(
+                                        bubbleAiRoundedCornersEnabled = it,
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -534,28 +762,90 @@ internal fun ThemeSettingsChatStyleSection(
                             preferencesManager.saveThemeSettings(bubbleUserImageCropBottom = value)
                         }
                     },
-                    repeatStart = bubbleUserImageRepeatStartInput,
-                    onRepeatStartChange = {
-                        val value = it.coerceIn(0.05f, 0.9f)
+                    repeatXStart = bubbleUserImageRepeatStartInput,
+                    onRepeatXStartChange = {
+                        val maxValue = (bubbleUserImageRepeatEndInput - 0.01f).coerceAtLeast(0.05f)
+                        val value = it.coerceIn(0.05f, maxValue)
                         onBubbleUserImageRepeatStartInputChange(value)
                     },
-                    onRepeatStartChangeFinished = { value ->
+                    onRepeatXStartChangeFinished = { value ->
                         saveThemeSettingsWithCharacterCard {
                             preferencesManager.saveThemeSettings(bubbleUserImageRepeatStart = value)
                         }
                     },
-                    repeatEnd = bubbleUserImageRepeatEndInput,
-                    onRepeatEndChange = {
+                    repeatXEnd = bubbleUserImageRepeatEndInput,
+                    onRepeatXEndChange = {
                         val minValue = (bubbleUserImageRepeatStartInput + 0.01f).coerceAtMost(0.95f)
                         val value = it.coerceIn(minValue, 0.95f)
                         onBubbleUserImageRepeatEndInputChange(value)
                     },
-                    onRepeatEndChangeFinished = { value ->
+                    onRepeatXEndChangeFinished = { value ->
                         saveThemeSettingsWithCharacterCard {
                             preferencesManager.saveThemeSettings(bubbleUserImageRepeatEnd = value)
                         }
                     },
+                    repeatYStart = bubbleUserImageRepeatYStartInput,
+                    onRepeatYStartChange = {
+                        val maxValue = (bubbleUserImageRepeatYEndInput - 0.01f).coerceAtLeast(0.05f)
+                        val value = it.coerceIn(0.05f, maxValue)
+                        onBubbleUserImageRepeatYStartInputChange(value)
+                    },
+                    onRepeatYStartChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleUserImageRepeatYStart = value)
+                        }
+                    },
+                    repeatYEnd = bubbleUserImageRepeatYEndInput,
+                    onRepeatYEndChange = {
+                        val minValue = (bubbleUserImageRepeatYStartInput + 0.01f).coerceAtMost(0.95f)
+                        val value = it.coerceIn(minValue, 0.95f)
+                        onBubbleUserImageRepeatYEndInputChange(value)
+                    },
+                    onRepeatYEndChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleUserImageRepeatYEnd = value)
+                        }
+                    },
+                    imageScale = bubbleUserImageScaleInput,
+                    onImageScaleChange = {
+                        val value = it.coerceIn(0.2f, 3f)
+                        onBubbleUserImageScaleInputChange(value)
+                    },
+                    onImageScaleChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleUserImageScale = value)
+                        }
+                    },
+                    contentPaddingLeft = bubbleUserContentPaddingLeftInput,
+                    onContentPaddingLeftChange = {
+                        onBubbleUserContentPaddingLeftInputChange(it)
+                    },
+                    onContentPaddingLeftChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleUserContentPaddingLeft = value,
+                            )
+                        }
+                    },
+                    contentPaddingRight = bubbleUserContentPaddingRightInput,
+                    onContentPaddingRightChange = {
+                        onBubbleUserContentPaddingRightInputChange(it)
+                    },
+                    onContentPaddingRightChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleUserContentPaddingRight = value,
+                            )
+                        }
+                    },
                 )
+
+                if (previewUserImageStyle != null) {
+                    NineSliceSourcePreviewCard(
+                        title = stringResource(id = R.string.chat_style_preview_user_source_title),
+                        imageStyle = previewUserImageStyle,
+                    )
+                }
 
                 BubbleImageStyleEditor(
                     title = stringResource(id = R.string.chat_style_bubble_ai_image_title),
@@ -609,28 +899,90 @@ internal fun ThemeSettingsChatStyleSection(
                             preferencesManager.saveThemeSettings(bubbleAiImageCropBottom = value)
                         }
                     },
-                    repeatStart = bubbleAiImageRepeatStartInput,
-                    onRepeatStartChange = {
-                        val value = it.coerceIn(0.05f, 0.9f)
+                    repeatXStart = bubbleAiImageRepeatStartInput,
+                    onRepeatXStartChange = {
+                        val maxValue = (bubbleAiImageRepeatEndInput - 0.01f).coerceAtLeast(0.05f)
+                        val value = it.coerceIn(0.05f, maxValue)
                         onBubbleAiImageRepeatStartInputChange(value)
                     },
-                    onRepeatStartChangeFinished = { value ->
+                    onRepeatXStartChangeFinished = { value ->
                         saveThemeSettingsWithCharacterCard {
                             preferencesManager.saveThemeSettings(bubbleAiImageRepeatStart = value)
                         }
                     },
-                    repeatEnd = bubbleAiImageRepeatEndInput,
-                    onRepeatEndChange = {
+                    repeatXEnd = bubbleAiImageRepeatEndInput,
+                    onRepeatXEndChange = {
                         val minValue = (bubbleAiImageRepeatStartInput + 0.01f).coerceAtMost(0.95f)
                         val value = it.coerceIn(minValue, 0.95f)
                         onBubbleAiImageRepeatEndInputChange(value)
                     },
-                    onRepeatEndChangeFinished = { value ->
+                    onRepeatXEndChangeFinished = { value ->
                         saveThemeSettingsWithCharacterCard {
                             preferencesManager.saveThemeSettings(bubbleAiImageRepeatEnd = value)
                         }
                     },
+                    repeatYStart = bubbleAiImageRepeatYStartInput,
+                    onRepeatYStartChange = {
+                        val maxValue = (bubbleAiImageRepeatYEndInput - 0.01f).coerceAtLeast(0.05f)
+                        val value = it.coerceIn(0.05f, maxValue)
+                        onBubbleAiImageRepeatYStartInputChange(value)
+                    },
+                    onRepeatYStartChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleAiImageRepeatYStart = value)
+                        }
+                    },
+                    repeatYEnd = bubbleAiImageRepeatYEndInput,
+                    onRepeatYEndChange = {
+                        val minValue = (bubbleAiImageRepeatYStartInput + 0.01f).coerceAtMost(0.95f)
+                        val value = it.coerceIn(minValue, 0.95f)
+                        onBubbleAiImageRepeatYEndInputChange(value)
+                    },
+                    onRepeatYEndChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleAiImageRepeatYEnd = value)
+                        }
+                    },
+                    imageScale = bubbleAiImageScaleInput,
+                    onImageScaleChange = {
+                        val value = it.coerceIn(0.2f, 3f)
+                        onBubbleAiImageScaleInputChange(value)
+                    },
+                    onImageScaleChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(bubbleAiImageScale = value)
+                        }
+                    },
+                    contentPaddingLeft = bubbleAiContentPaddingLeftInput,
+                    onContentPaddingLeftChange = {
+                        onBubbleAiContentPaddingLeftInputChange(it)
+                    },
+                    onContentPaddingLeftChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleAiContentPaddingLeft = value,
+                            )
+                        }
+                    },
+                    contentPaddingRight = bubbleAiContentPaddingRightInput,
+                    onContentPaddingRightChange = {
+                        onBubbleAiContentPaddingRightInputChange(it)
+                    },
+                    onContentPaddingRightChangeFinished = { value ->
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleAiContentPaddingRight = value,
+                            )
+                        }
+                    },
                 )
+
+                if (previewAiImageStyle != null) {
+                    NineSliceSourcePreviewCard(
+                        title = stringResource(id = R.string.chat_style_preview_ai_source_title),
+                        imageStyle = previewAiImageStyle,
+                    )
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -640,58 +992,6 @@ internal fun ThemeSettingsChatStyleSection(
                     ChatStyle.BUBBLE
                 } else {
                     ChatStyle.CURSOR
-                }
-            val previewUserImageStyle =
-                remember(
-                    bubbleUserUseImageInput,
-                    bubbleUserImageUriInput,
-                    bubbleUserImageCropLeftInput,
-                    bubbleUserImageCropTopInput,
-                    bubbleUserImageCropRightInput,
-                    bubbleUserImageCropBottomInput,
-                    bubbleUserImageRepeatStartInput,
-                    bubbleUserImageRepeatEndInput,
-                ) {
-                    val imageUri = bubbleUserImageUriInput
-                    if (bubbleUserUseImageInput && !imageUri.isNullOrBlank()) {
-                        BubbleImageStyleConfig(
-                            imageUri = imageUri,
-                            cropLeftRatio = bubbleUserImageCropLeftInput,
-                            cropTopRatio = bubbleUserImageCropTopInput,
-                            cropRightRatio = bubbleUserImageCropRightInput,
-                            cropBottomRatio = bubbleUserImageCropBottomInput,
-                            repeatStartRatio = bubbleUserImageRepeatStartInput,
-                            repeatEndRatio = bubbleUserImageRepeatEndInput,
-                        )
-                    } else {
-                        null
-                    }
-                }
-            val previewAiImageStyle =
-                remember(
-                    bubbleAiUseImageInput,
-                    bubbleAiImageUriInput,
-                    bubbleAiImageCropLeftInput,
-                    bubbleAiImageCropTopInput,
-                    bubbleAiImageCropRightInput,
-                    bubbleAiImageCropBottomInput,
-                    bubbleAiImageRepeatStartInput,
-                    bubbleAiImageRepeatEndInput,
-                ) {
-                    val imageUri = bubbleAiImageUriInput
-                    if (bubbleAiUseImageInput && !imageUri.isNullOrBlank()) {
-                        BubbleImageStyleConfig(
-                            imageUri = imageUri,
-                            cropLeftRatio = bubbleAiImageCropLeftInput,
-                            cropTopRatio = bubbleAiImageCropTopInput,
-                            cropRightRatio = bubbleAiImageCropRightInput,
-                            cropBottomRatio = bubbleAiImageCropBottomInput,
-                            repeatStartRatio = bubbleAiImageRepeatStartInput,
-                            repeatEndRatio = bubbleAiImageRepeatEndInput,
-                        )
-                    } else {
-                        null
-                    }
                 }
 
             ChatStylePreviewCard(
@@ -712,6 +1012,15 @@ internal fun ThemeSettingsChatStyleSection(
                     },
                 userImageStyle = if (previewChatStyle == ChatStyle.BUBBLE) previewUserImageStyle else null,
                 aiImageStyle = if (previewChatStyle == ChatStyle.BUBBLE) previewAiImageStyle else null,
+                bubbleShowAvatar = bubbleShowAvatarInput,
+                bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabledInput,
+                bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabledInput,
+                bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeftInput,
+                bubbleUserContentPaddingRight = bubbleUserContentPaddingRightInput,
+                bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeftInput,
+                bubbleAiContentPaddingRight = bubbleAiContentPaddingRightInput,
+                userAvatarUri = previewUserAvatarUri,
+                aiAvatarUri = previewAiAvatarUri,
             )
         }
     }
@@ -737,12 +1046,27 @@ private fun BubbleImageStyleEditor(
     cropBottom: Float,
     onCropBottomChange: (Float) -> Unit,
     onCropBottomChangeFinished: (Float) -> Unit,
-    repeatStart: Float,
-    onRepeatStartChange: (Float) -> Unit,
-    onRepeatStartChangeFinished: (Float) -> Unit,
-    repeatEnd: Float,
-    onRepeatEndChange: (Float) -> Unit,
-    onRepeatEndChangeFinished: (Float) -> Unit,
+    repeatXStart: Float,
+    onRepeatXStartChange: (Float) -> Unit,
+    onRepeatXStartChangeFinished: (Float) -> Unit,
+    repeatXEnd: Float,
+    onRepeatXEndChange: (Float) -> Unit,
+    onRepeatXEndChangeFinished: (Float) -> Unit,
+    repeatYStart: Float,
+    onRepeatYStartChange: (Float) -> Unit,
+    onRepeatYStartChangeFinished: (Float) -> Unit,
+    repeatYEnd: Float,
+    onRepeatYEndChange: (Float) -> Unit,
+    onRepeatYEndChangeFinished: (Float) -> Unit,
+    imageScale: Float,
+    onImageScaleChange: (Float) -> Unit,
+    onImageScaleChangeFinished: (Float) -> Unit,
+    contentPaddingLeft: Float,
+    onContentPaddingLeftChange: (Float) -> Unit,
+    onContentPaddingLeftChangeFinished: (Float) -> Unit,
+    contentPaddingRight: Float,
+    onContentPaddingRightChange: (Float) -> Unit,
+    onContentPaddingRightChangeFinished: (Float) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -844,20 +1168,76 @@ private fun BubbleImageStyleEditor(
                         modifier = Modifier.weight(1f),
                     )
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    BubbleStyleSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_repeat_x_start),
+                        value = repeatXStart,
+                        range = 0.05f..0.9f,
+                        onValueChange = onRepeatXStartChange,
+                        onValueChangeFinished = onRepeatXStartChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BubbleStyleSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_repeat_x_end),
+                        value = repeatXEnd,
+                        range = ((repeatXStart + 0.01f).coerceAtMost(0.95f))..0.95f,
+                        onValueChange = onRepeatXEndChange,
+                        onValueChangeFinished = onRepeatXEndChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    BubbleStyleSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_repeat_y_start),
+                        value = repeatYStart,
+                        range = 0.05f..0.9f,
+                        onValueChange = onRepeatYStartChange,
+                        onValueChangeFinished = onRepeatYStartChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BubbleStyleSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_repeat_y_end),
+                        value = repeatYEnd,
+                        range = ((repeatYStart + 0.01f).coerceAtMost(0.95f))..0.95f,
+                        onValueChange = onRepeatYEndChange,
+                        onValueChangeFinished = onRepeatYEndChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 BubbleStyleSliderRow(
-                    label = stringResource(id = R.string.chat_style_bubble_repeat_start),
-                    value = repeatStart,
-                    range = 0.05f..0.9f,
-                    onValueChange = onRepeatStartChange,
-                    onValueChangeFinished = onRepeatStartChangeFinished,
+                    label = stringResource(id = R.string.chat_style_bubble_image_scale),
+                    value = imageScale,
+                    range = 0.2f..3f,
+                    onValueChange = onImageScaleChange,
+                    onValueChangeFinished = onImageScaleChangeFinished,
                 )
-                BubbleStyleSliderRow(
-                    label = stringResource(id = R.string.chat_style_bubble_repeat_end),
-                    value = repeatEnd,
-                    range = ((repeatStart + 0.01f).coerceAtMost(0.95f))..0.95f,
-                    onValueChange = onRepeatEndChange,
-                    onValueChangeFinished = onRepeatEndChangeFinished,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    BubbleStyleDpSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_padding_left),
+                        value = contentPaddingLeft,
+                        range = 0f..32f,
+                        onValueChange = onContentPaddingLeftChange,
+                        onValueChangeFinished = onContentPaddingLeftChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                    BubbleStyleDpSliderRow(
+                        label = stringResource(id = R.string.chat_style_bubble_padding_right),
+                        value = contentPaddingRight,
+                        range = 0f..32f,
+                        onValueChange = onContentPaddingRightChange,
+                        onValueChangeFinished = onContentPaddingRightChangeFinished,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
@@ -913,12 +1293,250 @@ private fun BubbleStyleSliderRow(
 }
 
 @Composable
+private fun BubbleStyleDpSliderRow(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var lastCommittedValue by remember { mutableStateOf(value) }
+    val latestValue by rememberUpdatedState(value)
+    val latestRange by rememberUpdatedState(range)
+    val latestValueFinishCallback by rememberUpdatedState(onValueChangeFinished)
+    val valueChangeFinished = remember {
+        {
+            val finalValue = latestValue.coerceIn(latestRange.start, latestRange.endInclusive)
+            if (abs(finalValue - lastCommittedValue) > 0.1f) {
+                latestValueFinishCallback(finalValue)
+                lastCommittedValue = finalValue
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "${value.roundToInt()}dp",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            onValueChangeFinished = valueChangeFinished,
+            valueRange = range,
+        )
+    }
+}
+
+@Composable
+private fun NineSliceSourcePreviewCard(
+    title: String,
+    imageStyle: BubbleImageStyleConfig,
+) {
+    val bitmap = rememberSourcePreviewBitmap(imageStyle.imageUri)
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)),
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            bitmap?.let { previewBitmap ->
+                Canvas(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .height(84.dp),
+                ) {
+                    val srcWidth = previewBitmap.width.coerceAtLeast(1)
+                    val srcHeight = previewBitmap.height.coerceAtLeast(1)
+                    val fitScale =
+                        min(
+                            size.width / srcWidth.toFloat(),
+                            size.height / srcHeight.toFloat(),
+                        )
+
+                    val drawWidth = max(1, (srcWidth * fitScale).roundToInt())
+                    val drawHeight = max(1, (srcHeight * fitScale).roundToInt())
+                    val drawLeft = ((size.width - drawWidth.toFloat()) / 2f).roundToInt()
+                    val drawTop = ((size.height - drawHeight.toFloat()) / 2f).roundToInt()
+
+                    drawImage(
+                        image = previewBitmap,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(srcWidth, srcHeight),
+                        dstOffset = IntOffset(drawLeft, drawTop),
+                        dstSize = IntSize(drawWidth, drawHeight),
+                    )
+
+                    val cropLeft = imageStyle.cropLeftRatio.coerceIn(0f, 0.45f)
+                    val cropTop = imageStyle.cropTopRatio.coerceIn(0f, 0.45f)
+                    val cropRight = imageStyle.cropRightRatio.coerceIn(0f, 0.45f)
+                    val cropBottom = imageStyle.cropBottomRatio.coerceIn(0f, 0.45f)
+                    val repeatXStart = imageStyle.repeatXStartRatio.coerceIn(0.05f, 0.9f)
+                    val repeatXEnd = imageStyle.repeatXEndRatio.coerceIn(repeatXStart + 0.01f, 0.95f)
+                    val repeatYStart = imageStyle.repeatYStartRatio.coerceIn(0.05f, 0.9f)
+                    val repeatYEnd = imageStyle.repeatYEndRatio.coerceIn(repeatYStart + 0.01f, 0.95f)
+
+                    val srcLeft = (srcWidth * cropLeft).roundToInt().coerceIn(0, srcWidth - 1)
+                    val srcTop = (srcHeight * cropTop).roundToInt().coerceIn(0, srcHeight - 1)
+                    val srcRight = (srcWidth * (1f - cropRight)).roundToInt().coerceIn(srcLeft + 1, srcWidth)
+                    val srcBottom = (srcHeight * (1f - cropBottom)).roundToInt().coerceIn(srcTop + 1, srcHeight)
+                    val croppedWidth = (srcRight - srcLeft).coerceAtLeast(1)
+                    val croppedHeight = (srcBottom - srcTop).coerceAtLeast(1)
+
+                    val repeatStartXPx =
+                        if (croppedWidth < 3) {
+                            0
+                        } else {
+                            (croppedWidth * repeatXStart).roundToInt().coerceIn(1, croppedWidth - 2)
+                        }
+                    val repeatEndXPx =
+                        if (croppedWidth < 3) {
+                            croppedWidth
+                        } else {
+                            (croppedWidth * repeatXEnd).roundToInt().coerceIn(repeatStartXPx + 1, croppedWidth - 1)
+                        }
+                    val repeatStartYPx =
+                        if (croppedHeight < 3) {
+                            0
+                        } else {
+                            (croppedHeight * repeatYStart).roundToInt().coerceIn(1, croppedHeight - 2)
+                        }
+                    val repeatEndYPx =
+                        if (croppedHeight < 3) {
+                            croppedHeight
+                        } else {
+                            (croppedHeight * repeatYEnd).roundToInt().coerceIn(repeatStartYPx + 1, croppedHeight - 1)
+                        }
+
+                    val cropLeftX = drawLeft + srcLeft * fitScale
+                    val cropRightX = drawLeft + srcRight * fitScale
+                    val cropTopY = drawTop + srcTop * fitScale
+                    val cropBottomY = drawTop + srcBottom * fitScale
+                    val leftX = drawLeft + (srcLeft + repeatStartXPx) * fitScale
+                    val rightX = drawLeft + (srcLeft + repeatEndXPx) * fitScale
+                    val topY = drawTop + (srcTop + repeatStartYPx) * fitScale
+                    val bottomY = drawTop + (srcTop + repeatEndYPx) * fitScale
+                    val lineColor = Color.Red.copy(alpha = 0.9f)
+                    val borderColor = Color.Red.copy(alpha = 0.4f)
+                    val strokeWidth = 1.dp.toPx().coerceAtLeast(1f)
+
+                    // Crop border.
+                    drawLine(
+                        color = borderColor,
+                        start = androidx.compose.ui.geometry.Offset(cropLeftX, cropTopY),
+                        end = androidx.compose.ui.geometry.Offset(cropRightX, cropTopY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = borderColor,
+                        start = androidx.compose.ui.geometry.Offset(cropLeftX, cropBottomY),
+                        end = androidx.compose.ui.geometry.Offset(cropRightX, cropBottomY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = borderColor,
+                        start = androidx.compose.ui.geometry.Offset(cropLeftX, cropTopY),
+                        end = androidx.compose.ui.geometry.Offset(cropLeftX, cropBottomY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = borderColor,
+                        start = androidx.compose.ui.geometry.Offset(cropRightX, cropTopY),
+                        end = androidx.compose.ui.geometry.Offset(cropRightX, cropBottomY),
+                        strokeWidth = strokeWidth,
+                    )
+
+                    // 9-slice grid lines inside cropped area.
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(leftX, cropTopY),
+                        end = androidx.compose.ui.geometry.Offset(leftX, cropBottomY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(rightX, cropTopY),
+                        end = androidx.compose.ui.geometry.Offset(rightX, cropBottomY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(cropLeftX, topY),
+                        end = androidx.compose.ui.geometry.Offset(cropRightX, topY),
+                        strokeWidth = strokeWidth,
+                    )
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(cropLeftX, bottomY),
+                        end = androidx.compose.ui.geometry.Offset(cropRightX, bottomY),
+                        strokeWidth = strokeWidth,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberSourcePreviewBitmap(uriString: String): ImageBitmap? {
+    val context = LocalContext.current
+    var bitmap by remember(uriString) { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(context, uriString) {
+        if (uriString.isBlank()) {
+            bitmap = null
+            return@LaunchedEffect
+        }
+        bitmap =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(uriString))?.use { input ->
+                        BitmapFactory.decodeStream(input)?.asImageBitmap()
+                    }
+                }.getOrNull()
+            }
+    }
+
+    return bitmap
+}
+
+@Composable
 private fun ChatStylePreviewCard(
     chatStyle: ChatStyle,
     userColor: Color,
     aiColor: Color,
     userImageStyle: BubbleImageStyleConfig?,
     aiImageStyle: BubbleImageStyleConfig?,
+    bubbleShowAvatar: Boolean,
+    bubbleUserRoundedCornersEnabled: Boolean,
+    bubbleAiRoundedCornersEnabled: Boolean,
+    bubbleUserContentPaddingLeft: Float,
+    bubbleUserContentPaddingRight: Float,
+    bubbleAiContentPaddingLeft: Float,
+    bubbleAiContentPaddingRight: Float,
+    userAvatarUri: String?,
+    aiAvatarUri: String?,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -962,14 +1580,26 @@ private fun ChatStylePreviewCard(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    val shape = RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                    val shape =
+                        if (bubbleUserRoundedCornersEnabled) {
+                            RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                        } else {
+                            RoundedCornerShape(0.dp)
+                        }
                     if (userImageStyle != null) {
                         BubbleImageBackgroundSurface(
                             imageStyle = userImageStyle,
                             shape = shape,
                             modifier = Modifier.widthIn(max = 240.dp).defaultMinSize(minHeight = 44.dp),
-                            contentPadding = PaddingValues(12.dp),
+                            contentPadding =
+                                PaddingValues(
+                                    start = bubbleUserContentPaddingLeft.dp,
+                                    top = 12.dp,
+                                    end = bubbleUserContentPaddingRight.dp,
+                                    bottom = 12.dp,
+                                ),
                         ) {
                             Text(
                                 text = stringResource(id = R.string.chat_style_preview_user_message),
@@ -986,24 +1616,56 @@ private fun ChatStylePreviewCard(
                         ) {
                             Text(
                                 text = stringResource(id = R.string.chat_style_preview_user_message),
-                                modifier = Modifier.padding(12.dp),
+                                modifier =
+                                    Modifier.padding(
+                                        start = bubbleUserContentPaddingLeft.dp,
+                                        top = 12.dp,
+                                        end = bubbleUserContentPaddingRight.dp,
+                                        bottom = 12.dp,
+                                    ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
                     }
+                    if (bubbleShowAvatar) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        PreviewChatAvatar(
+                            avatarUri = userAvatarUri,
+                            contentDescription = stringResource(id = R.string.user_avatar_label),
+                        )
+                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    val shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+                    if (bubbleShowAvatar) {
+                        PreviewChatAvatar(
+                            avatarUri = aiAvatarUri,
+                            contentDescription = stringResource(id = R.string.ai_avatar_label),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    val shape =
+                        if (bubbleAiRoundedCornersEnabled) {
+                            RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+                        } else {
+                            RoundedCornerShape(0.dp)
+                        }
                     if (aiImageStyle != null) {
                         BubbleImageBackgroundSurface(
                             imageStyle = aiImageStyle,
                             shape = shape,
                             modifier = Modifier.widthIn(max = 240.dp).defaultMinSize(minHeight = 44.dp),
-                            contentPadding = PaddingValues(12.dp),
+                            contentPadding =
+                                PaddingValues(
+                                    start = bubbleAiContentPaddingLeft.dp,
+                                    top = 12.dp,
+                                    end = bubbleAiContentPaddingRight.dp,
+                                    bottom = 12.dp,
+                                ),
                         ) {
                             Text(
                                 text = stringResource(id = R.string.chat_style_preview_ai_message),
@@ -1020,7 +1682,13 @@ private fun ChatStylePreviewCard(
                         ) {
                             Text(
                                 text = stringResource(id = R.string.chat_style_preview_ai_message),
-                                modifier = Modifier.padding(12.dp),
+                                modifier =
+                                    Modifier.padding(
+                                        start = bubbleAiContentPaddingLeft.dp,
+                                        top = 12.dp,
+                                        end = bubbleAiContentPaddingRight.dp,
+                                        bottom = 12.dp,
+                                    ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
@@ -1028,6 +1696,37 @@ private fun ChatStylePreviewCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PreviewChatAvatar(
+    avatarUri: String?,
+    contentDescription: String,
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!avatarUri.isNullOrBlank()) {
+            Image(
+                painter = rememberAsyncImagePainter(Uri.parse(avatarUri)),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

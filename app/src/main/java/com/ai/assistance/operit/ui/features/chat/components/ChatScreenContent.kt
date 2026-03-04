@@ -125,6 +125,12 @@ fun ChatScreenContent(
         chatAreaHorizontalPadding: Float = 16f, // 聊天区域水平内边距
         bubbleUserImageStyle: BubbleImageStyleConfig? = null,
         bubbleAiImageStyle: BubbleImageStyleConfig? = null,
+        bubbleUserRoundedCornersEnabled: Boolean = true,
+        bubbleAiRoundedCornersEnabled: Boolean = true,
+        bubbleUserContentPaddingLeft: Float = 12f,
+        bubbleUserContentPaddingRight: Float = 12f,
+        bubbleAiContentPaddingLeft: Float = 12f,
+        bubbleAiContentPaddingRight: Float = 12f,
         showChatFloatingDotsAnimation: Boolean = true,
 ) {
     val density = LocalDensity.current
@@ -346,6 +352,12 @@ fun ChatScreenContent(
                         horizontalPadding = chatAreaHorizontalPadding.dp,
                         bubbleUserImageStyle = bubbleUserImageStyle,
                         bubbleAiImageStyle = bubbleAiImageStyle,
+                        bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                        bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                        bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                        bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                        bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                        bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                         showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                 )
                 ChatScreenHeader(
@@ -419,6 +431,12 @@ fun ChatScreenContent(
                         showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                         bubbleUserImageStyle = bubbleUserImageStyle,
                         bubbleAiImageStyle = bubbleAiImageStyle,
+                        bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                        bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                        bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                        bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                        bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                        bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                 )
             }
         }

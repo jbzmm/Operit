@@ -32,6 +32,17 @@
     <string name="attach_local_storage_repo">Attach Local Storage Repository</string>
     <string name="chat_style_bubble_show_avatar">Show avatars</string>
     <string name="chat_style_bubble_show_avatar_desc">Show user and AI avatars in bubble chat style</string>
+    <string name="chat_style_bubble_image_render_mode_title">Image bubble render mode</string>
+    <string name="chat_style_bubble_image_render_mode_desc">Choose .9 stretch mode or 9-slice tiled mode</string>
+    <string name="chat_style_bubble_image_render_mode_nine_patch">.9 mode</string>
+    <string name="chat_style_bubble_image_render_mode_tiled">9-slice tiled</string>
+    <string name="chat_style_bubble_rounded_corners">Enable rounded bubbles</string>
+    <string name="chat_style_bubble_rounded_corners_desc">When disabled, message bubbles use square corners</string>
+    <string name="chat_style_bubble_rounded_corners_user">User</string>
+    <string name="chat_style_bubble_rounded_corners_ai">AI</string>
+    <string name="chat_style_bubble_advanced_options">Advanced options</string>
+    <string name="chat_style_bubble_padding_left">Left padding</string>
+    <string name="chat_style_bubble_padding_right">Right padding</string>
 
     <!-- Floating Window Module -->
     <string name="floating_screen_content">Screen Content</string>
@@ -3418,9 +3429,16 @@
     <string name="chat_style_bubble_crop_bottom">Crop bottom</string>
     <string name="chat_style_bubble_repeat_start">Repeat start</string>
     <string name="chat_style_bubble_repeat_end">Repeat end</string>
+    <string name="chat_style_bubble_repeat_x_start">Repeat X start</string>
+    <string name="chat_style_bubble_repeat_x_end">Repeat X end</string>
+    <string name="chat_style_bubble_repeat_y_start">Repeat Y start</string>
+    <string name="chat_style_bubble_repeat_y_end">Repeat Y end</string>
+    <string name="chat_style_bubble_image_scale">Image scale</string>
     <string name="chat_style_preview_title">Style preview</string>
     <string name="chat_style_preview_user_message">This is a user message preview</string>
     <string name="chat_style_preview_ai_message">This is an AI message preview</string>
+    <string name="chat_style_preview_user_source_title">User source 9-slice preview</string>
+    <string name="chat_style_preview_ai_source_title">AI source 9-slice preview</string>
     <string name="chat_style_bubble_image_saved">Bubble image saved</string>
     <string name="display_options_title">Display Options</string>
     <string name="show_thinking_process">Show Thinking Process</string>

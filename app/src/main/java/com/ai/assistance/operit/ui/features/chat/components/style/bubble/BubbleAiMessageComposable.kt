@@ -54,6 +54,9 @@ fun BubbleAiMessageComposable(
     backgroundColor: Color,
     textColor: Color,
     bubbleImageStyle: BubbleImageStyleConfig? = null,
+    bubbleRoundedCornersEnabled: Boolean = true,
+    bubbleContentPaddingLeft: Float = 12f,
+    bubbleContentPaddingRight: Float = 12f,
     onLinkClick: ((String) -> Unit)? = null,
     isHidden: Boolean = false,
     enableDialogs: Boolean = true,
@@ -252,7 +255,12 @@ fun BubbleAiMessageComposable(
                     )
                 } else {
                     // Message bubble
-                    val bubbleShape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+                    val bubbleShape =
+                        if (bubbleRoundedCornersEnabled) {
+                            RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+                        } else {
+                            RoundedCornerShape(0.dp)
+                        }
                     val bubbleModifier =
                         Modifier
                             .widthIn(max = maxBubbleWidth)
@@ -271,7 +279,13 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
                                     state = rendererState,
                                     fillMaxWidth = false  // bubble模式：横向缩紧
                                 )
@@ -285,7 +299,13 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
-                                    modifier = Modifier.padding(12.dp),
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
                                     state = rendererState,
                                     fillMaxWidth = false  // bubble模式：横向缩紧
                                 )

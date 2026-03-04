@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.ui.features.settings.screens
 
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,8 +63,101 @@ import com.google.android.exoplayer2.DefaultLoadControl
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
+
+private data class NinePatchBubbleAutoParams(
+    val cropLeftRatio: Float,
+    val cropTopRatio: Float,
+    val cropRightRatio: Float,
+    val cropBottomRatio: Float,
+    val repeatXStartRatio: Float,
+    val repeatXEndRatio: Float,
+    val repeatYStartRatio: Float,
+    val repeatYEndRatio: Float,
+)
+
+private fun isNinePatchMarker(colorInt: Int): Boolean {
+    val alpha = (colorInt ushr 24) and 0xFF
+    if (alpha < 0x80) return false
+    val red = (colorInt ushr 16) and 0xFF
+    val green = (colorInt ushr 8) and 0xFF
+    val blue = colorInt and 0xFF
+    return red < 32 && green < 32 && blue < 32
+}
+
+private fun buildStretchRange(marked: List<Int>, innerSize: Int): Pair<Float, Float>? {
+    if (marked.isEmpty() || innerSize <= 0) return null
+    val start = marked.first().toFloat() / innerSize.toFloat()
+    val endExclusive = (marked.last() + 1).toFloat() / innerSize.toFloat()
+    return start.coerceIn(0f, 1f) to endExclusive.coerceIn(0f, 1f)
+}
+
+private suspend fun parseNinePatchBubbleParams(context: android.content.Context, uri: Uri): NinePatchBubbleAutoParams? =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input)
+            }
+        }.getOrNull()?.let { bitmap ->
+            val width = bitmap.width
+            val height = bitmap.height
+            if (width < 3 || height < 3) return@let null
+
+            val innerWidth = width - 2
+            val innerHeight = height - 2
+            if (innerWidth <= 0 || innerHeight <= 0) return@let null
+
+            val topMarkers = mutableListOf<Int>()
+            val leftMarkers = mutableListOf<Int>()
+            for (x in 0 until innerWidth) {
+                if (isNinePatchMarker(bitmap.getPixel(x + 1, 0))) {
+                    topMarkers.add(x)
+                }
+            }
+            for (y in 0 until innerHeight) {
+                if (isNinePatchMarker(bitmap.getPixel(0, y + 1))) {
+                    leftMarkers.add(y)
+                }
+            }
+
+            val xRange = buildStretchRange(topMarkers, innerWidth) ?: (0.35f to 0.65f)
+            val yRange = buildStretchRange(leftMarkers, innerHeight) ?: (0.35f to 0.65f)
+
+            NinePatchBubbleAutoParams(
+                cropLeftRatio = (1f / width.toFloat()).coerceIn(0f, 0.45f),
+                cropTopRatio = (1f / height.toFloat()).coerceIn(0f, 0.45f),
+                cropRightRatio = (1f / width.toFloat()).coerceIn(0f, 0.45f),
+                cropBottomRatio = (1f / height.toFloat()).coerceIn(0f, 0.45f),
+                repeatXStartRatio = xRange.first,
+                repeatXEndRatio = xRange.second,
+                repeatYStartRatio = yRange.first,
+                repeatYEndRatio = yRange.second,
+            )
+        }
+    }
+
+private fun resolveDisplayName(context: android.content.Context, uri: Uri): String? {
+    return runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) cursor.getString(index) else null
+            }
+    }.getOrNull()
+}
+
+private fun isNinePatchPngUri(context: android.content.Context, uri: Uri): Boolean {
+    val displayName = resolveDisplayName(context, uri)?.lowercase()
+    if (displayName != null && displayName.endsWith(".9.png")) {
+        return true
+    }
+    val pathName = uri.lastPathSegment?.lowercase()
+    return pathName?.endsWith(".9.png") == true
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,6 +305,12 @@ fun ThemeSettingsScreen() {
         preferencesManager.bubbleUserImageRepeatStart.collectAsState(initial = 0.35f).value
     val bubbleUserImageRepeatEnd =
         preferencesManager.bubbleUserImageRepeatEnd.collectAsState(initial = 0.65f).value
+    val bubbleUserImageRepeatYStart =
+        preferencesManager.bubbleUserImageRepeatYStart.collectAsState(initial = 0.35f).value
+    val bubbleUserImageRepeatYEnd =
+        preferencesManager.bubbleUserImageRepeatYEnd.collectAsState(initial = 0.65f).value
+    val bubbleUserImageScale =
+        preferencesManager.bubbleUserImageScale.collectAsState(initial = 1f).value
     val bubbleAiImageCropLeft =
         preferencesManager.bubbleAiImageCropLeft.collectAsState(initial = 0f).value
     val bubbleAiImageCropTop =
@@ -222,6 +323,28 @@ fun ThemeSettingsScreen() {
         preferencesManager.bubbleAiImageRepeatStart.collectAsState(initial = 0.35f).value
     val bubbleAiImageRepeatEnd =
         preferencesManager.bubbleAiImageRepeatEnd.collectAsState(initial = 0.65f).value
+    val bubbleAiImageRepeatYStart =
+        preferencesManager.bubbleAiImageRepeatYStart.collectAsState(initial = 0.35f).value
+    val bubbleAiImageRepeatYEnd =
+        preferencesManager.bubbleAiImageRepeatYEnd.collectAsState(initial = 0.65f).value
+    val bubbleAiImageScale =
+        preferencesManager.bubbleAiImageScale.collectAsState(initial = 1f).value
+    val bubbleImageRenderMode =
+        preferencesManager.bubbleImageRenderMode.collectAsState(
+            initial = UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE,
+        ).value
+    val bubbleUserRoundedCornersEnabled =
+        preferencesManager.bubbleUserRoundedCornersEnabled.collectAsState(initial = true).value
+    val bubbleAiRoundedCornersEnabled =
+        preferencesManager.bubbleAiRoundedCornersEnabled.collectAsState(initial = true).value
+    val bubbleUserContentPaddingLeft =
+        preferencesManager.bubbleUserContentPaddingLeft.collectAsState(initial = 12f).value
+    val bubbleUserContentPaddingRight =
+        preferencesManager.bubbleUserContentPaddingRight.collectAsState(initial = 12f).value
+    val bubbleAiContentPaddingLeft =
+        preferencesManager.bubbleAiContentPaddingLeft.collectAsState(initial = 12f).value
+    val bubbleAiContentPaddingRight =
+        preferencesManager.bubbleAiContentPaddingRight.collectAsState(initial = 12f).value
 
     // Collect new display settings
     val showThinkingProcess = preferencesManager.showThinkingProcess.collectAsState(initial = true).value
@@ -359,12 +482,33 @@ fun ThemeSettingsScreen() {
     var bubbleUserImageCropBottomInput by remember { mutableStateOf(bubbleUserImageCropBottom) }
     var bubbleUserImageRepeatStartInput by remember { mutableStateOf(bubbleUserImageRepeatStart) }
     var bubbleUserImageRepeatEndInput by remember { mutableStateOf(bubbleUserImageRepeatEnd) }
+    var bubbleUserImageRepeatYStartInput by remember { mutableStateOf(bubbleUserImageRepeatYStart) }
+    var bubbleUserImageRepeatYEndInput by remember { mutableStateOf(bubbleUserImageRepeatYEnd) }
+    var bubbleUserImageScaleInput by remember { mutableStateOf(bubbleUserImageScale) }
     var bubbleAiImageCropLeftInput by remember { mutableStateOf(bubbleAiImageCropLeft) }
     var bubbleAiImageCropTopInput by remember { mutableStateOf(bubbleAiImageCropTop) }
     var bubbleAiImageCropRightInput by remember { mutableStateOf(bubbleAiImageCropRight) }
     var bubbleAiImageCropBottomInput by remember { mutableStateOf(bubbleAiImageCropBottom) }
     var bubbleAiImageRepeatStartInput by remember { mutableStateOf(bubbleAiImageRepeatStart) }
     var bubbleAiImageRepeatEndInput by remember { mutableStateOf(bubbleAiImageRepeatEnd) }
+    var bubbleAiImageRepeatYStartInput by remember { mutableStateOf(bubbleAiImageRepeatYStart) }
+    var bubbleAiImageRepeatYEndInput by remember { mutableStateOf(bubbleAiImageRepeatYEnd) }
+    var bubbleAiImageScaleInput by remember { mutableStateOf(bubbleAiImageScale) }
+    var bubbleImageRenderModeInput by remember { mutableStateOf(bubbleImageRenderMode) }
+    var bubbleUserRoundedCornersEnabledInput by remember {
+        mutableStateOf(bubbleUserRoundedCornersEnabled)
+    }
+    var bubbleAiRoundedCornersEnabledInput by remember {
+        mutableStateOf(bubbleAiRoundedCornersEnabled)
+    }
+    var bubbleUserContentPaddingLeftInput by
+        remember { mutableStateOf(bubbleUserContentPaddingLeft) }
+    var bubbleUserContentPaddingRightInput by
+        remember { mutableStateOf(bubbleUserContentPaddingRight) }
+    var bubbleAiContentPaddingLeftInput by
+        remember { mutableStateOf(bubbleAiContentPaddingLeft) }
+    var bubbleAiContentPaddingRightInput by
+        remember { mutableStateOf(bubbleAiContentPaddingRight) }
 
     // New display settings state
     var showThinkingProcessInput by remember { mutableStateOf(showThinkingProcess) }
@@ -765,7 +909,110 @@ fun ThemeSettingsScreen() {
     val bubbleImagePickerLauncher =
         rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
             if (uri != null) {
-                launchBubbleImageCrop(uri)
+                if (!isNinePatchPngUri(context, uri)) {
+                    launchBubbleImageCrop(uri)
+                    return@rememberLauncherForActivityResult
+                }
+
+                scope.launch {
+                    val uniqueName =
+                        if (bubbleImagePickerTarget == "ai") {
+                            "bubble_ai"
+                        } else {
+                            "bubble_user"
+                        }
+                    val internalUri =
+                        FileUtils.copyFileToInternalStorage(context, uri, uniqueName)
+                    if (internalUri == null) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.theme_copy_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@launch
+                    }
+
+                    val autoParams =
+                        parseNinePatchBubbleParams(context, uri)
+                            ?: parseNinePatchBubbleParams(context, internalUri)
+                    if (autoParams == null) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.theme_copy_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@launch
+                    }
+                    val internalUriString = internalUri.toString()
+                    bubbleImageRenderModeInput =
+                        UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_NINE_PATCH
+
+                    if (bubbleImagePickerTarget == "ai") {
+                        bubbleAiImageUriInput = internalUriString
+                        bubbleAiUseImageInput = true
+                        bubbleAiImageCropLeftInput = autoParams.cropLeftRatio
+                        bubbleAiImageCropTopInput = autoParams.cropTopRatio
+                        bubbleAiImageCropRightInput = autoParams.cropRightRatio
+                        bubbleAiImageCropBottomInput = autoParams.cropBottomRatio
+                        bubbleAiImageRepeatStartInput = autoParams.repeatXStartRatio
+                        bubbleAiImageRepeatEndInput = autoParams.repeatXEndRatio
+                        bubbleAiImageRepeatYStartInput = autoParams.repeatYStartRatio
+                        bubbleAiImageRepeatYEndInput = autoParams.repeatYEndRatio
+                        bubbleAiImageScaleInput = 1f
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleAiImageUri = internalUriString,
+                                bubbleAiUseImage = true,
+                                bubbleAiImageCropLeft = autoParams.cropLeftRatio,
+                                bubbleAiImageCropTop = autoParams.cropTopRatio,
+                                bubbleAiImageCropRight = autoParams.cropRightRatio,
+                                bubbleAiImageCropBottom = autoParams.cropBottomRatio,
+                                bubbleAiImageRepeatStart = autoParams.repeatXStartRatio,
+                                bubbleAiImageRepeatEnd = autoParams.repeatXEndRatio,
+                                bubbleAiImageRepeatYStart = autoParams.repeatYStartRatio,
+                                bubbleAiImageRepeatYEnd = autoParams.repeatYEndRatio,
+                                bubbleAiImageScale = 1f,
+                                bubbleImageRenderMode =
+                                    UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_NINE_PATCH,
+                            )
+                        }
+                    } else {
+                        bubbleUserImageUriInput = internalUriString
+                        bubbleUserUseImageInput = true
+                        bubbleUserImageCropLeftInput = autoParams.cropLeftRatio
+                        bubbleUserImageCropTopInput = autoParams.cropTopRatio
+                        bubbleUserImageCropRightInput = autoParams.cropRightRatio
+                        bubbleUserImageCropBottomInput = autoParams.cropBottomRatio
+                        bubbleUserImageRepeatStartInput = autoParams.repeatXStartRatio
+                        bubbleUserImageRepeatEndInput = autoParams.repeatXEndRatio
+                        bubbleUserImageRepeatYStartInput = autoParams.repeatYStartRatio
+                        bubbleUserImageRepeatYEndInput = autoParams.repeatYEndRatio
+                        bubbleUserImageScaleInput = 1f
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                bubbleUserImageUri = internalUriString,
+                                bubbleUserUseImage = true,
+                                bubbleUserImageCropLeft = autoParams.cropLeftRatio,
+                                bubbleUserImageCropTop = autoParams.cropTopRatio,
+                                bubbleUserImageCropRight = autoParams.cropRightRatio,
+                                bubbleUserImageCropBottom = autoParams.cropBottomRatio,
+                                bubbleUserImageRepeatStart = autoParams.repeatXStartRatio,
+                                bubbleUserImageRepeatEnd = autoParams.repeatXEndRatio,
+                                bubbleUserImageRepeatYStart = autoParams.repeatYStartRatio,
+                                bubbleUserImageRepeatYEnd = autoParams.repeatYEndRatio,
+                                bubbleUserImageScale = 1f,
+                                bubbleImageRenderMode =
+                                    UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_NINE_PATCH,
+                            )
+                        }
+                    }
+
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.chat_style_bubble_image_saved),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
 
@@ -848,12 +1095,25 @@ fun ThemeSettingsScreen() {
             bubbleUserImageCropBottom,
             bubbleUserImageRepeatStart,
             bubbleUserImageRepeatEnd,
+            bubbleUserImageRepeatYStart,
+            bubbleUserImageRepeatYEnd,
+            bubbleUserImageScale,
             bubbleAiImageCropLeft,
             bubbleAiImageCropTop,
             bubbleAiImageCropRight,
             bubbleAiImageCropBottom,
             bubbleAiImageRepeatStart,
             bubbleAiImageRepeatEnd,
+            bubbleAiImageRepeatYStart,
+            bubbleAiImageRepeatYEnd,
+            bubbleAiImageScale,
+            bubbleImageRenderMode,
+            bubbleUserRoundedCornersEnabled,
+            bubbleAiRoundedCornersEnabled,
+            bubbleUserContentPaddingLeft,
+            bubbleUserContentPaddingRight,
+            bubbleAiContentPaddingLeft,
+            bubbleAiContentPaddingRight,
             showThinkingProcess,
             showStatusTags,
             showInputProcessingStatus,
@@ -916,12 +1176,25 @@ fun ThemeSettingsScreen() {
         bubbleUserImageCropBottomInput = bubbleUserImageCropBottom
         bubbleUserImageRepeatStartInput = bubbleUserImageRepeatStart
         bubbleUserImageRepeatEndInput = bubbleUserImageRepeatEnd
+        bubbleUserImageRepeatYStartInput = bubbleUserImageRepeatYStart
+        bubbleUserImageRepeatYEndInput = bubbleUserImageRepeatYEnd
+        bubbleUserImageScaleInput = bubbleUserImageScale
         bubbleAiImageCropLeftInput = bubbleAiImageCropLeft
         bubbleAiImageCropTopInput = bubbleAiImageCropTop
         bubbleAiImageCropRightInput = bubbleAiImageCropRight
         bubbleAiImageCropBottomInput = bubbleAiImageCropBottom
         bubbleAiImageRepeatStartInput = bubbleAiImageRepeatStart
         bubbleAiImageRepeatEndInput = bubbleAiImageRepeatEnd
+        bubbleAiImageRepeatYStartInput = bubbleAiImageRepeatYStart
+        bubbleAiImageRepeatYEndInput = bubbleAiImageRepeatYEnd
+        bubbleAiImageScaleInput = bubbleAiImageScale
+        bubbleImageRenderModeInput = bubbleImageRenderMode
+        bubbleUserRoundedCornersEnabledInput = bubbleUserRoundedCornersEnabled
+        bubbleAiRoundedCornersEnabledInput = bubbleAiRoundedCornersEnabled
+        bubbleUserContentPaddingLeftInput = bubbleUserContentPaddingLeft
+        bubbleUserContentPaddingRightInput = bubbleUserContentPaddingRight
+        bubbleAiContentPaddingLeftInput = bubbleAiContentPaddingLeft
+        bubbleAiContentPaddingRightInput = bubbleAiContentPaddingRight
         showThinkingProcessInput = showThinkingProcess
         showStatusTagsInput = showStatusTags
         showInputProcessingStatusInput = showInputProcessingStatus
@@ -1143,6 +1416,8 @@ fun ThemeSettingsScreen() {
             cursorUserBubbleColorInput = cursorUserBubbleColorInput,
             bubbleUserBubbleColorInput = bubbleUserBubbleColorInput,
             bubbleAiBubbleColorInput = bubbleAiBubbleColorInput,
+            previewUserAvatarUri = userAvatarUriInput ?: globalUserAvatarUriInput,
+            previewAiAvatarUri = aiAvatarUriInput,
             onShowColorPicker = {
                 currentColorPickerMode = it
                 showColorPicker = true
@@ -1193,6 +1468,12 @@ fun ThemeSettingsScreen() {
             onBubbleUserImageRepeatStartInputChange = { bubbleUserImageRepeatStartInput = it },
             bubbleUserImageRepeatEndInput = bubbleUserImageRepeatEndInput,
             onBubbleUserImageRepeatEndInputChange = { bubbleUserImageRepeatEndInput = it },
+            bubbleUserImageRepeatYStartInput = bubbleUserImageRepeatYStartInput,
+            onBubbleUserImageRepeatYStartInputChange = { bubbleUserImageRepeatYStartInput = it },
+            bubbleUserImageRepeatYEndInput = bubbleUserImageRepeatYEndInput,
+            onBubbleUserImageRepeatYEndInputChange = { bubbleUserImageRepeatYEndInput = it },
+            bubbleUserImageScaleInput = bubbleUserImageScaleInput,
+            onBubbleUserImageScaleInputChange = { bubbleUserImageScaleInput = it },
             bubbleAiImageCropLeftInput = bubbleAiImageCropLeftInput,
             onBubbleAiImageCropLeftInputChange = { bubbleAiImageCropLeftInput = it },
             bubbleAiImageCropTopInput = bubbleAiImageCropTopInput,
@@ -1205,8 +1486,48 @@ fun ThemeSettingsScreen() {
             onBubbleAiImageRepeatStartInputChange = { bubbleAiImageRepeatStartInput = it },
             bubbleAiImageRepeatEndInput = bubbleAiImageRepeatEndInput,
             onBubbleAiImageRepeatEndInputChange = { bubbleAiImageRepeatEndInput = it },
+            bubbleAiImageRepeatYStartInput = bubbleAiImageRepeatYStartInput,
+            onBubbleAiImageRepeatYStartInputChange = { bubbleAiImageRepeatYStartInput = it },
+            bubbleAiImageRepeatYEndInput = bubbleAiImageRepeatYEndInput,
+            onBubbleAiImageRepeatYEndInputChange = { bubbleAiImageRepeatYEndInput = it },
+            bubbleAiImageScaleInput = bubbleAiImageScaleInput,
+            onBubbleAiImageScaleInputChange = { bubbleAiImageScaleInput = it },
+            bubbleImageRenderModeInput = bubbleImageRenderModeInput,
+            onBubbleImageRenderModeInputChange = { bubbleImageRenderModeInput = it },
+            bubbleUserRoundedCornersEnabledInput = bubbleUserRoundedCornersEnabledInput,
+            onBubbleUserRoundedCornersEnabledInputChange = { bubbleUserRoundedCornersEnabledInput = it },
+            bubbleAiRoundedCornersEnabledInput = bubbleAiRoundedCornersEnabledInput,
+            onBubbleAiRoundedCornersEnabledInputChange = { bubbleAiRoundedCornersEnabledInput = it },
+            bubbleUserContentPaddingLeftInput = bubbleUserContentPaddingLeftInput,
+            onBubbleUserContentPaddingLeftInputChange = { bubbleUserContentPaddingLeftInput = it },
+            bubbleUserContentPaddingRightInput = bubbleUserContentPaddingRightInput,
+            onBubbleUserContentPaddingRightInputChange = { bubbleUserContentPaddingRightInput = it },
+            bubbleAiContentPaddingLeftInput = bubbleAiContentPaddingLeftInput,
+            onBubbleAiContentPaddingLeftInputChange = { bubbleAiContentPaddingLeftInput = it },
+            bubbleAiContentPaddingRightInput = bubbleAiContentPaddingRightInput,
+            onBubbleAiContentPaddingRightInputChange = { bubbleAiContentPaddingRightInput = it },
             saveThemeSettingsWithCharacterCard = ::saveThemeSettingsWithCharacterCard,
             preferencesManager = preferencesManager,
+        )
+
+        ThemeSettingsAvatarSection(
+            cardColors = cardModifier,
+            scope = scope,
+            preferencesManager = preferencesManager,
+            displayPreferencesManager = displayPreferencesManager,
+            saveThemeSettingsWithCharacterCard = ::saveThemeSettingsWithCharacterCard,
+            userAvatarUriInput = userAvatarUriInput,
+            onUserAvatarUriInputChange = { userAvatarUriInput = it },
+            globalUserAvatarUriInput = globalUserAvatarUriInput,
+            onGlobalUserAvatarUriInputChange = { globalUserAvatarUriInput = it },
+            globalUserNameInput = globalUserNameInput,
+            onGlobalUserNameInputChange = { globalUserNameInput = it },
+            avatarShapeInput = avatarShapeInput,
+            onAvatarShapeInputChange = { avatarShapeInput = it },
+            avatarCornerRadiusInput = avatarCornerRadiusInput,
+            onAvatarCornerRadiusInputChange = { avatarCornerRadiusInput = it },
+            avatarImagePicker = avatarImagePicker,
+            onAvatarPickerModeChange = { avatarPickerMode = it },
         )
 
         ThemeSettingsDisplayOptionsSection(
@@ -1241,26 +1562,6 @@ fun ThemeSettingsScreen() {
             fontScaleInput = fontScaleInput,
             onFontScaleInputChange = { fontScaleInput = it },
             fontPickerLauncher = fontPickerLauncher,
-        )
-
-        ThemeSettingsAvatarSection(
-            cardColors = cardModifier,
-            scope = scope,
-            preferencesManager = preferencesManager,
-            displayPreferencesManager = displayPreferencesManager,
-            saveThemeSettingsWithCharacterCard = ::saveThemeSettingsWithCharacterCard,
-            userAvatarUriInput = userAvatarUriInput,
-            onUserAvatarUriInputChange = { userAvatarUriInput = it },
-            globalUserAvatarUriInput = globalUserAvatarUriInput,
-            onGlobalUserAvatarUriInputChange = { globalUserAvatarUriInput = it },
-            globalUserNameInput = globalUserNameInput,
-            onGlobalUserNameInputChange = { globalUserNameInput = it },
-            avatarShapeInput = avatarShapeInput,
-            onAvatarShapeInputChange = { avatarShapeInput = it },
-            avatarCornerRadiusInput = avatarCornerRadiusInput,
-            onAvatarCornerRadiusInputChange = { avatarCornerRadiusInput = it },
-            avatarImagePicker = avatarImagePicker,
-            onAvatarPickerModeChange = { avatarPickerMode = it },
         )
 
 
@@ -1346,12 +1647,26 @@ fun ThemeSettingsScreen() {
                         bubbleUserImageCropBottomInput = 0f
                         bubbleUserImageRepeatStartInput = 0.35f
                         bubbleUserImageRepeatEndInput = 0.65f
+                        bubbleUserImageRepeatYStartInput = 0.35f
+                        bubbleUserImageRepeatYEndInput = 0.65f
+                        bubbleUserImageScaleInput = 1f
                         bubbleAiImageCropLeftInput = 0f
                         bubbleAiImageCropTopInput = 0f
                         bubbleAiImageCropRightInput = 0f
                         bubbleAiImageCropBottomInput = 0f
                         bubbleAiImageRepeatStartInput = 0.35f
                         bubbleAiImageRepeatEndInput = 0.65f
+                        bubbleAiImageRepeatYStartInput = 0.35f
+                        bubbleAiImageRepeatYEndInput = 0.65f
+                        bubbleAiImageScaleInput = 1f
+                        bubbleImageRenderModeInput =
+                            UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE
+                        bubbleUserRoundedCornersEnabledInput = true
+                        bubbleAiRoundedCornersEnabledInput = true
+                        bubbleUserContentPaddingLeftInput = 12f
+                        bubbleUserContentPaddingRightInput = 12f
+                        bubbleAiContentPaddingLeftInput = 12f
+                        bubbleAiContentPaddingRightInput = 12f
                         showThinkingProcessInput = true
                         showStatusTagsInput = true
                         showInputProcessingStatusInput = true

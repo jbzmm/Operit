@@ -224,6 +224,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         preferencesManager.bubbleUserImageRepeatStart.collectAsState(initial = 0.35f)
     val bubbleUserImageRepeatEnd by
         preferencesManager.bubbleUserImageRepeatEnd.collectAsState(initial = 0.65f)
+    val bubbleUserImageRepeatYStart by
+        preferencesManager.bubbleUserImageRepeatYStart.collectAsState(initial = 0.35f)
+    val bubbleUserImageRepeatYEnd by
+        preferencesManager.bubbleUserImageRepeatYEnd.collectAsState(initial = 0.65f)
+    val bubbleUserImageScale by
+        preferencesManager.bubbleUserImageScale.collectAsState(initial = 1f)
     val bubbleAiImageCropLeft by
         preferencesManager.bubbleAiImageCropLeft.collectAsState(initial = 0f)
     val bubbleAiImageCropTop by
@@ -236,6 +242,28 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         preferencesManager.bubbleAiImageRepeatStart.collectAsState(initial = 0.35f)
     val bubbleAiImageRepeatEnd by
         preferencesManager.bubbleAiImageRepeatEnd.collectAsState(initial = 0.65f)
+    val bubbleAiImageRepeatYStart by
+        preferencesManager.bubbleAiImageRepeatYStart.collectAsState(initial = 0.35f)
+    val bubbleAiImageRepeatYEnd by
+        preferencesManager.bubbleAiImageRepeatYEnd.collectAsState(initial = 0.65f)
+    val bubbleAiImageScale by
+        preferencesManager.bubbleAiImageScale.collectAsState(initial = 1f)
+    val bubbleImageRenderMode by
+        preferencesManager.bubbleImageRenderMode.collectAsState(
+            initial = UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE,
+        )
+    val bubbleUserRoundedCornersEnabled by
+        preferencesManager.bubbleUserRoundedCornersEnabled.collectAsState(initial = true)
+    val bubbleAiRoundedCornersEnabled by
+        preferencesManager.bubbleAiRoundedCornersEnabled.collectAsState(initial = true)
+    val bubbleUserContentPaddingLeft by
+        preferencesManager.bubbleUserContentPaddingLeft.collectAsState(initial = 12f)
+    val bubbleUserContentPaddingRight by
+        preferencesManager.bubbleUserContentPaddingRight.collectAsState(initial = 12f)
+    val bubbleAiContentPaddingLeft by
+        preferencesManager.bubbleAiContentPaddingLeft.collectAsState(initial = 12f)
+    val bubbleAiContentPaddingRight by
+        preferencesManager.bubbleAiContentPaddingRight.collectAsState(initial = 12f)
     val hostActivity = remember(context) { context.findActivity() }
 
     // Collect chat area horizontal padding from preferences
@@ -442,6 +470,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             bubbleUserImageCropBottom,
             bubbleUserImageRepeatStart,
             bubbleUserImageRepeatEnd,
+            bubbleUserImageRepeatYStart,
+            bubbleUserImageRepeatYEnd,
+            bubbleUserImageScale,
+            bubbleImageRenderMode,
         ) {
             val imageUri = bubbleUserImageUri
             if (
@@ -455,8 +487,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     cropTopRatio = bubbleUserImageCropTop,
                     cropRightRatio = bubbleUserImageCropRight,
                     cropBottomRatio = bubbleUserImageCropBottom,
-                    repeatStartRatio = bubbleUserImageRepeatStart,
-                    repeatEndRatio = bubbleUserImageRepeatEnd,
+                    repeatXStartRatio = bubbleUserImageRepeatStart,
+                    repeatXEndRatio = bubbleUserImageRepeatEnd,
+                    repeatYStartRatio = bubbleUserImageRepeatYStart,
+                    repeatYEndRatio = bubbleUserImageRepeatYEnd,
+                    imageScale = bubbleUserImageScale,
+                    renderMode = bubbleImageRenderMode,
                 )
             } else {
                 null
@@ -474,6 +510,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             bubbleAiImageCropBottom,
             bubbleAiImageRepeatStart,
             bubbleAiImageRepeatEnd,
+            bubbleAiImageRepeatYStart,
+            bubbleAiImageRepeatYEnd,
+            bubbleAiImageScale,
+            bubbleImageRenderMode,
         ) {
             val imageUri = bubbleAiImageUri
             if (
@@ -487,8 +527,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     cropTopRatio = bubbleAiImageCropTop,
                     cropRightRatio = bubbleAiImageCropRight,
                     cropBottomRatio = bubbleAiImageCropBottom,
-                    repeatStartRatio = bubbleAiImageRepeatStart,
-                    repeatEndRatio = bubbleAiImageRepeatEnd,
+                    repeatXStartRatio = bubbleAiImageRepeatStart,
+                    repeatXEndRatio = bubbleAiImageRepeatEnd,
+                    repeatYStartRatio = bubbleAiImageRepeatYStart,
+                    repeatYEndRatio = bubbleAiImageRepeatYEnd,
+                    imageScale = bubbleAiImageScale,
+                    renderMode = bubbleImageRenderMode,
                 )
             } else {
                 null
@@ -1130,6 +1174,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 chatAreaHorizontalPadding = chatAreaHorizontalPadding,
                                 bubbleUserImageStyle = bubbleUserImageStyle,
                                 bubbleAiImageStyle = bubbleAiImageStyle,
+                                bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                                bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                                bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                                bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                                bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                                bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                                 showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                         )
 

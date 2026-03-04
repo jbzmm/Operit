@@ -69,6 +69,9 @@ fun BubbleUserMessageComposable(
     backgroundColor: Color,
     textColor: Color,
     bubbleImageStyle: BubbleImageStyleConfig? = null,
+    bubbleRoundedCornersEnabled: Boolean = true,
+    bubbleContentPaddingLeft: Float = 12f,
+    bubbleContentPaddingRight: Float = 12f,
     enableDialogs: Boolean = true
 ) {
     val context = LocalContext.current
@@ -303,7 +306,12 @@ fun BubbleUserMessageComposable(
                 // Message bubble
                 BoxWithConstraints {
                     val maxBubbleWidth = maxWidth * 0.85f
-                    val bubbleShape = RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                    val bubbleShape =
+                        if (bubbleRoundedCornersEnabled) {
+                            RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp)
+                        } else {
+                            RoundedCornerShape(0.dp)
+                        }
                     val bubbleModifier =
                         Modifier
                             .widthIn(max = maxBubbleWidth)
@@ -314,7 +322,13 @@ fun BubbleUserMessageComposable(
                             imageStyle = bubbleImageStyle,
                             shape = bubbleShape,
                             modifier = bubbleModifier,
-                            contentPadding = PaddingValues(12.dp),
+                            contentPadding =
+                                PaddingValues(
+                                    start = bubbleContentPaddingLeft.dp,
+                                    top = 12.dp,
+                                    end = bubbleContentPaddingRight.dp,
+                                    bottom = 12.dp,
+                                ),
                         ) {
                             Text(
                                 text = textContent,
@@ -331,7 +345,13 @@ fun BubbleUserMessageComposable(
                         ) {
                             Text(
                                 text = textContent,
-                                modifier = Modifier.padding(12.dp),
+                                modifier =
+                                    Modifier.padding(
+                                        start = bubbleContentPaddingLeft.dp,
+                                        top = 12.dp,
+                                        end = bubbleContentPaddingRight.dp,
+                                        bottom = 12.dp,
+                                    ),
                                 color = textColor,
                                 style = MaterialTheme.typography.bodyMedium
                             )
