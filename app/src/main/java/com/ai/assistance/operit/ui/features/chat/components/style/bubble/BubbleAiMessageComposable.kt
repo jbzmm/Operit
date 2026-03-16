@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRendererState
+import com.ai.assistance.operit.ui.features.chat.components.rememberRevisableTextStream
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.features.chat.components.part.ThinkToolsXmlNodeGrouper
 import com.ai.assistance.operit.ui.features.chat.components.LinkPreviewDialog
@@ -297,7 +298,7 @@ fun BubbleAiMessageComposable(
                             .defaultMinSize(minHeight = 44.dp)
                     val renderContent: @Composable () -> Unit = {
                         key(message.timestamp) {
-                            val stream = message.contentStream
+                            val stream = rememberRevisableTextStream(message.contentStream)
                             if (stream != null) {
                                 val charStream = remember(stream) { stream.toCharStream() }
                                 StreamMarkdownRenderer(
@@ -474,7 +475,7 @@ fun BubbleAiMessageComposable(
                         // 使用 message.timestamp 作为 key，确保在重组期间，
                         // 只要是同一条消息，StreamMarkdownRenderer就不会被销毁和重建。
                         key(message.timestamp) {
-                            val stream = message.contentStream
+                            val stream = rememberRevisableTextStream(message.contentStream)
                             if (stream != null) {
                                 val charStream = remember(stream) { stream.toCharStream() }
                                 StreamMarkdownRenderer(

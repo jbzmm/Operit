@@ -74,13 +74,15 @@ fun String.toCharStream(): Stream<Char> {
 
 /** 将字符串流转换为字符流 */
 fun Stream<String>.toCharStream(): Stream<Char> {
-    return stream {
+    val charStream = stream {
         this@toCharStream.collect { str ->
             for (c in str) {
                 emit(c)
             }
         }
     }
+    val carrier = this as? TextStreamEventCarrier ?: return charStream
+    return charStream.withTextEventChannel(carrier.eventChannel)
 }
 
 /** Markdown结果处理器 - 生成MarkdownNode模型 */

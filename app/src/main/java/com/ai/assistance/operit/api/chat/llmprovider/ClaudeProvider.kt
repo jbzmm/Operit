@@ -13,14 +13,19 @@ import com.ai.assistance.operit.util.StreamingJsonXmlConverter
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.TokenCacheManager
 import com.ai.assistance.operit.util.exceptions.UserCancellationException
+import com.ai.assistance.operit.util.stream.MutableSharedStream
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
+import com.ai.assistance.operit.util.stream.TextStreamEvent
+import com.ai.assistance.operit.util.stream.TextStreamEventType
+import com.ai.assistance.operit.util.stream.withEventChannel
 import com.ai.assistance.operit.util.stream.stream
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.UUID
 import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -732,7 +737,9 @@ class ClaudeProvider(
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
             onNonFatalError: suspend (error: String) -> Unit,
             enableRetry: Boolean
-    ): Stream<String> = stream {
+    ): Stream<String> {
+        val eventChannel = MutableSharedStream<TextStreamEvent>(replay = Int.MAX_VALUE)
+        val responseStream = stream {
         isManuallyCancelled = false
         resetTokenCounts()
 
@@ -740,6 +747,18 @@ class ClaudeProvider(
         var retryCount = 0
         var lastException: Exception? = null
         val receivedContent = StringBuilder()
+        val requestSavepointId = "attempt_${UUID.randomUUID().toString().replace("-", "")}"
+
+        suspend fun emitSavepoint(id: String) {
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.SAVEPOINT, id))
+        }
+
+        suspend fun emitRollback(id: String) {
+            if (receivedContent.isNotEmpty()) {
+                receivedContent.setLength(0)
+            }
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.ROLLBACK, id))
+        }
 
         fun parseAnthropicNonStreaming(jsonResponse: JSONObject): String {
             val content = jsonResponse.optJSONArray("content") ?: return ""
@@ -803,6 +822,8 @@ class ClaudeProvider(
             return messageObj?.optString("content", "") ?: ""
         }
 
+        emitSavepoint(requestSavepointId)
+
         AppLogger.d("AIService", "准备连接到Claude AI服务...")
         while (retryCount <= maxRetries) {
             if (isManuallyCancelled) {
@@ -811,22 +832,16 @@ class ClaudeProvider(
             }
 
             val call = try {
-                val currentMessage: String
-                val currentHistory: List<Pair<String, String>>
-                if (retryCount > 0 && receivedContent.isNotEmpty()) {
-                    AppLogger.d("AIService", "【Claude 重试】准备续写请求，已接收内容: ${receivedContent.length}")
-                    currentMessage = message + "\n\n[SYSTEM NOTE] The previous response was cut off by a network error. You MUST continue from the exact point of interruption. Do not repeat any content. If you were in the middle of a code block or XML tag, complete it. Just output the text that would have come next."
-                    val resumeHistory = chatHistory.toMutableList()
-                    resumeHistory.add("assistant" to receivedContent.toString())
-                    currentHistory = resumeHistory
-                } else {
-                    currentMessage = message
-                    currentHistory = chatHistory
+                if (retryCount > 0) {
+                    AppLogger.d(
+                        "AIService",
+                        "【Claude 重试】原子回滚后重新请求，本轮已撤回内容长度: ${receivedContent.length}"
+                    )
                 }
 
                 val requestBody = createRequestBody(
-                    currentMessage,
-                    currentHistory,
+                    message,
+                    chatHistory,
                     modelParameters,
                     enableThinking,
                     stream,
@@ -1209,6 +1224,7 @@ class ClaudeProvider(
                 return@stream
             } catch (e: NonRetriableException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -1225,6 +1241,7 @@ class ClaudeProvider(
                 }
             } catch (e: SocketTimeoutException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -1240,6 +1257,7 @@ class ClaudeProvider(
                 }
             } catch (e: UnknownHostException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -1255,6 +1273,7 @@ class ClaudeProvider(
                 }
             } catch (e: IOException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -1274,6 +1293,7 @@ class ClaudeProvider(
                     AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                     throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), e)
                 }
+                emitRollback(requestSavepointId)
                 AppLogger.e("AIService", "【Claude】发生未知异常，停止重试", e)
                 throw IOException(context.getString(R.string.openai_error_response_failed, e.message ?: ""), e)
             } finally {
@@ -1286,6 +1306,8 @@ class ClaudeProvider(
             AppLogger.e("AIService", "【Claude】重试失败，请检查网络连接", ex)
         } ?: AppLogger.e("AIService", "【Claude】重试失败，请检查网络连接")
         throw IOException(context.getString(R.string.openai_error_connection_timeout, maxRetries, lastException?.message ?: ""))
+        }
+        return responseStream.withEventChannel(eventChannel)
     }
 
     /**

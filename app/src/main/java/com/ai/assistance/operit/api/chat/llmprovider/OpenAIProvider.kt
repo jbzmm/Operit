@@ -17,9 +17,13 @@ import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.StreamingJsonXmlConverter
 import com.ai.assistance.operit.util.TokenCacheManager
 import com.ai.assistance.operit.util.exceptions.UserCancellationException
+import com.ai.assistance.operit.util.stream.MutableSharedStream
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
+import com.ai.assistance.operit.util.stream.TextStreamEvent
+import com.ai.assistance.operit.util.stream.TextStreamEventType
+import com.ai.assistance.operit.util.stream.withEventChannel
 import com.ai.assistance.operit.util.stream.stream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -27,6 +31,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -1096,8 +1101,11 @@ open class OpenAIProvider(
     private inner class StreamEmitter(
         private val receivedContent: StringBuilder,
         private val emit: suspend (String) -> Unit,
+        private val eventChannel: com.ai.assistance.operit.util.stream.MutableSharedStream<TextStreamEvent>,
         private val onTokensUpdated: suspend (Int, Int, Int) -> Unit
     ) {
+        private val savepointLengths = mutableMapOf<String, Int>()
+
         suspend fun emitContent(content: String) {
             if (content.isNotNullOrEmpty()) {
                 emit(content)
@@ -1128,6 +1136,22 @@ open class OpenAIProvider(
         suspend fun emitTag(tag: String) {
             emit(tag)
             receivedContent.append(tag)
+        }
+
+        suspend fun emitSavepoint(id: String) {
+            savepointLengths[id] = receivedContent.length
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.SAVEPOINT, id))
+        }
+
+        fun getSavepointLength(id: String): Int? = savepointLengths[id]
+
+        suspend fun emitRollback(id: String): Boolean {
+            val savepointLength = savepointLengths[id] ?: return false
+            if (receivedContent.length > savepointLength) {
+                receivedContent.setLength(savepointLength)
+            }
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.ROLLBACK, id))
+            return true
         }
 
         /**
@@ -1940,7 +1964,6 @@ open class OpenAIProvider(
             }
         } finally {
             runCatching { flushImageBuffers(state, emitter) }
-            runCatching { closeAllOpenToolCalls(state, emitter) }
             // 确保 reader 被关闭
             try {
                 reader.close()
@@ -1961,54 +1984,47 @@ open class OpenAIProvider(
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
         onNonFatalError: suspend (error: String) -> Unit,
         enableRetry: Boolean
-    ): Stream<String> = stream {
-        isManuallyCancelled = false
-        // 重置输出token计数（输入token由TokenCacheManager管理）
-        tokenCacheManager.addOutputTokens(-tokenCacheManager.outputTokenCount)
-        onTokensUpdated(
-            tokenCacheManager.totalInputTokenCount,
-            tokenCacheManager.cachedInputTokenCount,
-            tokenCacheManager.outputTokenCount
-        )
+    ): Stream<String> {
+        val eventChannel = MutableSharedStream<TextStreamEvent>(replay = Int.MAX_VALUE)
+        val responseStream = stream {
+            isManuallyCancelled = false
+            // 重置输出token计数（输入token由TokenCacheManager管理）
+            tokenCacheManager.addOutputTokens(-tokenCacheManager.outputTokenCount)
+            onTokensUpdated(
+                tokenCacheManager.totalInputTokenCount,
+                tokenCacheManager.cachedInputTokenCount,
+                tokenCacheManager.outputTokenCount
+            )
 
-        AppLogger.d(
-            "AIService",
-            "【发送消息】开始处理sendMessage请求，消息长度: ${message.length}，历史记录数量: ${chatHistory.size}"
-        )
+            AppLogger.d(
+                "AIService",
+                "【发送消息】开始处理sendMessage请求，消息长度: ${message.length}，历史记录数量: ${chatHistory.size}"
+            )
 
-        val maxRetries = LlmRetryPolicy.MAX_RETRY_ATTEMPTS
-        var retryCount = 0
-        var lastException: Exception? = null
+            val maxRetries = LlmRetryPolicy.MAX_RETRY_ATTEMPTS
+            var retryCount = 0
+            var lastException: Exception? = null
 
-        // 用于保存已接收到的内容，以便在重试时使用
-        val receivedContent = StringBuilder()
+            // 用于保存当前 attempt 已接收到的内容；一旦需要重试，会整体回滚到请求起点
+            val receivedContent = StringBuilder()
+            val emitter = StreamEmitter(receivedContent, ::emit, eventChannel, onTokensUpdated)
+            val requestSavepointId = "attempt_${UUID.randomUUID().toString().replace("-", "")}"
+            emitter.emitSavepoint(requestSavepointId)
 
-        while (retryCount <= maxRetries) {
-            // 在循环开始时检查是否已被取消
-            checkCancellation(context)
+            while (retryCount <= maxRetries) {
+                // 在循环开始时检查是否已被取消
+                checkCancellation(context)
 
-            try {
-                // 如果是重试，我们需要构建一个新的请求
-                val currentMessage: String
-                val currentHistory: List<Pair<String, String>>
+                try {
+                    if (retryCount > 0) {
+                        AppLogger.d(
+                            "AIService",
+                            "【重试】原子回滚后重新请求，本轮已撤回内容长度: ${receivedContent.length}"
+                        )
+                    }
 
-                if (retryCount > 0 && receivedContent.isNotEmpty()) {
-                    AppLogger.d(
-                        "AIService",
-                        "【重试】准备续写请求，已接收内容长度: ${receivedContent.length}"
-                    )
-                    // 在用户消息后附加续写指令
-                    currentMessage =
-                        message + "\n\n[SYSTEM NOTE] The previous response was cut off by a network error. You MUST continue from the exact point of interruption. Do not repeat any content. If you were in the middle of a code block or XML tag, complete it. Just output the text that would have come next."
-                    // 将已接收的内容作为AI的上一条消息
-                    val resumeHistory = chatHistory.toMutableList()
-                    resumeHistory.add("assistant" to receivedContent.toString())
-                    currentHistory = resumeHistory
-                } else {
-                    currentMessage = message
-                    currentHistory = chatHistory
-                }
-
+                    val currentMessage = message
+                    val currentHistory = chatHistory
 
                 AppLogger.d(
                     "AIService",
@@ -2080,7 +2096,7 @@ open class OpenAIProvider(
                             val reader = responseBody.charStream().buffered()
                             processStreamingResponse(
                                 reader,
-                                StreamEmitter(receivedContent, ::emit, onTokensUpdated),
+                                emitter,
                                 onTokensUpdated,
                                 context
                             )
@@ -2092,7 +2108,6 @@ open class OpenAIProvider(
                             val responseText = responseBody.string()
                             AppLogger.d("AIService", "收到完整响应，长度: ${responseText.length}")
 
-                            val emitter = StreamEmitter(receivedContent, ::emit, onTokensUpdated)
                             var hasEmittedRegularContent = false
 
                             try {
@@ -2193,6 +2208,7 @@ open class OpenAIProvider(
                 return@stream
             } catch (e: NonRetriableException) {
                 lastException = e
+                emitter.emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.openai_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -2209,6 +2225,7 @@ open class OpenAIProvider(
                 }
             } catch (e: SocketTimeoutException) {
                 lastException = e
+                emitter.emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -2224,6 +2241,7 @@ open class OpenAIProvider(
                 }
             } catch (e: UnknownHostException) {
                 lastException = e
+                emitter.emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -2239,6 +2257,7 @@ open class OpenAIProvider(
                 }
             } catch (e: IOException) {
                 lastException = e
+                emitter.emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.openai_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -2255,23 +2274,26 @@ open class OpenAIProvider(
                 }
             } catch (e: Exception) {
                 checkCancellation(context, e)
+                emitter.emitRollback(requestSavepointId)
                 // 其他未知异常，不应重试
                 AppLogger.e("AIService", "【发送消息】发生未知异常，停止重试", e)
                 throw IOException(context.getString(R.string.openai_error_response_failed, e.message ?: ""), e)
             }
-        }
+            }
 
-        // 所有重试都失败
-        lastException?.let { ex ->
-            AppLogger.e(
+            // 所有重试都失败
+            lastException?.let { ex ->
+                AppLogger.e(
+                    "AIService",
+                    "【发送消息】重试失败，请检查网络连接，最大重试次数: $maxRetries",
+                    ex
+                )
+            } ?: AppLogger.e(
                 "AIService",
-                "【发送消息】重试失败，请检查网络连接，最大重试次数: $maxRetries",
-                ex
+                "【发送消息】重试失败，请检查网络连接，最大重试次数: $maxRetries"
             )
-        } ?: AppLogger.e(
-            "AIService",
-            "【发送消息】重试失败，请检查网络连接，最大重试次数: $maxRetries"
-        )
-        throw IOException(context.getString(R.string.openai_error_connection_timeout, maxRetries, lastException?.message ?: ""))
+            throw IOException(context.getString(R.string.openai_error_connection_timeout, maxRetries, lastException?.message ?: ""))
+        }
+        return responseStream.withEventChannel(eventChannel)
     }
 }

@@ -1,10 +1,12 @@
 package com.ai.assistance.operit.ui.floating.ui.fullscreen
 
 import com.ai.assistance.operit.util.stream.Stream
+import com.ai.assistance.operit.util.stream.TextStreamEventCarrier
 import com.ai.assistance.operit.util.stream.flatMap
 import com.ai.assistance.operit.util.stream.plugins.StreamXmlPlugin
 import com.ai.assistance.operit.util.stream.splitBy
 import com.ai.assistance.operit.util.stream.stream
+import com.ai.assistance.operit.util.stream.withTextEventChannel
 
 /**
  * An object responsible for processing a character stream containing XML tags and converting them
@@ -24,7 +26,7 @@ object XmlTextProcessor {
         val xmlPlugin = StreamXmlPlugin(includeTagsInOutput = true)
 
         // Directly use the splitBy method of Stream<String>
-        return sourceStream.splitBy(listOf(xmlPlugin)).flatMap { group ->
+        val textStream = sourceStream.splitBy(listOf(xmlPlugin)).flatMap { group ->
             if (group.tag == xmlPlugin) {
                 // It's an XML group, filter it out completely by returning an empty stream.
                 stream {}
@@ -33,6 +35,8 @@ object XmlTextProcessor {
                 stringStreamToCharStream(group.stream)
             }
         }
+        val carrier = sourceStream as? TextStreamEventCarrier ?: return textStream
+        return textStream.withTextEventChannel(carrier.eventChannel)
     }
 
     /**

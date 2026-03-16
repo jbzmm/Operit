@@ -27,6 +27,7 @@ import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
+import com.ai.assistance.operit.util.stream.shareRevisable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -439,7 +440,7 @@ object AIMessageManager {
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride,
                 stream = enableStream
-            ).share(
+            ).shareRevisable(
                 scope = scope,
                 onComplete = {
                     activeMessageProcessingControllerByChatId.remove(chatKey)

@@ -11,8 +11,12 @@ import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.StreamingJsonXmlConverter
 import com.ai.assistance.operit.util.TokenCacheManager
 import com.ai.assistance.operit.util.exceptions.UserCancellationException
+import com.ai.assistance.operit.util.stream.MutableSharedStream
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
+import com.ai.assistance.operit.util.stream.TextStreamEvent
+import com.ai.assistance.operit.util.stream.TextStreamEventType
+import com.ai.assistance.operit.util.stream.withEventChannel
 import com.ai.assistance.operit.util.stream.stream
 import android.content.Context
 import android.net.Uri
@@ -25,6 +29,7 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
+import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -683,7 +688,9 @@ class GeminiProvider(
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
             onNonFatalError: suspend (error: String) -> Unit,
             enableRetry: Boolean
-    ): Stream<String> = stream {
+    ): Stream<String> {
+        val eventChannel = MutableSharedStream<TextStreamEvent>(replay = Int.MAX_VALUE)
+        val responseStream = stream {
         isManuallyCancelled = false
         val requestId = System.currentTimeMillis().toString()
         // 重置输出token计数（保留输入历史缓存）
@@ -704,6 +711,18 @@ class GeminiProvider(
 
         // 用于保存已接收到的内容，以便在重试时使用
         val receivedContent = StringBuilder()
+        val requestSavepointId = "attempt_${UUID.randomUUID().toString().replace("-", "")}"
+
+        suspend fun emitSavepoint(id: String) {
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.SAVEPOINT, id))
+        }
+
+        suspend fun emitRollback(id: String) {
+            if (receivedContent.isNotEmpty()) {
+                receivedContent.setLength(0)
+            }
+            eventChannel.emit(TextStreamEvent(TextStreamEventType.ROLLBACK, id))
+        }
 
         // 捕获stream collector的引用
         val streamCollector = this
@@ -715,6 +734,7 @@ class GeminiProvider(
         }
 
         emitConnectionStatus(context.getString(R.string.gemini_connecting))
+        emitSavepoint(requestSavepointId)
 
         while (retryCount <= maxRetries) {
             // 在循环开始时检查是否已被取消
@@ -724,22 +744,14 @@ class GeminiProvider(
             }
             
             try {
-                // 如果是重试，我们需要构建一个新的请求
-                val currentMessage: String
-                val currentHistory: List<Pair<String, String>>
-
-                if (retryCount > 0 && receivedContent.isNotEmpty()) {
-                    AppLogger.d(TAG, "【Gemini 重试】准备续写请求，已接收内容长度: ${receivedContent.length}")
-                    currentMessage = message + "\n\n[SYSTEM NOTE] The previous response was cut off by a network error. You MUST continue from the exact point of interruption. Do not repeat any content. If you were in the middle of a code block or XML tag, complete it. Just output the text that would have come next."
-                    val resumeHistory = chatHistory.toMutableList()
-                    resumeHistory.add("model" to receivedContent.toString()) // Gemini uses 'model' role for assistant
-                    currentHistory = resumeHistory
-                } else {
-                    currentMessage = message
-                    currentHistory = chatHistory
+                if (retryCount > 0) {
+                    AppLogger.d(
+                        TAG,
+                        "【Gemini 重试】原子回滚后重新请求，本轮已撤回内容长度: ${receivedContent.length}"
+                    )
                 }
 
-                val requestBody = createRequestBody(context, currentMessage, currentHistory, modelParameters, enableThinking, availableTools, preserveThinkInHistory)
+                val requestBody = createRequestBody(context, message, chatHistory, modelParameters, enableThinking, availableTools, preserveThinkInHistory)
                 onTokensUpdated(
                         tokenCacheManager.totalInputTokenCount,
                         tokenCacheManager.cachedInputTokenCount,
@@ -793,6 +805,7 @@ class GeminiProvider(
                 return@stream
             } catch (e: NonRetriableException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -809,6 +822,7 @@ class GeminiProvider(
                 }
             } catch (e: SocketTimeoutException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -824,6 +838,7 @@ class GeminiProvider(
                 }
             } catch (e: UnknownHostException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 retryCount = handleRetryableError(
                     context,
                     e,
@@ -839,6 +854,7 @@ class GeminiProvider(
                 }
             } catch (e: IOException) {
                 lastException = e
+                emitRollback(requestSavepointId)
                 val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
                 retryCount = handleRetryableError(
                     context,
@@ -859,6 +875,7 @@ class GeminiProvider(
                     throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
                 }
                 lastException = e
+                emitRollback(requestSavepointId)
                 logError("发送消息时发生未知异常，不进行重试", e)
                 throw IOException(context.getString(R.string.gemini_error_response_failed, e.message ?: ""), e)
             }
@@ -866,6 +883,8 @@ class GeminiProvider(
 
         logError("重试${maxRetries}次后仍然失败", lastException)
         throw IOException(context.getString(R.string.gemini_error_connection_timeout, maxRetries, lastException?.message ?: ""))
+        }
+        return responseStream.withEventChannel(eventChannel)
     }
 
     /** 创建请求体 */

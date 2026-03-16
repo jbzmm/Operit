@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
+import com.ai.assistance.operit.ui.features.chat.components.rememberRevisableTextStream
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.features.chat.components.part.ThinkToolsXmlNodeGrouper
 import com.ai.assistance.operit.ui.features.chat.components.LinkPreviewDialog
@@ -170,7 +171,7 @@ fun AiMessageComposable(
         // 只要是同一条消息，StreamMarkdownRenderer就不会被销毁和重建。
         // 这可以防止流被不必要地取消，保证了渲染的连续性。
         key(message.timestamp) {
-            val streamToRender = overrideStream ?: message.contentStream
+            val streamToRender = rememberRevisableTextStream(overrideStream ?: message.contentStream)
             if (streamToRender != null) {
                 // 对于正在流式传输的消息，使用流式渲染器
                 // 将contentStream保存到本地变量以避免智能转换问题

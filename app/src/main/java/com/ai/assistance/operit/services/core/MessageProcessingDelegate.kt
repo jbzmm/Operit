@@ -16,6 +16,10 @@ import com.ai.assistance.operit.data.model.InputProcessingState as EnhancedInput
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
+import com.ai.assistance.operit.util.stream.shareRevisable
+import com.ai.assistance.operit.util.stream.TextStreamEventCarrier
+import com.ai.assistance.operit.util.stream.TextStreamEventType
+import com.ai.assistance.operit.util.stream.TextStreamRevisionTracker
 import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
@@ -39,6 +43,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.ai.assistance.operit.core.tools.ToolProgressBus
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -613,7 +620,7 @@ class MessageProcessingDelegate(
                 // 文本数据占用内存极小，全量缓冲不会造成内存压力
                 val shareResponseStreamStartTime = messageTimingNow()
                 val sharedCharStream =
-                    responseStream.share(
+                    responseStream.shareRevisable(
                         scope = coroutineScope,
                         replay = Int.MAX_VALUE, 
                         onComplete = {
@@ -685,11 +692,13 @@ class MessageProcessingDelegate(
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
                             var hasLoggedFirstChunk = false
-                            val contentBuilder = StringBuilder()
+                            val revisionTracker = TextStreamRevisionTracker()
+                            val revisionMutex = Mutex()
                             val autoReadBuffer = StringBuilder()
                             var isFirstAutoReadSegment = true
                             val endChars = ".,!?;:，。！？；：\n"
                             val autoReadStream = XmlTextProcessor.processStreamToText(sharedCharStream)
+                            val revisableStream = sharedCharStream as? TextStreamEventCarrier
 
                             fun flushAutoReadSegment(segment: String, interrupt: Boolean) {
                                 val trimmed = segment.trim()
@@ -731,6 +740,40 @@ class MessageProcessingDelegate(
                                 }
                             }
 
+                            val revisionJob =
+                                revisableStream?.let { carrier ->
+                                    launch {
+                                        carrier.eventChannel.collect { event ->
+                                            when (event.eventType) {
+                                                TextStreamEventType.SAVEPOINT -> {
+                                                    revisionMutex.withLock {
+                                                        revisionTracker.savepoint(event.id)
+                                                    }
+                                                }
+
+                                                TextStreamEventType.ROLLBACK -> {
+                                                    val snapshot =
+                                                        revisionMutex.withLock {
+                                                            revisionTracker.rollback(event.id)
+                                                        } ?: return@collect
+
+                                                    aiMessage.content = snapshot
+
+                                                    if (!isWaifuModeEnabled) {
+                                                        if (chatId != null) {
+                                                            addMessageToChat(
+                                                                chatId,
+                                                                aiMessage.copy(content = snapshot)
+                                                            )
+                                                        }
+                                                        tryEmitScrollToBottomThrottled(chatId)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                             sharedCharStream.collect { chunk ->
                                 if (!hasLoggedFirstChunk) {
                                     hasLoggedFirstChunk = true
@@ -740,8 +783,10 @@ class MessageProcessingDelegate(
                                         details = "chatId=$activeChatId, firstChunkLength=${chunk.length}"
                                     )
                                 }
-                                contentBuilder.append(chunk)
-                                val content = contentBuilder.toString()
+                                val content =
+                                    revisionMutex.withLock {
+                                        revisionTracker.append(chunk)
+                                    }
                                 val updatedMessage = aiMessage.copy(content = content)
                                 // 防止后续读取不到
                                 aiMessage.content = content
@@ -755,6 +800,7 @@ class MessageProcessingDelegate(
                                 }
                             }
 
+                            revisionJob?.cancelAndJoin()
                             autoReadJob.join()
 
                             if (getIsAutoReadEnabled() && !isWaifuModeEnabled) {
@@ -891,9 +937,12 @@ class MessageProcessingDelegate(
             val aiMessage = aiMessageProvider()
             val sharedStream = aiMessage.contentStream as? SharedStream<String>
             val replayChunks = sharedStream?.replayCache
+            val eventCarrier = aiMessage.contentStream as? TextStreamEventCarrier
             // 优先使用共享流的全量重放缓存重建最终文本，避免完成信号早于收集协程处理尾部字符时丢字。
             val finalContent =
-                if (!replayChunks.isNullOrEmpty()) {
+                if (eventCarrier?.eventChannel?.replayCache?.isNotEmpty() == true) {
+                    aiMessage.content
+                } else if (!replayChunks.isNullOrEmpty()) {
                     replayChunks.joinToString(separator = "")
                 } else {
                     aiMessage.content

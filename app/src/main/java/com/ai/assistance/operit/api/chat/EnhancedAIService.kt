@@ -30,8 +30,14 @@ import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.WakeWordPreferences
+import com.ai.assistance.operit.util.stream.MutableSharedStream
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
+import com.ai.assistance.operit.util.stream.TextStreamEvent
+import com.ai.assistance.operit.util.stream.TextStreamEventCarrier
+import com.ai.assistance.operit.util.stream.TextStreamEventType
+import com.ai.assistance.operit.util.stream.TextStreamRevisionTracker
+import com.ai.assistance.operit.util.stream.withEventChannel
 import com.ai.assistance.operit.util.stream.plugins.StreamXmlPlugin
 import com.ai.assistance.operit.util.stream.splitBy
 import com.ai.assistance.operit.util.stream.stream
@@ -42,7 +48,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -342,6 +350,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         val roundManager: ConversationRoundManager = ConversationRoundManager(),
         val isConversationActive: AtomicBoolean = AtomicBoolean(true),
         val conversationHistory: MutableList<Pair<String, String>>,
+        val eventChannel: MutableSharedStream<TextStreamEvent>,
     )
 
     // Coroutine management
@@ -533,8 +542,13 @@ class EnhancedAIService private constructor(private val context: Context) {
         accumulatedInputTokenCount = 0
         accumulatedOutputTokenCount = 0
 
-        return stream {
-            val execContext = MessageExecutionContext(conversationHistory = chatHistory.toMutableList())
+        val eventChannel = MutableSharedStream<TextStreamEvent>(replay = Int.MAX_VALUE)
+        val wrappedStream = stream {
+            val execContext =
+                MessageExecutionContext(
+                    conversationHistory = chatHistory.toMutableList(),
+                    eventChannel = eventChannel
+                )
             var hadFatalError = false
             try {
                 // 确保所有操作都在IO线程上执行
@@ -677,6 +691,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     },
                                     onNonFatalError = onNonFatalError
                             )
+                    val revisableStream = responseStream as? TextStreamEventCarrier
 
                     // 收到第一个响应，更新状态
                     var isFirstChunk = true
@@ -684,6 +699,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     // 创建一个新的轮次来管理内容
                     execContext.roundManager.startNewRound()
                     execContext.streamBuffer.clear()
+                    val revisionTracker = TextStreamRevisionTracker()
+                    val revisionMutex = Mutex()
 
                     // 从原始stream收集内容并处理
                     var chunkCount = 0
@@ -691,43 +708,81 @@ class EnhancedAIService private constructor(private val context: Context) {
                     var lastLogTime = System.currentTimeMillis()
                     val streamStartTime = System.currentTimeMillis()
 
-                    responseStream.collect { content ->
-                        // 第一次收到响应，更新状态
-                        if (isFirstChunk) {
-                            if (!isSubTask) {
-                            withContext(Dispatchers.Main) {
-                                _inputProcessingState.value =
-                                        InputProcessingState.Receiving(context.getString(R.string.enhanced_receiving_response))
+                    coroutineScope {
+                        val revisionJob =
+                            revisableStream?.let { carrier ->
+                                launch {
+                                    carrier.eventChannel.collect { event ->
+                                        execContext.eventChannel.emit(event)
+                                        when (event.eventType) {
+                                            TextStreamEventType.SAVEPOINT -> {
+                                                revisionMutex.withLock {
+                                                    revisionTracker.savepoint(event.id)
+                                                }
+                                            }
+
+                                            TextStreamEventType.ROLLBACK -> {
+                                                val snapshot =
+                                                    revisionMutex.withLock {
+                                                        revisionTracker.rollback(event.id)
+                                                    } ?: return@collect
+                                                execContext.streamBuffer.clear()
+                                                execContext.streamBuffer.append(snapshot)
+                                                execContext.roundManager.updateContent(snapshot)
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            isFirstChunk = false
-                            AppLogger.d(TAG, "首次响应耗时: ${System.currentTimeMillis() - streamStartTime}ms")
+
+                        try {
+                            responseStream.collect { content ->
+                                // 第一次收到响应，更新状态
+                                if (isFirstChunk) {
+                                    if (!isSubTask) {
+                                    withContext(Dispatchers.Main) {
+                                        _inputProcessingState.value =
+                                                InputProcessingState.Receiving(context.getString(R.string.enhanced_receiving_response))
+                                        }
+                                    }
+                                    isFirstChunk = false
+                                    AppLogger.d(TAG, "首次响应耗时: ${System.currentTimeMillis() - streamStartTime}ms")
+                                }
+
+                                // 累计统计
+                                chunkCount++
+                                totalChars += content.length
+
+                                // 周期性日志
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastLogTime > 5000) { // 每5秒记录一次
+                                    AppLogger.d(TAG, "已接收 $chunkCount 个内容块，总计 $totalChars 个字符")
+                                    lastLogTime = currentTime
+                                }
+
+                                revisionMutex.withLock {
+                                    revisionTracker.append(content)
+                                }
+
+                                // 更新streamBuffer，保持与原有逻辑一致
+                                execContext.streamBuffer.append(content)
+
+                                // 更新内容到轮次管理器
+                                execContext.roundManager.updateContent(execContext.streamBuffer.toString())
+
+                                // 发射当前内容片段
+                                emit(content)
+                            }
+                        } finally {
+                            revisionJob?.cancelAndJoin()
                         }
-
-                        // 累计统计
-                        chunkCount++
-                        totalChars += content.length
-
-                        // 周期性日志
-                        val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastLogTime > 5000) { // 每5秒记录一次
-                            AppLogger.d(TAG, "已接收 $chunkCount 个内容块，总计 $totalChars 个字符")
-                            lastLogTime = currentTime
-                        }
-
-                        // 更新streamBuffer，保持与原有逻辑一致
-                        execContext.streamBuffer.append(content)
-
-                        // 更新内容到轮次管理器
-                        execContext.roundManager.updateContent(execContext.streamBuffer.toString())
-
-                        // 发射当前内容片段
-                        emit(content)
                     }
 
                     // 流收集完成后，添加用户消息到对话历史
                     // 只有在成功收到响应后，才将用户消息添加到历史记录中
-                    execContext.conversationHistory.add(Pair("user", finalProcessedInput))
+                    if (execContext.conversationHistory.lastOrNull() != Pair("user", finalProcessedInput)) {
+                        execContext.conversationHistory.add(Pair("user", finalProcessedInput))
+                    }
 
                     // Update accumulated token counts and persist them
                     val inputTokens = serviceForFunction.inputTokenCount
@@ -803,6 +858,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 }
             }
         }
+        return wrappedStream.withEventChannel(eventChannel)
     }
 
     /**
@@ -1467,26 +1523,65 @@ class EnhancedAIService private constructor(private val context: Context) {
                 var chunkCount = 0
                 var totalChars = 0
                 var lastLogTime = System.currentTimeMillis()
+                val revisableStream = responseStream as? TextStreamEventCarrier
+                val revisionTracker = TextStreamRevisionTracker()
+                val revisionMutex = Mutex()
 
-                responseStream.collect { content ->
-                    // 更新streamBuffer
-                    context.streamBuffer.append(content)
+                coroutineScope {
+                    val revisionJob =
+                        revisableStream?.let { carrier ->
+                            launch {
+                                carrier.eventChannel.collect { event ->
+                                    context.eventChannel.emit(event)
+                                    when (event.eventType) {
+                                        TextStreamEventType.SAVEPOINT -> {
+                                            revisionMutex.withLock {
+                                                revisionTracker.savepoint(event.id)
+                                            }
+                                        }
 
-                    // 更新内容到轮次管理器
-                    context.roundManager.updateContent(context.streamBuffer.toString())
+                                        TextStreamEventType.ROLLBACK -> {
+                                            val snapshot =
+                                                revisionMutex.withLock {
+                                                    revisionTracker.rollback(event.id)
+                                                } ?: return@collect
+                                            context.streamBuffer.clear()
+                                            context.streamBuffer.append(snapshot)
+                                            context.roundManager.updateContent(snapshot)
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
-                    // 累计统计
-                    chunkCount++
-                    totalChars += content.length
+                    try {
+                        responseStream.collect { content ->
+                            revisionMutex.withLock {
+                                revisionTracker.append(content)
+                            }
 
-                    // 定期记录日志
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastLogTime > 5000) { // 每5秒记录一次
-                        lastLogTime = currentTime
+                            // 更新streamBuffer
+                            context.streamBuffer.append(content)
+
+                            // 更新内容到轮次管理器
+                            context.roundManager.updateContent(context.streamBuffer.toString())
+
+                            // 累计统计
+                            chunkCount++
+                            totalChars += content.length
+
+                            // 定期记录日志
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastLogTime > 5000) { // 每5秒记录一次
+                                lastLogTime = currentTime
+                            }
+
+                            // 通过收集器将内容发射出去，让UI可以接收到
+                            collector.emit(content)
+                        }
+                    } finally {
+                        revisionJob?.cancelAndJoin()
                     }
-
-                    // 通过收集器将内容发射出去，让UI可以接收到
-                    collector.emit(content)
                 }
 
                 // Update accumulated token counts and persist them
@@ -2055,21 +2150,21 @@ class EnhancedAIService private constructor(private val context: Context) {
         conversationHistory: List<Pair<String, String>>,
         lastContent: String
     ) {
-            AppLogger.d(TAG, "手动触发记忆更新...")
-            withContext(Dispatchers.IO) { // Use withContext to wait for completion
-                try {
-                    com.ai.assistance.operit.api.chat.library.ProblemLibrary.saveProblemAsync(
-                        context,
-                        toolHandler,
-                        conversationHistory,
-                        lastContent,
-                        multiServiceManager.getServiceForFunction(FunctionType.PROBLEM_LIBRARY)
-                    )
-                    AppLogger.d(TAG, "手动记忆更新成功")
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "手动记忆更新失败", e)
-                    throw e
-                }
+        AppLogger.d(TAG, "手动触发记忆更新...")
+        withContext(Dispatchers.IO) {
+            try {
+                com.ai.assistance.operit.api.chat.library.ProblemLibrary.saveProblemAsync(
+                    context,
+                    toolHandler,
+                    conversationHistory,
+                    lastContent,
+                    multiServiceManager.getServiceForFunction(FunctionType.PROBLEM_LIBRARY)
+                )
+                AppLogger.d(TAG, "手动记忆更新成功")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "手动记忆更新失败", e)
+                throw e
+            }
         }
     }
 
