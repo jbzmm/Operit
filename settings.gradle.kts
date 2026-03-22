@@ -27,3 +27,5 @@ include(":mmd")
 include(":fbx")
 include(":showerclient")
 include(":quickjs")
+include(":uiautoserver")
+

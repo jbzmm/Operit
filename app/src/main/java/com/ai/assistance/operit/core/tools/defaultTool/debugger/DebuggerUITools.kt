@@ -44,8 +44,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         return AndroidShellExecutor.executeShellCommand(command, uiShellIdentity)
     }
 
-    private val automation get() = UiAutomatorBridge.uiAutomation
-    private val device get() = UiAutomatorBridge.uiDevice
+    private val automationService get() = UiAutomatorBridge.uiAutomationService
 
     /**
      * 构建坐标类 shell 命令的 display 参数（如 "-d 1 "）。
@@ -57,70 +56,40 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         return if (!display.isNullOrEmpty()) "-d $display " else ""
     }
 
-    /** 确保自动化服务在线，若未就绪则尝试后台重新拉起 */
+    /** 确保自动化服务在线，使用 UiAutomatorBridge 进行统一拉起与安装 */
     private suspend fun ensureServiceReady(): Boolean {
-        if (UiAutomatorBridge.isReady) return true
-
-        AppLogger.i(TAG, "自动化服务未就绪，正在尝试唤醒...")
-        val pkgName = context.packageName
-        val cmd = "am instrument -w -e class $pkgName.core.tools.AgentInstrumentation $pkgName/.core.tools.AgentInstrumentation"
-        executeUiShellCommand("$cmd &")
-        for (i in 0..10) {
-            if (UiAutomatorBridge.isReady) {
-                AppLogger.i(TAG, "自动化服务唤醒成功")
-                return true
-            }
-            delay(500)
+        return UiAutomatorBridge.ensureServiceReady(context) { cmd ->
+            executeUiShellCommand(cmd)
         }
-
-        AppLogger.e(TAG, "自动化服务唤醒超时")
-        return false
     }
 
     private fun errorResult(tool: AITool, msg: String): ToolResult {
         return ToolResult(tool.name, false, StringResultData(""), msg)
     }
 
-    /** 获取当前页面 UI 信息：通过内存直读节点树，辅以 dumpsys 获取顶层 Activity 名称 */
+    /** 获取当前页面 UI 信息：通过 Binder 代理远程读取节点树 */
     override suspend fun getPageInfo(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪，无法获取 UI 树")
 
         val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
 
         return try {
-            val windows = automation?.windows
-            val rootNode = if (!displayIdStr.isNullOrEmpty() && Build.VERSION.SDK_INT >= 30) {
-                val dId = displayIdStr.toIntOrNull() ?: 0
-                windows?.find { it.displayId == dId }?.root ?: automation?.rootInActiveWindow
-            } else {
-                automation?.rootInActiveWindow
-            }
+            val jsonStr = automationService?.getPageInfo(displayIdStr) ?: "{}"
+            val jsonObj = org.json.JSONObject(jsonStr)
 
-            // 手动回收 AccessibilityWindowInfo 以防泄漏
-            windows?.forEach { it.recycle() }
+            val simplifiedLayout = parseSimplifiedNode(jsonObj.optJSONObject("uiElements")) ?: SimplifiedUINode()
 
-            if (rootNode == null) {
-                return errorResult(tool, "无法获取活动窗口根节点")
-            }
+            var currentPackage = jsonObj.optString("packageName", "Unknown")
 
-            val simplifiedLayout = convertNodeToSimplified(rootNode)
-            var currentPackage = rootNode.packageName?.toString() ?: "Unknown"
-
-            // 读取完毕后释放根节点树，避免 OOM
-            rootNode.recycle()
-
-            // 通过 Shell 获取顶层 Activity 名称
-            val focusInfo = getFocusInfo()
-            if (currentPackage == "Unknown" && focusInfo.packageName != null) {
-                currentPackage = focusInfo.packageName!!
-            }
+            // 通过 Shell 获取顶层 Activity 名称 (备选方案，如果 service 没给)
+            val activityName = jsonObj.optString("activityName", "Unknown")
 
             ToolResult(
                 toolName = tool.name,
                 success = true,
                 result = UIPageResultData(
                     packageName = currentPackage,
-                    activityName = focusInfo.activityName ?: "Unknown",
+                    activityName = activityName,
                     uiElements = simplifiedLayout
                 )
             )
@@ -128,6 +97,27 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             AppLogger.e(TAG, "获取页面 UI 信息异常", e)
             errorResult(tool, "获取页面 UI 信息失败: ${e.message}")
         }
+    }
+
+    private fun parseSimplifiedNode(jsonObj: org.json.JSONObject?): SimplifiedUINode? {
+        if (jsonObj == null) return null
+        val childrenArray = jsonObj.optJSONArray("children")
+        val childrenList = mutableListOf<SimplifiedUINode>()
+        if (childrenArray != null) {
+            for (i in 0 until childrenArray.length()) {
+                val child = parseSimplifiedNode(childrenArray.optJSONObject(i))
+                if (child != null) childrenList.add(child)
+            }
+        }
+        return SimplifiedUINode(
+            className = if (jsonObj.isNull("className")) null else jsonObj.optString("className"),
+            text = if (jsonObj.isNull("text")) null else jsonObj.optString("text"),
+            contentDesc = if (jsonObj.isNull("contentDesc")) null else jsonObj.optString("contentDesc"),
+            resourceId = if (jsonObj.isNull("resourceId")) null else jsonObj.optString("resourceId"),
+            bounds = jsonObj.optString("bounds", "[0,0][0,0]"),
+            isClickable = jsonObj.optBoolean("isClickable", false),
+            children = childrenList
+        )
     }
 
     private data class FocusInfoShell(var packageName: String? = null, var activityName: String? = null)
@@ -160,34 +150,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         return result
     }
 
-    private fun convertNodeToSimplified(node: AccessibilityNodeInfo): SimplifiedUINode {
-        val bounds = Rect()
-        node.getBoundsInScreen(bounds)
-        val boundsString = "[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}]"
-
-        val children = mutableListOf<SimplifiedUINode>()
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i)
-            if (child != null) {
-                children.add(convertNodeToSimplified(child))
-                child.recycle()
-            }
-        }
-
-        return SimplifiedUINode(
-            className = node.className?.toString()?.substringAfterLast('.'),
-            text = node.text?.toString()?.replace("&#10;", "\n"),
-            contentDesc = node.contentDescription?.toString(),
-            resourceId = node.viewIdResourceName,
-            bounds = boundsString,
-            isClickable = node.isClickable,
-            children = children
-        )
-    }
-
-    // ─────────────────────────── clickElement ───────────────────────────
-
-    /** 点击指定元素（支持按 resourceId、contentDesc、className 及坐标范围定位，可选模糊匹配；支持通过 display 参数指定屏幕） */
+    /** 点击指定元素 */
     override suspend fun clickElement(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
 
@@ -200,8 +163,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         val partialMatch = tool.parameters.find { it.name == "partialMatch" }?.value?.toBoolean() ?: false
         val index = tool.parameters.find { it.name == "index" }?.value?.toIntOrNull() ?: 0
 
-        val targetDevice = device ?: return errorResult(tool, "UiDevice 实例未初始化")
-
         // 优先处理坐标模式
         if (boundsStr != null) {
             extractCenterCoordinates(boundsStr)?.let { (x, y) ->
@@ -210,44 +171,16 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         }
 
         try {
-            var selector = if (partialMatch) {
-                when {
-                    resourceId != null -> By.res(java.util.regex.Pattern.compile(".*${java.util.regex.Pattern.quote(resourceId)}.*"))
-                    desc != null -> By.descContains(desc)
-                    className != null -> By.clazz(java.util.regex.Pattern.compile(".*${java.util.regex.Pattern.quote(className)}.*"))
-                    else -> return errorResult(tool, "缺少定位参数")
-                }
-            } else {
-                when {
-                    resourceId != null -> By.res(resourceId)
-                    desc != null -> By.desc(desc)
-                    className != null -> By.clazz(className)
-                    else -> return errorResult(tool, "缺少定位参数")
-                }
-            }
-
-            // 通过 By.displayId 将查找范围限定到指定屏幕
-            val displayId = displayIdStr?.toIntOrNull()
-            if (displayId != null) {
-                selector = selector.displayId(displayId)
-            }
-
-            // 等待目标元素出现，最多 3 秒
-            targetDevice.wait(Until.hasObject(selector), 3000)
-            val uiObj = targetDevice.findObjects(selector).getOrNull(index)
-
-            if (uiObj != null) {
-                uiObj.click()
+            val success = automationService?.clickElement(resourceId, className, desc, boundsStr, displayIdStr, partialMatch, index) ?: false
+            if (success) {
                 return ToolResult(tool.name, true, UIActionResultData("click", "成功点击元素 (index: $index)"))
             } else {
-                return errorResult(tool, "等待 3000ms 后未找到目标元素 (index: $index)")
+                return errorResult(tool, "未找到目标元素或点击失败")
             }
         } catch (e: Exception) {
             return errorResult(tool, "点击操作异常: ${e.message}")
         }
     }
-
-    // ─────────────────────────── tap ───────────────────────────
 
     override suspend fun tap(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
@@ -262,7 +195,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
                 val command = "input ${displayArg}tap $x $y"
                 executeUiShellCommand(command).success
             } else {
-                device?.click(x, y) ?: false
+                automationService?.tap(x, y, null) ?: false
             }
 
             return if (success) {
@@ -276,8 +209,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             withContext(Dispatchers.Main) { operationOverlay.hide() }
         }
     }
-
-    // ─────────────────────────── swipe ───────────────────────────
 
     override suspend fun swipe(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
@@ -298,9 +229,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
                 val command = "input ${displayArg}swipe $startX $startY $endX $endY $durationMs"
                 executeUiShellCommand(command).success
             } else {
-                // UiDevice 步数估算：约每步 5ms
-                val steps = (durationMs / 5).coerceAtLeast(10)
-                device?.swipe(startX, startY, endX, endY, steps) ?: false
+                automationService?.swipe(startX, startY, endX, endY, durationMs, null) ?: false
             }
 
             return if (success) {
@@ -314,8 +243,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             withContext(Dispatchers.Main) { operationOverlay.hide() }
         }
     }
-
-    // ─────────────────────────── longPress ───────────────────────────
 
     override suspend fun longPress(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
@@ -331,8 +258,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
                 val command = "input ${displayArg}swipe $x $y $x $y $durationMs"
                 executeUiShellCommand(command).success
             } else {
-                // 通过原位滑动模拟长按（5ms × 160 步 = 800ms）
-                device?.swipe(x, y, x, y, 160) ?: false
+                automationService?.swipe(x, y, x, y, durationMs, null) ?: false
             }
 
             return if (success) {
@@ -347,8 +273,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
         }
     }
 
-    // ─────────────────────────── setInputText ───────────────────────────
-
     override suspend fun setInputText(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪，无法执行输入")
         val text = tool.parameters.find { it.name == "text" }?.value ?: ""
@@ -360,7 +284,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
                 overlay.showTextInput(displayMetrics.widthPixels / 2, displayMetrics.heightPixels / 2, text)
             }
 
-            device?.pressKeyCode(KeyEvent.KEYCODE_CLEAR)
+            automationService?.pressKey(KeyEvent.KEYCODE_CLEAR.toString())
             delay(100)
 
             if (text.isEmpty()) {
@@ -373,7 +297,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             }
             delay(100)
 
-            device?.pressKeyCode(KeyEvent.KEYCODE_PASTE)
+            automationService?.pressKey(KeyEvent.KEYCODE_PASTE.toString())
 
             return ToolResult(tool.name, true, UIActionResultData("textInput", "已通过粘贴方式完成文本输入"))
         } catch (e: Exception) {
@@ -382,8 +306,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             withContext(Dispatchers.Main) { overlay.hide() }
         }
     }
-
-    // ─────────────────────────── pressKey ───────────────────────────
 
     override suspend fun pressKey(tool: AITool): ToolResult {
         if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
@@ -415,7 +337,7 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             }
 
             val success = if (parsedCode != null) {
-                device?.pressKeyCode(parsedCode) ?: false
+                automationService?.pressKey(parsedCode.toString()) ?: false
             } else {
                 executeUiShellCommand("input keyevent $keyCodeStr").success
             }
@@ -429,8 +351,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
             return errorResult(tool, "按键操作异常: ${e.message}")
         }
     }
-
-    // ─────────────────────────── 截图（保留 shell screencap） ───────────────────────────
 
     override suspend fun captureScreenshotToFile(tool: AITool): Pair<String?, Pair<Int, Int>?> {
         return try {
@@ -467,8 +387,6 @@ open class DebuggerUITools(context: Context) : AccessibilityUITools(context) {
     override suspend fun captureScreenshot(tool: AITool): Pair<String?, Pair<Int, Int>?> {
         return captureScreenshotToFile(tool)
     }
-
-    // ─────────────────────────── 工具方法 ───────────────────────────
 
     /** 从边界字符串提取中心坐标 返回中心点坐标，或null如果格式无效 */
     protected fun extractCenterCoordinates(bounds: String): Pair<Int, Int>? {
