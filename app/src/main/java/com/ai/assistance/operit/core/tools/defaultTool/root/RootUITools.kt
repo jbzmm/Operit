@@ -3,26 +3,25 @@ package com.ai.assistance.operit.core.tools.defaultTool.root
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import com.ai.assistance.operit.util.AppLogger
+import android.view.KeyEvent
 import com.ai.assistance.operit.core.tools.SimplifiedUINode
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.UIActionResultData
 import com.ai.assistance.operit.core.tools.UIPageResultData
+import com.ai.assistance.operit.core.tools.UiAutomatorBridge
 import com.ai.assistance.operit.core.tools.defaultTool.admin.AdminUITools
 import com.ai.assistance.operit.core.tools.system.ShellIdentity
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
-import java.io.StringReader
+import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
 
 /**
- * Root-level UI tools that use shell commands (uiautomator, input) for robust UI automation.
- * This implementation is modeled after DebuggerUITools but operates without accessibility fallbacks.
+ * Root tools leveraging out-of-process Instrumentation via Binder IPC.
+ * Bypasses the significant latency of shell `uiautomator dump` and protects the main app lifecycle.
  */
 open class RootUITools(context: Context) : AdminUITools(context) {
 
@@ -30,579 +29,252 @@ open class RootUITools(context: Context) : AdminUITools(context) {
         private const val TAG = "RootUITools"
     }
 
-    override val uiShellIdentity: ShellIdentity = ShellIdentity.SHELL
+    override val uiShellIdentity: ShellIdentity = ShellIdentity.ROOT
 
-    private fun getDisplayArg(tool: AITool): String {
-        val display = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
-        return if (!display.isNullOrEmpty()) "-d $display " else ""
+    private val automationService get() = UiAutomatorBridge.uiAutomationService
+
+    /** 确保自动化服务在线，使用 UiAutomatorBridge 进行统一拉起与安装 */
+    private suspend fun ensureServiceReady(): Boolean {
+        return UiAutomatorBridge.ensureServiceReady(context) { cmd ->
+            executeUiShellCommand(cmd)
+        }
     }
 
-    /** Performs a tap action using the 'input tap' shell command. */
+    private fun errorResult(tool: AITool, msg: String): ToolResult {
+        return ToolResult(tool.name, false, StringResultData(""), msg)
+    }
+
+    /** 获取当前页面 UI 信息：通过 Binder 代理远程读取节点树 */
+    override suspend fun getPageInfo(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪，无法获取 UI 树")
+
+        val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
+
+        return try {
+            val jsonStr = automationService?.getPageInfo(displayIdStr) ?: "{}"
+            val jsonObj = org.json.JSONObject(jsonStr)
+
+            val simplifiedLayout = parseSimplifiedNode(jsonObj.optJSONObject("uiElements")) ?: SimplifiedUINode()
+
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = UIPageResultData(
+                    packageName = jsonObj.optString("packageName", "Unknown"),
+                    activityName = jsonObj.optString("activityName", "Unknown"),
+                    uiElements = simplifiedLayout
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "获取页面 UI 信息异常", e)
+            errorResult(tool, "获取页面 UI 信息失败: ${e.message}")
+        }
+    }
+
+    private fun parseSimplifiedNode(jsonObj: org.json.JSONObject?): SimplifiedUINode? {
+        if (jsonObj == null) return null
+        val childrenArray = jsonObj.optJSONArray("children")
+        val childrenList = mutableListOf<SimplifiedUINode>()
+        if (childrenArray != null) {
+            for (i in 0 until childrenArray.length()) {
+                val child = parseSimplifiedNode(childrenArray.optJSONObject(i))
+                if (child != null) childrenList.add(child)
+            }
+        }
+        return SimplifiedUINode(
+            className = if (jsonObj.isNull("className")) null else jsonObj.optString("className"),
+            text = if (jsonObj.isNull("text")) null else jsonObj.optString("text"),
+            contentDesc = if (jsonObj.isNull("contentDesc")) null else jsonObj.optString("contentDesc"),
+            resourceId = if (jsonObj.isNull("resourceId")) null else jsonObj.optString("resourceId"),
+            bounds = jsonObj.optString("bounds", "[0,0][0,0]"),
+            isClickable = jsonObj.optBoolean("isClickable", false),
+            children = childrenList
+        )
+    }
+
+    override suspend fun clickElement(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
+
+        val resourceId = tool.parameters.find { it.name == "resourceId" }?.value
+        val className = tool.parameters.find { it.name == "className" }?.value
+        val desc = tool.parameters.find { it.name == "contentDesc" }?.value
+        val boundsStr = tool.parameters.find { it.name == "bounds" }?.value
+        val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
+
+        val partialMatch = tool.parameters.find { it.name == "partialMatch" }?.value?.toBoolean() ?: false
+        val index = tool.parameters.find { it.name == "index" }?.value?.toIntOrNull() ?: 0
+
+        // 优先处理坐标模式
+        if (boundsStr != null) {
+            extractCenterCoordinates(boundsStr)?.let { (x, y) ->
+                return tap(AITool("tap", tool.parameters.filter { it.name != "bounds" } + listOf(ToolParameter("x", x.toString()), ToolParameter("y", y.toString()))))
+            } ?: return errorResult(tool, "bounds 格式无效")
+        }
+
+        try {
+            val success = automationService?.clickElement(resourceId, className, desc, boundsStr, displayIdStr, partialMatch, index) ?: false
+            if (success) {
+                return ToolResult(tool.name, true, UIActionResultData("click", "成功点击元素 (index: $index)"))
+            } else {
+                return errorResult(tool, "未找到目标元素或点击失败")
+            }
+        } catch (e: Exception) {
+            return errorResult(tool, "点击操作异常: ${e.message}")
+        }
+    }
+
     override suspend fun tap(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
         val x = tool.parameters.find { it.name == "x" }?.value?.toIntOrNull()
         val y = tool.parameters.find { it.name == "y" }?.value?.toIntOrNull()
+        if (x == null || y == null) return errorResult(tool, "Missing or invalid coordinates.")
+        val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
 
-        if (x == null || y == null) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                error = "Missing or invalid coordinates. Both 'x' and 'y' must be valid integers."
-            )
-        }
-
-        val overlay = operationOverlay
-        withContext(Dispatchers.Main) { overlay.showTap(x, y) }
-
+        withContext(Dispatchers.Main) { operationOverlay.showTap(x, y) }
         try {
-            AppLogger.d(TAG, "Attempting to tap at coordinates: ($x, $y) via shell command")
-            val command = "input ${getDisplayArg(tool)}tap $x $y"
-            val result = executeUiShellCommand(command)
-
-            return if (result.success) {
-                AppLogger.d(TAG, "Tap successful at coordinates: ($x, $y)")
-                // 成功后主动隐藏overlay
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                        toolName = tool.name,
-                        success = true,
-                        result =
-                                UIActionResultData(
-                                        actionType = "tap",
-                            actionDescription = "Successfully tapped at ($x, $y) via shell command",
-                                        coordinates = Pair(x, y)
-                        )
-                )
+            val success = automationService?.tap(x, y, displayIdStr) ?: false
+            return if (success) {
+                ToolResult(tool.name, true, UIActionResultData("tap", "成功点击($x,$y)", Pair(x, y)))
             } else {
-                AppLogger.e(TAG, "Tap failed at coordinates: ($x, $y), error: ${result.stderr}")
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to tap at ($x, $y): ${result.stderr ?: "Unknown error"}"
-                )
+                errorResult(tool, "点击坐标 ($x, $y) 执行失败")
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error tapping at coordinates ($x, $y)", e)
-            withContext(Dispatchers.Main) { overlay.hide() }
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error tapping at coordinates: ${e.message ?: "Unknown exception"}"
-            )
+            return errorResult(tool, "tap 操作异常: ${e.message}")
+        } finally {
+            withContext(Dispatchers.Main) { operationOverlay.hide() }
         }
     }
 
-    override suspend fun longPress(tool: AITool): ToolResult {
-        val x = tool.parameters.find { it.name == "x" }?.value?.toIntOrNull()
-        val y = tool.parameters.find { it.name == "y" }?.value?.toIntOrNull()
-
-        if (x == null || y == null) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                error = "Missing or invalid coordinates. Both 'x' and 'y' must be valid integers."
-            )
-        }
-
-        val overlay = operationOverlay
-        withContext(Dispatchers.Main) { overlay.showTap(x, y) }
-
-        val durationMs = 800
-
-        try {
-            AppLogger.d(TAG, "Attempting to long press at coordinates: ($x, $y) via shell swipe command")
-            val command = "input ${getDisplayArg(tool)}swipe $x $y $x $y $durationMs"
-            val result = executeUiShellCommand(command)
-
-            return if (result.success) {
-                AppLogger.d(TAG, "Long press successful at coordinates: ($x, $y)")
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                        toolName = tool.name,
-                        success = true,
-                        result =
-                                UIActionResultData(
-                                        actionType = "long_press",
-                            actionDescription = "Successfully long pressed at ($x, $y) via shell command",
-                                        coordinates = Pair(x, y)
-                        )
-                )
-            } else {
-                AppLogger.e(TAG, "Long press failed at coordinates: ($x, $y), error: ${result.stderr}")
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to long press at ($x, $y): ${result.stderr ?: "Unknown error"}"
-                )
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error long pressing at coordinates ($x, $y)", e)
-            withContext(Dispatchers.Main) { overlay.hide() }
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error long pressing at coordinates: ${e.message ?: "Unknown exception"}"
-            )
-        }
-    }
-
-    /** Performs a swipe action using the 'input swipe' shell command. */
     override suspend fun swipe(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
         val startX = tool.parameters.find { it.name == "start_x" }?.value?.toIntOrNull()
         val startY = tool.parameters.find { it.name == "start_y" }?.value?.toIntOrNull()
         val endX = tool.parameters.find { it.name == "end_x" }?.value?.toIntOrNull()
         val endY = tool.parameters.find { it.name == "end_y" }?.value?.toIntOrNull()
-        val duration = tool.parameters.find { it.name == "duration" }?.value?.toIntOrNull() ?: 300
-
+        val durationMs = tool.parameters.find { it.name == "duration" }?.value?.toIntOrNull() ?: 300
+        val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
+        
         if (startX == null || startY == null || endX == null || endY == null) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error =
-                            "Missing or invalid coordinates. 'start_x', 'start_y', 'end_x', and 'end_y' must be valid integers."
-            )
+            return errorResult(tool, "滑动参数不完整，start_x/start_y/end_x/end_y 均为必填项")
         }
 
-        val overlay = operationOverlay
-        withContext(Dispatchers.Main) { overlay.showSwipe(startX, startY, endX, endY) }
-
+        withContext(Dispatchers.Main) { operationOverlay.showSwipe(startX, startY, endX, endY) }
+        
         try {
-            AppLogger.d(TAG, "Swiping from ($startX, $startY) to ($endX, $endY) via shell")
-            val command = "input ${getDisplayArg(tool)}swipe $startX $startY $endX $endY $duration"
-            val result = executeUiShellCommand(command)
-
-            return if (result.success) {
-                AppLogger.d(TAG, "Swipe successful")
-                // 成功后主动隐藏overlay
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                        toolName = tool.name,
-                        success = true,
-                        result =
-                                UIActionResultData(
-                                        actionType = "swipe",
-                            actionDescription = "Successfully swiped from ($startX, $startY) to ($endX, $endY)"
-                        )
-                )
+            val success = automationService?.swipe(startX, startY, endX, endY, durationMs, displayIdStr) ?: false
+            return if (success) {
+                ToolResult(tool.name, true, UIActionResultData("swipe", "滑动成功: ($startX,$startY) → ($endX,$endY)"))
             } else {
-                AppLogger.e(TAG, "Swipe failed: ${result.stderr}")
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to perform swipe: ${result.stderr ?: "Unknown error"}"
-                )
+                errorResult(tool, "滑动操作执行失败")
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error performing swipe", e)
-            withContext(Dispatchers.Main) { overlay.hide() }
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error performing swipe: ${e.message ?: "Unknown exception"}"
-            )
+            return errorResult(tool, "滑动操作异常: ${e.message}")
+        } finally {
+            withContext(Dispatchers.Main) { operationOverlay.hide() }
         }
     }
 
-    /** Clicks a UI element by finding it via uiautomator dump. */
-    override suspend fun clickElement(tool: AITool): ToolResult {
-        val resourceId = tool.parameters.find { it.name == "resourceId" }?.value
-        val className = tool.parameters.find { it.name == "className" }?.value
-        val contentDesc = tool.parameters.find { it.name == "contentDesc" }?.value
-        val bounds = tool.parameters.find { it.name == "bounds" }?.value
+    override suspend fun longPress(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
+        val x = tool.parameters.find { it.name == "x" }?.value?.toIntOrNull()
+        val y = tool.parameters.find { it.name == "y" }?.value?.toIntOrNull()
+        if (x == null || y == null) return errorResult(tool, "坐标参数缺失，x 和 y 均为必填项")
+        val displayIdStr = tool.parameters.find { it.name.equals("display", ignoreCase = true) }?.value?.trim()
 
-        if (resourceId == null && className == null && bounds == null && contentDesc == null) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                error =
-                    "Missing element identifier. Provide at least one of: 'resourceId', 'className', 'contentDesc', or 'bounds'."
-            )
-        }
+        withContext(Dispatchers.Main) { operationOverlay.showTap(x, y) }
+        try {
+            val durationMs = 800
+            val success = automationService?.swipe(x, y, x, y, durationMs, displayIdStr) ?: false
 
-        if (bounds != null) {
-            extractCenterCoordinates(bounds)?.let { (x, y) ->
-                val tapTool = AITool("tap", listOf(ToolParameter("x", x.toString()), ToolParameter("y", y.toString())))
-                return tap(tapTool)
+            return if (success) {
+                ToolResult(tool.name, true, UIActionResultData("long_press", "长按操作成功"))
+            } else {
+                errorResult(tool, "长按操作执行失败")
             }
-                ?: return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Invalid bounds format. Should be: [left,top][right,bottom]"
-                )
+        } catch (e: Exception) {
+            return errorResult(tool, "长按操作异常: ${e.message}")
+        } finally {
+            withContext(Dispatchers.Main) { operationOverlay.hide() }
         }
-
-        return clickElementWithUiautomator(tool)
     }
 
-    /** Sets input text by clearing the field and pasting from the clipboard. */
     override suspend fun setInputText(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪，无法执行输入")
         val text = tool.parameters.find { it.name == "text" }?.value ?: ""
 
+        val overlay = operationOverlay
         try {
-            val overlay = operationOverlay
             val displayMetrics = context.resources.displayMetrics
             withContext(Dispatchers.Main) {
                 overlay.showTextInput(displayMetrics.widthPixels / 2, displayMetrics.heightPixels / 2, text)
             }
 
-            AppLogger.d(TAG, "Clearing text field with KEYCODE_CLEAR")
-            executeUiShellCommand("input ${getDisplayArg(tool)}keyevent KEYCODE_CLEAR")
-            delay(300)
+            automationService?.pressKey(KeyEvent.KEYCODE_CLEAR.toString())
+            delay(100)
 
             if (text.isEmpty()) {
-                // 成功后主动隐藏overlay
-                withContext(Dispatchers.Main) { overlay.hide() }
-                return ToolResult(
-                        toolName = tool.name,
-                        success = true,
-                    result = UIActionResultData("textInput", "Successfully cleared input field")
-                )
+                return ToolResult(tool.name, true, UIActionResultData("textInput", "已清空输入框"))
             }
 
-            AppLogger.d(TAG, "Setting text to clipboard and pasting via ADB: $text")
             withContext(Dispatchers.Main) {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("operit_input", text))
             }
             delay(100)
 
-            val pasteResult = executeUiShellCommand("input ${getDisplayArg(tool)}keyevent KEYCODE_PASTE")
-            return if (pasteResult.success) {
-                // 成功后主动隐藏overlay
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result =
-                            UIActionResultData(
-                            "textInput",
-                            "Successfully set input text to: $text via clipboard paste"
-                        )
-                )
-            } else {
-                withContext(Dispatchers.Main) { overlay.hide() }
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to paste text: ${pasteResult.stderr ?: "Unknown error"}"
-                )
-            }
+            automationService?.pressKey(KeyEvent.KEYCODE_PASTE.toString())
+
+            return ToolResult(tool.name, true, UIActionResultData("textInput", "已通过粘贴方式完成文本输入"))
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Error setting input text", e)
-            val overlay = operationOverlay
-            withContext(Dispatchers.Main) { overlay.hide() }
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error setting input text: ${e.message ?: "Unknown exception"}"
-            )
-        }
-    }
-
-    /** Executes a key press using the 'input keyevent' shell command. */
-    override suspend fun pressKey(tool: AITool): ToolResult {
-        val keyCode = tool.parameters.find { it.name == "key_code" }?.value
-            ?: return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Missing 'key_code' parameter."
-            )
-
-        try {
-            val result = executeUiShellCommand("input ${getDisplayArg(tool)}keyevent $keyCode")
-            return if (result.success) {
-                ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result = UIActionResultData("keyPress", "Successfully pressed key: $keyCode")
-                )
-            } else {
-                ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to press key: ${result.stderr ?: "Unknown error"}"
-                )
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error pressing key", e)
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                error = "Error pressing key: ${e.message ?: "Unknown exception"}"
-            )
-        }
-    }
-
-    /** Gets page info using uiautomator dump and dumpsys. */
-    override suspend fun getPageInfo(tool: AITool): ToolResult {
-        return try {
-            val uiData = getUIDataFromShell(tool)
-                ?: return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "Failed to retrieve UI data."
-                )
-
-            val focusInfo = extractFocusInfoFromShell(uiData.windowInfo)
-            val simplifiedLayout = simplifyLayoutFromXml(uiData.uiXml)
-
-            val resultData =
-                UIPageResultData(
-                    packageName = focusInfo.packageName ?: "Unknown",
-                    activityName = focusInfo.activityName ?: "Unknown",
-                    uiElements = simplifiedLayout
-                )
-
-            ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error getting page info", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Error getting page info: ${e.message}"
-            )
-        }
-    }
-
-    private data class UIData(val uiXml: String, val windowInfo: String)
-
-    private suspend fun getUIDataFromShell(tool: AITool): UIData? {
-        return try {
-            AppLogger.d(TAG, "Getting UI data via ADB")
-
-            val displayId = tool.parameters
-                .find { it.name.equals("display", ignoreCase = true) }
-                ?.value
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-
-            var dumpResult = if (displayId != null) {
-                val cmd = "uiautomator dump --display-id $displayId /sdcard/window_dump.xml"
-                AppLogger.d(TAG, "UI dump using explicit display-id=$displayId")
-                executeUiShellCommand(cmd)
-            } else {
-                executeUiShellCommand("uiautomator dump /sdcard/window_dump.xml")
-            }
-
-            if (!dumpResult.success && displayId != null) {
-                AppLogger.w(TAG, "uiautomator dump with explicit display-id failed, falling back: ${dumpResult.stderr}")
-                dumpResult = executeUiShellCommand("uiautomator dump /sdcard/window_dump.xml")
-            }
-
-            if (!dumpResult.success) {
-                AppLogger.e(TAG, "uiautomator dump failed: ${dumpResult.stderr}")
-                return null
-            }
-
-            val readResult = executeUiShellCommand("cat /sdcard/window_dump.xml")
-            if (!readResult.success) {
-                AppLogger.e(TAG, "Reading UI dump file failed: ${readResult.stderr}")
-                return null
-            }
-
-            var windowInfo = getWindowInfoFromShell()
-            if (windowInfo.isEmpty()) {
-                AppLogger.w(TAG, "Failed to get window info, retrying after 500ms")
-                delay(500)
-                windowInfo = getWindowInfoFromShell()
-            }
-
-            UIData(readResult.stdout, windowInfo)
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error getting UI data", e)
-            null
-        }
-    }
-
-    private suspend fun getWindowInfoFromShell(): String {
-        val commands =
-            listOf(
-                "dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'",
-                "dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'",
-                "dumpsys activity activities | grep -E 'topResumedActivity|topActivity'"
-            )
-        for (command in commands) {
-            try {
-                val result = executeUiShellCommand(command)
-                if (result.success && result.stdout.isNotBlank()) {
-                    AppLogger.d(TAG, "Successfully got window info with: $command")
-                    return result.stdout
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Command failed: '$command'", e)
-            }
-        }
-        AppLogger.e(TAG, "All attempts to get window info failed.")
-        return ""
-    }
-
-    private data class UINodeShell(
-        val className: String?,
-        val text: String?,
-        val contentDesc: String?,
-        val resourceId: String?,
-        val bounds: String?,
-        val isClickable: Boolean,
-        val children: MutableList<UINodeShell> = mutableListOf()
-    )
-
-    private fun simplifyLayoutFromXml(xml: String): SimplifiedUINode {
-        return try {
-            val factory = XmlPullParserFactory.newInstance().apply { isNamespaceAware = false }
-            val parser = factory.newPullParser().apply { setInput(StringReader(xml)) }
-            val nodeStack = mutableListOf<UINodeShell>()
-            var rootNode: UINodeShell? = null
-
-            while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-                when (parser.eventType) {
-                    XmlPullParser.START_TAG -> {
-                        if (parser.name == "node") {
-                            val newNode = createNodeShell(parser)
-                            if (rootNode == null) {
-                                rootNode = newNode
-                            } else {
-                                nodeStack.lastOrNull()?.children?.add(newNode)
-                            }
-                            nodeStack.add(newNode)
-                        }
-                    }
-                    XmlPullParser.END_TAG -> if (parser.name == "node") nodeStack.removeLastOrNull()
-                }
-                parser.next()
-            }
-            rootNode?.toUINodeSimplified() ?: SimplifiedUINode(null, null, null, null, null, false, emptyList())
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error parsing XML layout", e)
-            SimplifiedUINode(null, null, null, null, null, false, emptyList())
-        }
-    }
-
-    private fun UINodeShell.toUINodeSimplified(): SimplifiedUINode = SimplifiedUINode(
-        className, text, contentDesc, resourceId, bounds, isClickable, children.map { it.toUINodeSimplified() }
-    )
-
-    private fun createNodeShell(parser: XmlPullParser): UINodeShell {
-        return UINodeShell(
-            className = parser.getAttributeValue(null, "class")?.substringAfterLast('.'),
-            text = parser.getAttributeValue(null, "text")?.replace("&#10;", "\n"),
-            contentDesc = parser.getAttributeValue(null, "content-desc"),
-            resourceId = parser.getAttributeValue(null, "resource-id"),
-            bounds = parser.getAttributeValue(null, "bounds"),
-            isClickable = parser.getAttributeValue(null, "clickable") == "true"
-        )
-    }
-
-    private data class FocusInfoShell(var packageName: String? = null, var activityName: String? = null)
-
-    private fun extractFocusInfoFromShell(windowInfo: String): FocusInfoShell {
-        val result = FocusInfoShell()
-        if (windowInfo.isBlank()) {
-            AppLogger.w(TAG, "Window info is empty, cannot extract focus.")
-            return result
-        }
-
-        val patterns =
-            listOf(
-                "mCurrentFocus=.*?\\s+([a-zA-Z0-9_.]+)/([^\\s}]+)".toRegex(),
-                "mFocusedApp=.*?ActivityRecord\\{.*?\\s+([a-zA-Z0-9_.]+)/\\.?([^\\s}]+)".toRegex(),
-                "topActivity=ComponentInfo\\{([a-zA-Z0-9_.]+)/\\.?([^}]+)\\}".toRegex()
-            )
-
-        for (pattern in patterns) {
-            val match = pattern.find(windowInfo)
-            if (match != null && match.groupValues.size >= 3) {
-                result.packageName = match.groupValues[1]
-                result.activityName = match.groupValues[2]
-                AppLogger.d(TAG, "Extracted from pattern ${patterns.indexOf(pattern)}: ${result.packageName}/${result.activityName}")
-                return result
-            }
-        }
-
-        AppLogger.w(TAG, "Could not extract focus info from window data.")
-        return result
-    }
-
-    private suspend fun clickElementWithUiautomator(tool: AITool): ToolResult {
-        AppLogger.d(TAG, "Using uiautomator to click element")
-        val resourceId = tool.parameters.find { it.name == "resourceId" }?.value
-        val className = tool.parameters.find { it.name == "className" }?.value
-        val contentDesc = tool.parameters.find { it.name == "contentDesc" }?.value
-        val index = tool.parameters.find { it.name == "index" }?.value?.toIntOrNull() ?: 0
-
-        try {
-            val dumpResult = executeUiShellCommand("uiautomator dump /sdcard/window_dump.xml")
-            if (!dumpResult.success) {
-                return ToolResult(tool.name, false, StringResultData(""), "Failed to dump UI hierarchy: ${dumpResult.stderr}")
-            }
-            val readResult = executeUiShellCommand("cat /sdcard/window_dump.xml")
-            if (!readResult.success) {
-                return ToolResult(tool.name, false, StringResultData(""), "Failed to read UI dump: ${readResult.stderr}")
-            }
-            val xml = readResult.stdout
-            
-            val partialMatch = tool.parameters.find { it.name == "partialMatch" }?.value?.toBoolean() ?: false
-
-            fun buildPattern(name: String, value: String?) = value?.let {
-                if (partialMatch) "$name=\".*?${Regex.escape(it)}.*?\""
-                else "$name=\"(?:.*?:id/)?${Regex.escape(it)}\""
-            }
-            
-            val attributes = listOfNotNull(
-                buildPattern("resource-id", resourceId),
-                buildPattern("class", className),
-                buildPattern("content-desc", contentDesc)
-            ).joinToString(".*?")
-            
-            if (attributes.isEmpty()) {
-                 return ToolResult(tool.name, false, StringResultData(""), "No element identifiers provided for click.")
-            }
-
-            val nodeRegex = "<node[^>]*?$attributes[^>]*?>".toRegex()
-            val matchingNodes = nodeRegex.findAll(xml).toList()
-
-            if (matchingNodes.isEmpty()) {
-                return ToolResult(tool.name, false, StringResultData(""), "No matching element found.")
-            }
-            if (index >= matchingNodes.size) {
-                return ToolResult(tool.name, false, StringResultData(""), "Index out of range. Found ${matchingNodes.size}, requested $index.")
-            }
-
-            val nodeText = matchingNodes[index].value
-            val bounds = "bounds=\"\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]\"".toRegex().find(nodeText)
-                ?: return ToolResult(tool.name, false, StringResultData(""), "Failed to extract bounds from element.")
-
-            val (x1, y1, x2, y2) = bounds.destructured
-            val centerX = (x1.toInt() + x2.toInt()) / 2
-            val centerY = (y1.toInt() + y2.toInt()) / 2
-
-            return tap(AITool("tap", listOf(ToolParameter("x", centerX.toString()), ToolParameter("y", centerY.toString()))))
-
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error clicking with uiautomator", e)
-            return ToolResult(tool.name, false, StringResultData(""), "Error clicking element: ${e.message}")
+            return errorResult(tool, "文本输入操作异常: ${e.message}")
         } finally {
-            executeUiShellCommand("rm /sdcard/window_dump.xml")
+            withContext(Dispatchers.Main) { overlay.hide() }
         }
     }
-}
 
+    override suspend fun pressKey(tool: AITool): ToolResult {
+        if (!ensureServiceReady()) return errorResult(tool, "自动化服务未就绪")
+        val keyCodeStr = tool.parameters.find { it.name == "key_code" }?.value
+            ?: return errorResult(tool, "参数缺失: key_code 为必填项")
+
+        try {
+            val parsedCode = keyCodeStr.toIntOrNull() ?: when (keyCodeStr.uppercase().removePrefix("KEYCODE_")) {
+                "HOME" -> KeyEvent.KEYCODE_HOME
+                "BACK" -> KeyEvent.KEYCODE_BACK
+                "DPAD_UP" -> KeyEvent.KEYCODE_DPAD_UP
+                "DPAD_DOWN" -> KeyEvent.KEYCODE_DPAD_DOWN
+                "DPAD_LEFT" -> KeyEvent.KEYCODE_DPAD_LEFT
+                "DPAD_RIGHT" -> KeyEvent.KEYCODE_DPAD_RIGHT
+                "ENTER" -> KeyEvent.KEYCODE_ENTER
+                "DEL" -> KeyEvent.KEYCODE_DEL
+                "CLEAR" -> KeyEvent.KEYCODE_CLEAR
+                "SPACE" -> KeyEvent.KEYCODE_SPACE
+                "TAB" -> KeyEvent.KEYCODE_TAB
+                "ESCAPE" -> KeyEvent.KEYCODE_ESCAPE
+                "POWER" -> KeyEvent.KEYCODE_POWER
+                "VOLUME_UP" -> KeyEvent.KEYCODE_VOLUME_UP
+                "VOLUME_DOWN" -> KeyEvent.KEYCODE_VOLUME_DOWN
+                "VOLUME_MUTE" -> KeyEvent.KEYCODE_VOLUME_MUTE
+                "MENU" -> KeyEvent.KEYCODE_MENU
+                "SEARCH" -> KeyEvent.KEYCODE_SEARCH
+                "APP_SWITCH" -> KeyEvent.KEYCODE_APP_SWITCH
+                else -> null
+            }
+
+            val success = if (parsedCode != null) {
+                automationService?.pressKey(parsedCode.toString()) ?: false
+            } else {
+                executeUiShellCommand("input keyevent $keyCodeStr").success
+            }
+
+            return if (success) {
+                ToolResult(tool.name, true, UIActionResultData("keyPress", "按键成功: $keyCodeStr"))
+            } else {
+                errorResult(tool, "按键操作执行失败")
+            }
+        } catch (e: Exception) {
+            return errorResult(tool, "按键操作异常: ${e.message}")
+        }
+    }
+
+}

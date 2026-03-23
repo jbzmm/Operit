@@ -2,8 +2,6 @@ package com.ai.assistance.operit.util
 
 import com.ai.assistance.operit.util.AppLogger
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFprobeKit
-import com.arthenica.ffmpegkit.MediaInformation
 import com.arthenica.ffmpegkit.ReturnCode
 
 /**
@@ -44,15 +42,9 @@ object FFmpegUtil {
     }
 
     /**
-     * Get media information for a file
+     * Get media information for a file (Disabled due to lightweight ffmpeg-kit)
      */
-    fun getMediaInfo(filePath: String): MediaInformation? {
-        return try {
-            val mediaInfoSession = FFprobeKit.getMediaInformation(filePath)
-            mediaInfoSession.mediaInformation
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error getting media info: ${e.message}")
-            null
-        }
+    fun getMediaInfo(filePath: String): Any? {
+        return null
     }
 } 

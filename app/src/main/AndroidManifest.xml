@@ -405,6 +405,14 @@
             </intent-filter>
         </receiver>
         
+        <receiver
+            android:name=".core.tools.agent.UiAutoBinderReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.ai.assistance.operit.action.UIAUTO_BINDER_READY" />
+            </intent-filter>
+        </receiver>
+        
         <!-- Workflow Tasker Plugin Activity -->
         <activity
             android:name=".integrations.tasker.WorkflowTaskerActivityConfig"

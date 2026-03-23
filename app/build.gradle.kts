@@ -334,6 +334,10 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
+    // UIAutomator Core (implementation required for in-process automation)
+    implementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    implementation("androidx.test:core:1.5.0")
+
     // Tasker Plugin Library
     implementation("com.joaomgcd:taskerpluginlibrary:0.4.10")
     
@@ -437,4 +441,18 @@ dependencies {
     // Glance for Widgets (Compose for Widgets)
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
+}
+
+tasks.register<Copy>("copyUiautoApk") {
+    dependsOn(":uiautoserver:assembleDebug")
+    from(project(":uiautoserver").layout.buildDirectory.dir("outputs/apk/debug"))
+    include("uiautoserver-debug.apk")
+    into("src/main/assets/")
+    rename("uiautoserver-debug.apk", "uiautoserver.apk")
+}
+
+afterEvaluate {
+    tasks.named("preBuild") {
+        dependsOn("copyUiautoApk")
+    }
 }

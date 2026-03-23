@@ -430,13 +430,13 @@ data class AppListData(val includesSystemApps: Boolean, val packages: List<Strin
 /** Represents UI node structure for hierarchical display */
 @Serializable
 data class SimplifiedUINode(
-        val className: String?,
-        val text: String?,
-        val contentDesc: String?,
-        val resourceId: String?,
-        val bounds: String?,
-        val isClickable: Boolean,
-        val children: List<SimplifiedUINode>
+        val className: String? = null,
+        val text: String? = null,
+        val contentDesc: String? = null,
+        val resourceId: String? = null,
+        val bounds: String? = null,
+        val isClickable: Boolean = false,
+        val children: List<SimplifiedUINode> = emptyList()
 ) {
     fun toTreeString(indent: String = ""): String {
         if (!shouldKeepNode()) return ""
