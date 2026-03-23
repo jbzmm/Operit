@@ -357,11 +357,23 @@ fun AppContent(
                         // 优化渲染：只渲染当前屏幕和正在过渡的上一个屏幕
                         // 使用稳定的状态机，避免同一 key 被重复触发转场
                         var lastObservedCurrentKey by remember { mutableStateOf(currentScreenKey) }
+                        var lastObservedScreen by remember { mutableStateOf(currentScreen) }
                         var transitionFromKey by remember { mutableStateOf<String?>(null) }
                         var isTransitioning by remember { mutableStateOf(false) }
+                        var transitionAllowsCrossfade by remember { mutableStateOf(true) }
+
+                        val allowCrossfadeForActiveTransition =
+                            when {
+                                currentScreenKey != lastObservedCurrentKey ->
+                                    lastObservedScreen.participatesInCrossfadeTransition &&
+                                        currentScreen.participatesInCrossfadeTransition
+                                isTransitioning -> transitionAllowsCrossfade
+                                else -> true
+                            }
 
                         val effectivePreviousKey =
                             when {
+                                !allowCrossfadeForActiveTransition -> null
                                 currentScreenKey != lastObservedCurrentKey -> lastObservedCurrentKey
                                 isTransitioning -> transitionFromKey
                                 else -> null
@@ -371,15 +383,26 @@ fun AppContent(
                             val fromKey = lastObservedCurrentKey
                             if (currentScreenKey == fromKey) return@LaunchedEffect
 
-                            transitionFromKey = fromKey
-                            isTransitioning = true
+                            val canCrossfade =
+                                lastObservedScreen.participatesInCrossfadeTransition &&
+                                    currentScreen.participatesInCrossfadeTransition
+
+                            transitionAllowsCrossfade = canCrossfade
+                            transitionFromKey = if (canCrossfade) fromKey else null
+                            isTransitioning = canCrossfade
                             lastObservedCurrentKey = currentScreenKey
+                            lastObservedScreen = currentScreen
+
+                            if (!canCrossfade) {
+                                return@LaunchedEffect
+                            }
 
                             // 等待动画完成后停止过渡状态
                             kotlinx.coroutines.delay(400) // 与动画时长一致
 
                             isTransitioning = false
                             transitionFromKey = null
+                            transitionAllowsCrossfade = true
                         }
 
                         val renderKeys = buildList {
@@ -402,20 +425,25 @@ fun AppContent(
                                     visibility = if (isCurrentScreen) ScreenVisibility.VISIBLE else ScreenVisibility.HIDDEN
                                 }
 
-                                // 使用 updateTransition 来处理动画状态
-                                val transition = updateTransition(
-                                    targetState = visibility,
-                                    label = "ScreenVisibilityTransition"
-                                )
+                                val alpha =
+                                    if (!allowCrossfadeForActiveTransition) {
+                                        1f
+                                    } else {
+                                        // 使用 updateTransition 来处理动画状态
+                                        val transition = updateTransition(
+                                            targetState = visibility,
+                                            label = "ScreenVisibilityTransition"
+                                        )
 
-                                val alpha by transition.animateFloat(
-                                    transitionSpec = {
-                                        tween(durationMillis = 400)
-                                    },
-                                    label = "ScreenAlphaAnimation"
-                                ) { visibility ->
-                                    if (visibility == ScreenVisibility.VISIBLE) 1f else 0f
-                                }
+                                        transition.animateFloat(
+                                            transitionSpec = {
+                                                tween(durationMillis = 400)
+                                            },
+                                            label = "ScreenAlphaAnimation"
+                                        ) { currentVisibility ->
+                                            if (currentVisibility == ScreenVisibility.VISIBLE) 1f else 0f
+                                        }.value
+                                    }
 
                                 Box(
                                     modifier =

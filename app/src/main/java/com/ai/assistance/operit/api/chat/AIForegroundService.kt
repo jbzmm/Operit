@@ -36,7 +36,11 @@ import com.ai.assistance.operit.api.speech.SpeechServiceFactory
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.core.application.ActivityLifecycleManager
 import com.ai.assistance.operit.core.application.ForegroundServiceCompat
+import com.ai.assistance.operit.data.preferences.ExternalHttpApiConfig
+import com.ai.assistance.operit.data.preferences.ExternalHttpApiPreferences
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
+import com.ai.assistance.operit.integrations.http.ExternalChatHttpServer
+import com.ai.assistance.operit.integrations.http.ExternalChatHttpState
 import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.services.UIDebuggerService
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
@@ -51,6 +55,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -121,6 +127,10 @@ class AIForegroundService : Service() {
 
         private const val ACTION_ENSURE_MICROPHONE_FOREGROUND =
             "com.ai.assistance.operit.action.ENSURE_MICROPHONE_FOREGROUND"
+        private const val ACTION_START_OR_REFRESH_EXTERNAL_HTTP =
+            "com.ai.assistance.operit.action.START_OR_REFRESH_EXTERNAL_HTTP"
+        private const val ACTION_STOP_EXTERNAL_HTTP =
+            "com.ai.assistance.operit.action.STOP_EXTERNAL_HTTP"
 
         @Volatile
         private var lastRequestedImeVisible: Boolean = false
@@ -128,6 +138,8 @@ class AIForegroundService : Service() {
         // 静态标志，用于从外部检查服务是否正在运行
         val isRunning = java.util.concurrent.atomic.AtomicBoolean(false)
         private val activeReplyNotificationTags = ConcurrentHashMap.newKeySet<String>()
+        private val externalHttpStateFlow = MutableStateFlow(ExternalChatHttpState())
+        val externalHttpState = externalHttpStateFlow.asStateFlow()
         
         // Intent extras keys
         const val EXTRA_CHARACTER_NAME = "extra_character_name"
@@ -328,23 +340,74 @@ class AIForegroundService : Service() {
             }
         }
 
-        fun ensureMicrophoneForeground(context: Context) {
-            val intent = Intent(context, AIForegroundService::class.java).apply {
+        fun ensureMicrophoneForeground(context: Context, forceStart: Boolean = false) {
+            val appContext = context.applicationContext
+            if (!forceStart && !isRunning.get() && !hasPersistentForegroundResponsibilityConfigured(appContext)) {
+                return
+            }
+
+            val intent = Intent(appContext, AIForegroundService::class.java).apply {
                 action = ACTION_ENSURE_MICROPHONE_FOREGROUND
             }
             try {
                 if (isRunning.get()) {
-                    context.startService(intent)
+                    appContext.startService(intent)
                 } else {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
+                        appContext.startForegroundService(intent)
                     } else {
-                        context.startService(intent)
+                        appContext.startService(intent)
                     }
                 }
             } catch (e: Exception) {
                 AppLogger.w(TAG, "Failed to request microphone foreground", e)
             }
+        }
+
+        fun ensureRunningForExternalHttp(context: Context) {
+            startServiceForAction(context, ACTION_START_OR_REFRESH_EXTERNAL_HTTP)
+        }
+
+        fun stopExternalHttp(context: Context) {
+            externalHttpStateFlow.value =
+                externalHttpStateFlow.value.copy(isRunning = false, lastError = null)
+            if (!isRunning.get()) {
+                return
+            }
+            startServiceForAction(context, ACTION_STOP_EXTERNAL_HTTP)
+        }
+
+        private fun startServiceForAction(context: Context, action: String) {
+            val appContext = context.applicationContext
+            val intent = Intent(appContext, AIForegroundService::class.java).apply {
+                this.action = action
+            }
+            try {
+                if (isRunning.get()) {
+                    appContext.startService(intent)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext.startForegroundService(intent)
+                } else {
+                    appContext.startService(intent)
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to start action $action: ${e.message}", e)
+            }
+        }
+
+        private fun hasPersistentForegroundResponsibilityConfigured(context: Context): Boolean {
+            val appContext = context.applicationContext
+            val alwaysListeningEnabled = runCatching {
+                runBlocking {
+                    WakeWordPreferences(appContext).alwaysListeningEnabledFlow.first()
+                }
+            }.getOrDefault(false)
+            val externalHttpEnabled = runCatching {
+                ExternalHttpApiPreferences.getInstance(appContext).getConfigSync().let { config ->
+                    config.enabled && ExternalHttpApiPreferences.isValidPort(config.port)
+                }
+            }.getOrDefault(false)
+            return alwaysListeningEnabled || externalHttpEnabled
         }
     }
 
@@ -549,12 +612,14 @@ class AIForegroundService : Service() {
     @Volatile
     private var wakeSpeechProvider: SpeechService? = null
     private val workflowRepository by lazy { WorkflowRepository(applicationContext) }
+    private val externalHttpPreferences by lazy { ExternalHttpApiPreferences.getInstance(applicationContext) }
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private var keepAliveOverlayView: View? = null
     private var keepAliveOverlayPermissionLogged = false
 
     private var wakeMonitorJob: Job? = null
+    private var externalHttpMonitorJob: Job? = null
     private var wakeListeningJob: Job? = null
     private var wakeResumeJob: Job? = null
 
@@ -594,6 +659,8 @@ class AIForegroundService : Service() {
 
     private var audioManager: AudioManager? = null
     private var audioRecordingCallback: AudioManager.AudioRecordingCallback? = null
+    private var externalHttpServer: ExternalChatHttpServer? = null
+    private var externalHttpCurrentPort: Int? = null
 
     private var lastWakeTriggerAtMs: Long = 0L
 
@@ -625,6 +692,123 @@ class AIForegroundService : Service() {
         }
     }
 
+    private fun startOrRefreshExternalHttpServer(config: ExternalHttpApiConfig = externalHttpPreferences.getConfigSync()) {
+        if (!config.enabled) {
+            AppLogger.i(TAG, "External HTTP API disabled, stopping runtime")
+            stopExternalHttpServer(portOverride = config.port, lastError = null)
+            stopSelfIfIdle(ignoreAppForeground = true)
+            return
+        }
+
+        if (!ExternalHttpApiPreferences.isValidPort(config.port)) {
+            val message = "Invalid port: ${config.port}"
+            AppLogger.w(TAG, message)
+            stopExternalHttpServer(portOverride = config.port, lastError = message)
+            stopSelfIfIdle(ignoreAppForeground = true)
+            return
+        }
+
+        if (externalHttpServer != null && externalHttpCurrentPort == config.port) {
+            updateExternalHttpState(
+                ExternalChatHttpState(
+                    isRunning = true,
+                    port = config.port,
+                    lastError = null
+                )
+            )
+            return
+        }
+
+        stopExternalHttpServer()
+
+        try {
+            val newServer = ExternalChatHttpServer(applicationContext, externalHttpPreferences, serviceScope)
+            newServer.startServer()
+            externalHttpServer = newServer
+            externalHttpCurrentPort = config.port
+            updateExternalHttpState(
+                ExternalChatHttpState(
+                    isRunning = true,
+                    port = config.port,
+                    lastError = null
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to start external HTTP server", e)
+            stopExternalHttpServer(
+                portOverride = config.port,
+                lastError = e.message ?: "Failed to start server"
+            )
+            stopSelfIfIdle(ignoreAppForeground = true)
+        }
+    }
+
+    private fun stopExternalHttpServer(portOverride: Int? = null, lastError: String? = null) {
+        runCatching {
+            externalHttpServer?.stopServer()
+        }.onFailure { error ->
+            AppLogger.e(TAG, "Failed to stop external HTTP server", error)
+        }
+
+        val stoppedPort = portOverride ?: externalHttpCurrentPort ?: externalHttpStateFlow.value.port
+        externalHttpServer = null
+        externalHttpCurrentPort = null
+        updateExternalHttpState(
+            ExternalChatHttpState(
+                isRunning = false,
+                port = stoppedPort,
+                lastError = lastError
+            )
+        )
+    }
+
+    private fun updateExternalHttpState(
+        newState: ExternalChatHttpState,
+        refreshNotification: Boolean = true
+    ) {
+        externalHttpStateFlow.value = newState
+        if (refreshNotification) {
+            refreshServiceNotification()
+        }
+    }
+
+    private fun refreshServiceNotification() {
+        if (!isRunning.get()) {
+            return
+        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, createNotification())
+    }
+
+    private fun isExternalHttpEnabledNow(): Boolean {
+        return runCatching {
+            externalHttpPreferences.getConfigSync().let { config ->
+                config.enabled && ExternalHttpApiPreferences.isValidPort(config.port)
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun stopSelfIfIdle(ignoreAppForeground: Boolean = false) {
+        val alwaysListeningEnabled = wakeListeningEnabled || isAlwaysListeningEnabledNow()
+        val externalHttpEnabled = externalHttpStateFlow.value.isRunning || isExternalHttpEnabledNow()
+        if (isAiBusy || alwaysListeningEnabled || externalHttpEnabled) {
+            return
+        }
+        if (!ignoreAppForeground && ActivityLifecycleManager.getCurrentActivity() != null) {
+            return
+        }
+
+        AppLogger.d(TAG, "No active foreground responsibilities, stopping AIForegroundService")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            @Suppress("DEPRECATION")
+            stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+    }
+
     override fun onCreate() {
         super.onCreate()
         isRunning.set(true)
@@ -637,10 +821,14 @@ class AIForegroundService : Service() {
             service = this,
             notificationId = NOTIFICATION_ID,
             notification = notification,
-            types = ForegroundServiceCompat.buildTypes(dataSync = true)
+            types = ForegroundServiceCompat.buildTypes(
+                dataSync = true,
+                specialUse = runCatching { externalHttpPreferences.getEnabled() }.getOrDefault(false)
+            )
         )
         observeChatRuntimeStats()
         startWakeMonitoring()
+        startExternalHttpMonitoring()
         AppLogger.d(TAG, "AI 前台服务已启动。")
     }
 
@@ -730,6 +918,8 @@ class AIForegroundService : Service() {
                 AppLogger.e(TAG, "退出时停止 UIDebuggerService 失败: ${e.message}", e)
             }
 
+            stopExternalHttpServer(lastError = null)
+
             try {
                 val activity = ActivityLifecycleManager.getCurrentActivity()
                 activity?.runOnUiThread {
@@ -777,6 +967,19 @@ class AIForegroundService : Service() {
                     AppLogger.w(TAG, "ensure microphone foreground failed", e)
                 }
             }
+            stopSelfIfIdle(ignoreAppForeground = true)
+            return START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_START_OR_REFRESH_EXTERNAL_HTTP || intent == null) {
+            startOrRefreshExternalHttpServer()
+            return if (externalHttpStateFlow.value.isRunning) START_STICKY else START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_STOP_EXTERNAL_HTTP) {
+            val configuredPort = runCatching { externalHttpPreferences.getPort() }.getOrNull()
+            stopExternalHttpServer(portOverride = configuredPort, lastError = null)
+            stopSelfIfIdle(ignoreAppForeground = true)
             return START_NOT_STICKY
         }
 
@@ -865,16 +1068,14 @@ class AIForegroundService : Service() {
             if (state != null) {
                 isAiBusy = state == STATE_RUNNING
                 val alwaysListeningEnabled = isAlwaysListeningEnabledNow()
-                if (!isAiBusy && !alwaysListeningEnabled && ActivityLifecycleManager.getCurrentActivity() == null) {
-                    AppLogger.d(TAG, "服务进入空闲且应用不在前台，停止前台服务并移除通知")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        @Suppress("DEPRECATION")
-                        stopForeground(Service.STOP_FOREGROUND_REMOVE)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        stopForeground(true)
-                    }
-                    stopSelf()
+                val externalHttpEnabled =
+                    externalHttpStateFlow.value.isRunning || isExternalHttpEnabledNow()
+                if (!isAiBusy &&
+                    !alwaysListeningEnabled &&
+                    !externalHttpEnabled
+                ) {
+                    AppLogger.d(TAG, "服务进入空闲且无持久后台职责，停止前台服务并移除通知")
+                    stopSelfIfIdle(ignoreAppForeground = true)
                     return START_NOT_STICKY
                 }
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -882,12 +1083,28 @@ class AIForegroundService : Service() {
             }
         }
         
-        // 返回 START_NOT_STICKY 表示如果服务被杀死，系统不需要尝试重启它。
-        // 因为服务的生命周期由 EnhancedAIService 精确控制。
-        return START_NOT_STICKY
+        // 当 External HTTP 处于启用状态时，使用 START_STICKY 提高后台保活强度；
+        // 其他场景仍由 EnhancedAIService 与前台交互精确控制生命周期。
+        return if (isExternalHttpEnabledNow()) START_STICKY else START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        val stoppedPort = externalHttpCurrentPort ?: externalHttpStateFlow.value.port
+        runCatching {
+            externalHttpServer?.stopServer()
+        }.onFailure { error ->
+            AppLogger.e(TAG, "Failed to stop external HTTP server", error)
+        }
+        externalHttpServer = null
+        externalHttpCurrentPort = null
+        updateExternalHttpState(
+            ExternalChatHttpState(
+                isRunning = false,
+                port = stoppedPort,
+                lastError = null
+            ),
+            refreshNotification = false
+        )
         super.onDestroy()
         isRunning.set(false)
         hideKeepAliveOverlay()
@@ -927,6 +1144,42 @@ class AIForegroundService : Service() {
             manager.createNotificationChannel(serviceChannel)
             manager.createNotificationChannel(replyChannel)
         }
+    }
+
+    private fun startExternalHttpMonitoring() {
+        if (externalHttpMonitorJob?.isActive == true) return
+
+        if (isExternalHttpEnabledNow()) {
+            startOrRefreshExternalHttpServer()
+        } else {
+            updateExternalHttpState(
+                externalHttpStateFlow.value.copy(
+                    isRunning = false,
+                    port = runCatching { externalHttpPreferences.getPort() }.getOrNull(),
+                    lastError = null
+                )
+            )
+        }
+
+        externalHttpMonitorJob =
+            serviceScope.launch {
+                combine(
+                    externalHttpPreferences.enabledFlow,
+                    externalHttpPreferences.portFlow
+                ) { enabled, port ->
+                    enabled to port
+                }.collectLatest { (enabled, port) ->
+                    AppLogger.d(TAG, "External HTTP config updated: enabled=$enabled, port=$port")
+                    if (enabled) {
+                        startOrRefreshExternalHttpServer(
+                            config = externalHttpPreferences.getConfigSync()
+                        )
+                    } else {
+                        stopExternalHttpServer(portOverride = port, lastError = null)
+                        stopSelfIfIdle(ignoreAppForeground = true)
+                    }
+                }
+            }
     }
 
     private fun startWakeMonitoring() {
@@ -992,6 +1245,8 @@ class AIForegroundService : Service() {
     }
 
     private fun stopWakeMonitoring() {
+        externalHttpMonitorJob?.cancel()
+        externalHttpMonitorJob = null
         wakeMonitorJob?.cancel()
         wakeMonitorJob = null
         wakeResumeJob?.cancel()
@@ -1424,6 +1679,7 @@ class AIForegroundService : Service() {
         // 在实际项目中，应替换为应用的自定义图标。
         val wakeListeningEnabledSnapshot = wakeListeningEnabled
         val wakeListeningSuspendedSnapshot = wakeListeningSuspendedForIme || wakeListeningSuspendedForExternalRecording || wakeListeningSuspendedForFloatingFullscreen
+        val externalHttpSnapshot = externalHttpStateFlow.value
         val title =
             if (isAiBusy) {
                 characterName ?: getString(R.string.service_operit_running)
@@ -1442,10 +1698,24 @@ class AIForegroundService : Service() {
         val currentSessionToolCount = chatRuntimeHolder.currentSessionToolCount.value
         val contentText =
             if (isAiBusy && activeConversationCount > 0) {
-                getString(
+                val statsText = getString(
                     R.string.service_running_stats,
                     activeConversationCount,
                     currentSessionToolCount
+                )
+                if (externalHttpSnapshot.isRunning && externalHttpSnapshot.port != null) {
+                    getString(
+                        R.string.service_running_with_http,
+                        statsText,
+                        externalHttpSnapshot.port
+                    )
+                } else {
+                    statsText
+                }
+            } else if (externalHttpSnapshot.isRunning && externalHttpSnapshot.port != null) {
+                getString(
+                    R.string.service_running_http_listening,
+                    externalHttpSnapshot.port
                 )
             } else {
                 getString(R.string.service_operit_running)

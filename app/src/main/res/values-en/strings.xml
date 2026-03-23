@@ -1742,16 +1742,12 @@
     <string name="external_http_chat_health_example">Health Check Example</string>
     <string name="external_http_chat_intent_title">Intent Calling Guide</string>
     <string name="external_http_chat_intent_desc">The broadcast entry is still available for local app integration, Tasker, or adb debugging</string>
-    <string name="external_http_chat_intent_overview">HTTP and Intent share the same parameter semantics. Only the entry method is different.\n\nRequest action: %1$s\nDefault result action: %2$s\n\nCommon extras: message, request_id, group, create_new_chat, chat_id, create_if_none, show_floating, auto_exit_after_ms, stop_after, reply_action, reply_package\n\nAfter completion, Operit returns success, chat_id, ai_response, and error by broadcast. If the result should only be delivered to one app, set reply_package.</string>
+    <string name="external_http_chat_intent_overview">HTTP and Intent share the same parameter semantics. Only the entry method is different.\n\nRequest action: %1$s\nDefault result action: %2$s\n\nCommon extras: message, request_id, group, create_new_chat, chat_id, create_if_none, show_floating, initial_mode, auto_exit_after_ms, stop_after, reply_action, reply_package\n\nAfter completion, Operit returns success, chat_id, ai_response, and error by broadcast. If the result should only be delivered to one app, set reply_package.</string>
     <string name="external_http_chat_copy_example">Copy Example</string>
     <string name="external_http_chat_example_copied">Example command copied</string>
     <string name="external_http_chat_service_enabled">Service enabled</string>
     <string name="external_http_chat_service_disabled">Service disabled</string>
     <string name="external_http_chat_restart_service">Restart Service</string>
-    <string name="external_http_chat_notification_channel_name">External HTTP Calls</string>
-    <string name="external_http_chat_notification_channel_desc">Foreground service for the LAN External HTTP Chat API</string>
-    <string name="external_http_chat_notification_title">External HTTP Calls Enabled</string>
-    <string name="external_http_chat_notification_text">Listening on port %1$d</string>
     <string name="operation_details">Operation Details</string>
     <string name="path">Path</string>
     <string name="from_node">From node: %1$s</string>
@@ -5039,7 +5035,6 @@
 
     <!-- Help Screen - Mirror Selection Dialog -->
     <string name="help_loading_message">Loading user guide...</string>
-    <string name="help_mirror_dialog_title">Select help site mirror</string>
 
     <!-- About Screen -->
     <string name="about_version_unknown">Unknown</string>
@@ -5139,12 +5134,6 @@
     <string name="logcat_file_create_failed">File creation failed or is empty</string>
     <string name="logcat_filesystem_save_failed">Filesystem save failed: %1$s</string>
 
-    <string name="help_mirror_label_main">Main site</string>
-    <string name="help_mirror_label_mirror1">Mirror 1</string>
-    <string name="help_mirror_label_legacy">Legacy site</string>
-    <string name="help_mirror_latency_ms">%1$d ms</string>
-    <string name="help_mirror_latency_timeout">Timeout</string>
-    <string name="help_mirror_latency_testing">Testing...</string>
 
     <string name="vd_overlay_a11y_minimize">Minimize</string>
     <string name="vd_overlay_a11y_exit_fullscreen">Exit fullscreen</string>
@@ -6520,6 +6509,8 @@
     <string name="service_running_wake_pause">Operit is running (wake paused)</string>
     <string name="service_running_wake_listening">Operit is running (wake listening)</string>
     <string name="service_running_stats">Conversations %1$d · Tools %2$d</string>
+    <string name="service_running_http_listening">External HTTP listening on port %1$d</string>
+    <string name="service_running_with_http">%1$s · HTTP %2$d</string>
     <string name="service_voice_floating_window">Voice floating window</string>
     <string name="service_turn_off_wake">Turn off wake</string>
     <string name="service_turn_on_wake">Turn on wake</string>
@@ -7028,6 +7019,52 @@
     <string name="web_session_close_current_tab">Close current tab</string>
     <string name="web_session_close_all_tabs">Close all tabs</string>
     <string name="web_session_new_tab">New tab</string>
+    <string name="web_session_userscripts">Userscripts</string>
+    <string name="web_session_userscripts_subtitle">Manage native userscripts installed in this browser</string>
+    <string name="web_session_userscript_install">Install Script</string>
+    <string name="web_session_userscript_install_from_url">Script URL</string>
+    <string name="web_session_userscript_install_action">Install from URL</string>
+    <string name="web_session_userscript_import_local">Import Local File</string>
+    <string name="web_session_userscript_install_preview">Install Preview</string>
+    <string name="web_session_userscript_update_preview">Update Preview</string>
+    <string name="web_session_userscript_library">Installed Scripts</string>
+    <string name="web_session_userscript_none">No userscripts installed yet</string>
+    <string name="web_session_userscript_logs">Recent Logs</string>
+    <string name="web_session_userscript_logs_empty">No recent userscript logs</string>
+    <string name="web_session_userscript_page_menu">Page Script Menu</string>
+    <string name="web_session_userscript_page_menu_subtitle">Run commands registered by scripts on this page</string>
+    <string name="web_session_userscript_version">Version</string>
+    <string name="web_session_userscript_source">Source</string>
+    <string name="web_session_userscript_grants">Grants</string>
+    <string name="web_session_userscript_matches">Match Rules</string>
+    <string name="web_session_userscript_connects">@connect</string>
+    <string name="web_session_userscript_requires">@require</string>
+    <string name="web_session_userscript_resources">@resource</string>
+    <string name="web_session_userscript_update_url">Update URL</string>
+    <string name="web_session_userscript_unsupported_grants">Unsupported grants: %1$s</string>
+    <string name="web_session_userscript_confirm_install">Confirm Install</string>
+    <string name="web_session_userscript_cancel_install">Cancel</string>
+    <string name="web_session_userscript_update_action">Confirm Update</string>
+    <string name="web_session_userscript_check_update">Check Update</string>
+    <string name="web_session_userscript_delete">Delete Script</string>
+    <string name="web_session_userscript_unsupported">This WebView does not support native userscripts</string>
+    <string name="web_session_userscript_unsupported_summary">Document-start injection or native message bridging is unavailable, so no compatibility fallback will be enabled.</string>
+    <string name="web_session_userscript_status_disabled">Disabled</string>
+    <string name="web_session_userscript_status_unsupported">Unsupported</string>
+    <string name="web_session_userscript_status_not_matched">No Match</string>
+    <string name="web_session_userscript_status_queued">Queued</string>
+    <string name="web_session_userscript_status_running">Running</string>
+    <string name="web_session_userscript_status_success">Ran</string>
+    <string name="web_session_userscript_status_error">Error</string>
+    <string name="web_session_userscript_invalid_url">Invalid userscript URL</string>
+    <string name="web_session_userscript_install_failed">Failed to install userscript</string>
+    <string name="web_session_userscript_installed">Installed userscript: %1$s</string>
+    <string name="web_session_userscript_deleted">Userscript deleted</string>
+    <string name="web_session_userscript_no_update">No newer version is available</string>
+    <string name="web_session_userscript_notification_title">Userscript Notification</string>
+    <string name="web_session_userscript_notification_channel">Userscript Notifications</string>
+    <string name="web_session_userscript_notification_denied">Notification permission is not granted, so userscript notifications cannot be shown</string>
+    <string name="web_session_userscript_download_failed">Userscript download failed</string>
 
     <string name="tool_windows_control_one_click">Windows One-Click Setup</string>
     <string name="tool_windows_control_one_click_desc">Export the PC agent package, configure HTTP agent environment variables, and enable windows_control in one flow</string>

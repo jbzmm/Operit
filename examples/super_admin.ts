@@ -13,7 +13,7 @@ METADATA
     "tools": [
         {
             "name": "terminal",
-            "description": { "zh": "在Ubuntu环境中执行命令并收集输出结果。运行环境：完整的Ubuntu系统，已正确挂载sdcard和storage目录，可访问Android存储空间。所有命令将会在相同的会话执行且上下文连贯。强烈建议每次都显式传 timeoutMs，避免命令卡住。若未传，前台默认15秒超时；background=true 时不使用该默认超时。命令超时时不会被自动取消，不需要重新执行命令，请继续通过 terminal_getscreen 跟踪当前屏幕内容。", "en": "Execute commands in an Ubuntu environment and collect output. Environment: full Ubuntu system with sdcard/storage mounted, allowing access to Android storage. Automatically preserves working-directory context. Strongly recommend explicitly passing timeoutMs every time to avoid hangs. If omitted, foreground mode defaults to 15s timeout; background=true does not use this default timeout. When a command times out, it is not automatically cancelled. Do not rerun the command; continue tracking the current screen via terminal_getscreen." },
+            "description": { "zh": "在Ubuntu环境中执行命令并收集输出结果。运行环境：完整的Ubuntu系统，已正确挂载sdcard和storage目录，可访问Android存储空间。所有命令将会在相同的会话执行且上下文连贯。强烈建议每次都显式传 timeoutMs，避免命令卡住。禁止使用 `set -e`、`set -o errexit` 等会改变 shell 退出行为的命令，这会导致终端会话直接退出并卡死。若未传，前台默认15秒超时；background=true 时不使用该默认超时。命令超时时不会被自动取消，不需要重新执行命令，请继续通过 terminal_getscreen 跟踪当前屏幕内容。", "en": "Execute commands in an Ubuntu environment and collect output. Environment: full Ubuntu system with sdcard/storage mounted, allowing access to Android storage. Automatically preserves working-directory context. Strongly recommend explicitly passing timeoutMs every time to avoid hangs. Do not use commands such as `set -e` or `set -o errexit` that change shell exit behavior, because they can cause the terminal session to exit and hang. If omitted, foreground mode defaults to 15s timeout; background=true does not use this default timeout. When a command times out, it is not automatically cancelled. Do not rerun the command; continue tracking the current screen via terminal_getscreen." },
             "parameters": [
                 {
                     "name": "command",
@@ -130,6 +130,7 @@ const superAdmin = (function () {
     /**
      * 在Ubuntu环境中执行终端命令并收集输出结果
      * 运行环境：完整的Ubuntu系统，已正确挂载sdcard和storage目录
+     * 禁止使用 set -e / set -o errexit 等会改变 shell 退出行为的命令，否则可能导致终端会话退出并卡死
      * @param command - 要执行的命令
      * @param background - 是否后台运行（"true" 为后台执行并立即返回，适合启动服务器等长时间运行任务，AI 不会收到该命令的输出结果）
      * @param timeoutMs - 可选的超时时间（毫秒，最低 3000ms）。强烈建议显式传入；前台未传时默认 15000ms，后台模式不应用该默认值。

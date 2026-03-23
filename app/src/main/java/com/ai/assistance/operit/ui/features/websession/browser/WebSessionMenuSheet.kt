@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.MaterialTheme
@@ -24,12 +25,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.UserscriptPageMenuCommand
 
 @Composable
 internal fun WebSessionMenuSheet(
     isDesktopMode: Boolean,
     onOpenHistory: () -> Unit,
     onOpenBookmarks: () -> Unit,
+    onOpenUserscripts: () -> Unit,
+    userscriptMenuCommands: List<UserscriptPageMenuCommand>,
+    onInvokeUserscriptMenu: (String) -> Unit,
     onToggleDesktopMode: () -> Unit,
     onCloseCurrentTab: () -> Unit,
     onCloseAllTabs: () -> Unit,
@@ -60,6 +65,23 @@ internal fun WebSessionMenuSheet(
             icon = Icons.Filled.Bookmark,
             onClick = onOpenBookmarks
         )
+        MenuActionCard(
+            title = stringResource(R.string.web_session_userscripts),
+            subtitle = stringResource(R.string.web_session_userscripts_subtitle),
+            icon = Icons.Filled.Extension,
+            onClick = onOpenUserscripts
+        )
+        if (userscriptMenuCommands.isNotEmpty()) {
+            WebSessionSectionLabel(text = stringResource(R.string.web_session_userscript_page_menu))
+            userscriptMenuCommands.forEach { command ->
+                MenuActionCard(
+                    title = command.title,
+                    subtitle = stringResource(R.string.web_session_userscript_page_menu_subtitle),
+                    icon = Icons.Filled.Extension,
+                    onClick = { onInvokeUserscriptMenu(command.commandId) }
+                )
+            }
+        }
         MenuActionCard(
             title =
                 stringResource(

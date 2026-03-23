@@ -100,7 +100,10 @@ sealed class Screen(
         // 对应的导航项，用于侧边栏高亮显示
         open val navItem: NavItem? = null,
         // 屏幕标题资源ID
-        open val titleRes: Int? = null
+        open val titleRes: Int? = null,
+        // 是否参与 AppContent 的跨页淡入淡出。
+        // 某些包含实时渲染视图的页面在转场中保留上一页会产生明显残影。
+        open val participatesInCrossfadeTransition: Boolean = true
 ) {
     // 屏幕内容渲染函数
     @Composable
@@ -565,7 +568,11 @@ sealed class Screen(
         }
     }
 
-    data object AssistantConfig : Screen(navItem = NavItem.AssistantConfig) {
+    data object AssistantConfig :
+            Screen(
+                    navItem = NavItem.AssistantConfig,
+                    participatesInCrossfadeTransition = false
+            ) {
         @Composable
         override fun Content(
                 navController: NavController,

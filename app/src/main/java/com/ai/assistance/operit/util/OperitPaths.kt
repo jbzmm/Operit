@@ -13,6 +13,8 @@ object OperitPaths {
     private const val EXPORTS_DIR_NAME = "exports"
     private const val WORKSPACE_DIR_NAME = "workspace"
     private const val TEST_DIR_NAME = "test"
+    private const val WEBSESSION_DIR_NAME = "websession"
+    private const val USERSCRIPTS_DIR_NAME = "userscripts"
 
     const val SHERPA_NCNN_MODELS_DIR_NAME = ".sherpa_ncnn_models"
     const val VECTOR_INDEX_DIR_NAME = ".vector_index"
@@ -55,6 +57,14 @@ object OperitPaths {
 
     fun testDir(): File {
         return ensureDir(File(operitRootDir(), TEST_DIR_NAME))
+    }
+
+    fun webSessionDir(): File {
+        return ensureDir(File(operitRootDir(), WEBSESSION_DIR_NAME))
+    }
+
+    fun webSessionUserscriptsDir(): File {
+        return ensureDir(File(webSessionDir(), USERSCRIPTS_DIR_NAME))
     }
 
     fun sherpaNcnnModelsDir(context: Context): File {
@@ -109,6 +119,10 @@ object OperitPaths {
 
     fun testPathSdcard(): String {
         return "${operitRootPathSdcard()}/$TEST_DIR_NAME"
+    }
+
+    fun webSessionUserscriptsPathSdcard(): String {
+        return "${operitRootPathSdcard()}/$WEBSESSION_DIR_NAME/$USERSCRIPTS_DIR_NAME"
     }
 
     private fun ensureDir(dir: File): File {

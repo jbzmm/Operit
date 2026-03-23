@@ -35,6 +35,7 @@ import com.ai.assistance.operit.data.backup.RoomDatabaseBackupPreferences
 import com.ai.assistance.operit.data.backup.RoomDatabaseBackupScheduler
 import com.ai.assistance.operit.data.db.AppDatabase
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.ExternalHttpApiPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.data.preferences.initAndroidPermissionPreferences
@@ -148,8 +149,8 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
                 )
         )
         AppLogger.d(TAG, "【启动计时】AIMessageManager初始化完成 - ${System.currentTimeMillis() - startTime}ms")
-        startGlobalAIForegroundServiceIfAlwaysListening()
-        AppLogger.d(TAG, "【启动计时】AIForegroundService 始终监听检查完成 - ${System.currentTimeMillis() - startTime}ms")
+        startGlobalAIForegroundServiceIfNeeded()
+        AppLogger.d(TAG, "【启动计时】AIForegroundService 持久后台职责检查完成 - ${System.currentTimeMillis() - startTime}ms")
 
         // Initialize ANR monitor
         // AnrMonitor.start()
@@ -450,12 +451,15 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         return deletedCount
     }
 
-    private fun startGlobalAIForegroundServiceIfAlwaysListening() {
+    private fun startGlobalAIForegroundServiceIfNeeded() {
         try {
             val alwaysListeningEnabled = runBlocking {
                 WakeWordPreferences(applicationContext).alwaysListeningEnabledFlow.first()
             }
-            if (!alwaysListeningEnabled || AIForegroundService.isRunning.get()) {
+            val externalHttpEnabled = runBlocking {
+                ExternalHttpApiPreferences.getInstance(applicationContext).enabledFlow.first()
+            }
+            if ((!alwaysListeningEnabled && !externalHttpEnabled) || AIForegroundService.isRunning.get()) {
                 return
             }
             val intent = Intent(this, AIForegroundService::class.java).apply {
@@ -467,7 +471,7 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
                 startService(intent)
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "按始终监听状态启动 AIForegroundService 失败: ${e.message}", e)
+            AppLogger.e(TAG, "按持久后台职责状态启动 AIForegroundService 失败: ${e.message}", e)
         }
     }
 

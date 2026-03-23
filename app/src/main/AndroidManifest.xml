@@ -114,6 +114,14 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <activity
+            android:name=".core.tools.defaultTool.websession.userscript.install.UserscriptImportPickerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:finishOnTaskLaunch="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Enable high refresh rate support -->
         <meta-data
             android:name="android.max_aspect"
@@ -324,12 +332,6 @@
             android:foregroundServiceType="dataSync|specialUse" />
 
         <service
-            android:name=".integrations.http.ExternalChatHttpService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync|specialUse" />
-
-        <service
             android:name=".core.tools.system.ScreenCaptureService"
             android:enabled="true"
             android:exported="false"
@@ -350,7 +352,7 @@
             android:name=".api.chat.AIForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|microphone" />
+            android:foregroundServiceType="dataSync|microphone|specialUse" />
         
         <!-- 添加广播接收器配置 -->
         <receiver

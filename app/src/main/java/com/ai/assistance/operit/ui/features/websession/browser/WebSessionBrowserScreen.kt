@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
@@ -37,6 +37,7 @@ import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSes
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserSheetRoute
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionHistoryEntry
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionWebViewHost
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.ui.WebSessionUserscriptUiState
 import java.util.Locale
 
 @Composable
@@ -44,6 +45,7 @@ internal fun WebSessionBrowserScreen(
     hostState: WebSessionBrowserHostState,
     bookmarks: List<WebSessionBookmark>,
     globalHistory: List<WebSessionHistoryEntry>,
+    userscriptUiState: WebSessionUserscriptUiState,
     webViewHost: WebSessionWebViewHost,
     onHostStateChange: (WebSessionBrowserHostState) -> Unit,
     onNavigate: (String) -> Unit,
@@ -62,6 +64,15 @@ internal fun WebSessionBrowserScreen(
     onOpenUrl: (String) -> Unit,
     onClearHistory: () -> Unit,
     onToggleDesktopMode: () -> Unit,
+    onOpenUserscripts: () -> Unit,
+    onImportUserscript: () -> Unit,
+    onInstallUserscriptFromUrl: (String) -> Unit,
+    onConfirmUserscriptInstall: () -> Unit,
+    onCancelUserscriptInstall: () -> Unit,
+    onSetUserscriptEnabled: (Long, Boolean) -> Unit,
+    onDeleteUserscript: (Long) -> Unit,
+    onCheckUserscriptUpdate: (Long) -> Unit,
+    onInvokeUserscriptMenu: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val browserState = hostState.browserState
@@ -263,6 +274,7 @@ internal fun WebSessionBrowserScreen(
                     browserState = browserState,
                     bookmarks = bookmarks,
                     globalHistory = globalHistory,
+                    userscriptUiState = userscriptUiState,
                     onDismiss = dismissSheet,
                     onSelectTab = onSelectTab,
                     onCloseTab = onCloseTab,
@@ -275,7 +287,16 @@ internal fun WebSessionBrowserScreen(
                     onClearHistory = onClearHistory,
                     onToggleDesktopMode = onToggleDesktopMode,
                     onHostStateChange = onHostStateChange,
-                    hostState = hostState
+                    hostState = hostState,
+                    onOpenUserscripts = onOpenUserscripts,
+                    onImportUserscript = onImportUserscript,
+                    onInstallUserscriptFromUrl = onInstallUserscriptFromUrl,
+                    onConfirmUserscriptInstall = onConfirmUserscriptInstall,
+                    onCancelUserscriptInstall = onCancelUserscriptInstall,
+                    onSetUserscriptEnabled = onSetUserscriptEnabled,
+                    onDeleteUserscript = onDeleteUserscript,
+                    onCheckUserscriptUpdate = onCheckUserscriptUpdate,
+                    onInvokeUserscriptMenu = onInvokeUserscriptMenu
                 )
             }
         }
@@ -288,6 +309,7 @@ private fun WebSessionOverlaySheetContent(
     browserState: com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserState,
     bookmarks: List<WebSessionBookmark>,
     globalHistory: List<WebSessionHistoryEntry>,
+    userscriptUiState: WebSessionUserscriptUiState,
     onDismiss: () -> Unit,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
@@ -300,7 +322,16 @@ private fun WebSessionOverlaySheetContent(
     onClearHistory: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onHostStateChange: (WebSessionBrowserHostState) -> Unit,
-    hostState: WebSessionBrowserHostState
+    hostState: WebSessionBrowserHostState,
+    onOpenUserscripts: () -> Unit,
+    onImportUserscript: () -> Unit,
+    onInstallUserscriptFromUrl: (String) -> Unit,
+    onConfirmUserscriptInstall: () -> Unit,
+    onCancelUserscriptInstall: () -> Unit,
+    onSetUserscriptEnabled: (Long, Boolean) -> Unit,
+    onDeleteUserscript: (Long) -> Unit,
+    onCheckUserscriptUpdate: (Long) -> Unit,
+    onInvokeUserscriptMenu: (String) -> Unit
 ) {
     when (sheetRoute) {
         WebSessionBrowserSheetRoute.TABS ->
@@ -329,6 +360,17 @@ private fun WebSessionOverlaySheetContent(
                     onHostStateChange(
                         hostState.copy(sheetRoute = WebSessionBrowserSheetRoute.BOOKMARKS)
                     )
+                },
+                onOpenUserscripts = {
+                    onHostStateChange(
+                        hostState.copy(sheetRoute = WebSessionBrowserSheetRoute.USERSCRIPTS)
+                    )
+                    onOpenUserscripts()
+                },
+                userscriptMenuCommands = browserState.userscriptMenuCommands,
+                onInvokeUserscriptMenu = { commandId ->
+                    onDismiss()
+                    onInvokeUserscriptMenu(commandId)
                 },
                 onToggleDesktopMode = {
                     onDismiss()
@@ -367,6 +409,20 @@ private fun WebSessionOverlaySheetContent(
                     onDismiss()
                 },
                 onRemoveBookmark = onRemoveBookmark
+            )
+
+        WebSessionBrowserSheetRoute.USERSCRIPTS ->
+            WebSessionUserscriptSheet(
+                state = userscriptUiState,
+                currentPageMenuCommands = browserState.userscriptMenuCommands,
+                onInstallFromUrl = onInstallUserscriptFromUrl,
+                onImportLocal = onImportUserscript,
+                onConfirmInstall = onConfirmUserscriptInstall,
+                onCancelInstall = onCancelUserscriptInstall,
+                onSetScriptEnabled = onSetUserscriptEnabled,
+                onDeleteScript = onDeleteUserscript,
+                onCheckUpdate = onCheckUserscriptUpdate,
+                onInvokeMenuCommand = onInvokeUserscriptMenu
             )
 
         WebSessionBrowserSheetRoute.NONE -> Unit

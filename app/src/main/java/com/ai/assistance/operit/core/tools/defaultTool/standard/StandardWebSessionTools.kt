@@ -35,11 +35,16 @@ import com.ai.assistance.operit.core.application.ActivityLifecycleManager
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.ToolExecutor
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserHost
+import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserSheetRoute
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserState
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionBrowserTab
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionHistoryStore
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionPermissionRequestCoordinator
 import com.ai.assistance.operit.core.tools.defaultTool.websession.browser.WebSessionSessionHistoryItem
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.UserscriptInstallSourceType
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.UserscriptListItem
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.runtime.WebSessionUserscriptManager
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.storage.UserscriptRepository
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.util.AppLogger
@@ -91,7 +96,34 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
     }
 
     private val historyStore by lazy { WebSessionHistoryStore.getInstance(context.applicationContext) }
+    private val userscriptRepository by lazy { UserscriptRepository.getInstance(context.applicationContext) }
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val userscriptManager by lazy {
+        WebSessionUserscriptManager(
+            context = context.applicationContext,
+            onOpenUserscriptUi = {
+                mainHandler.post {
+                    openUserscriptSheetOnMain()
+                }
+            },
+            onOpenTab = { url, active ->
+                runOnMainSync {
+                    openUserscriptTabOnMain(context.applicationContext, url, active)
+                }
+            },
+            onDownload = { sessionId, url, fileName ->
+                runOnMainSync {
+                    handleUserscriptDownloadOnMain(sessionId, url, fileName)
+                }
+            },
+            onMenuCommandsChanged = { sessionId ->
+                mainHandler.post {
+                    refreshSessionUiOnMain(sessionId)
+                }
+            },
+            onToast = ::showToast
+        )
+    }
 
     init {
         ensureDesktopModeInitialized()
@@ -181,6 +213,11 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
                 "web_file_upload" -> webFileUpload(tool)
                 "web_wait_for" -> webWaitFor(tool)
                 "web_snapshot" -> webSnapshot(tool)
+                "web_userscript_list" -> webUserscriptList(tool)
+                "web_userscript_install" -> webUserscriptInstall(tool)
+                "web_userscript_start" -> webUserscriptStart(tool)
+                "web_userscript_stop" -> webUserscriptStop(tool)
+                "web_userscript_uninstall" -> webUserscriptUninstall(tool)
                 else -> error(tool.name, "Unsupported web session tool: ${tool.name}")
             }
         } catch (e: Exception) {
@@ -938,6 +975,7 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
                 customUserAgent = customUserAgent
             )
         configureWebView(session, resolveUserAgent(customUserAgent))
+        userscriptManager.attachSession(session.id, session.webView)
         return session
     }
 
@@ -1100,18 +1138,21 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
                     session.pageLoaded = false
                     session.isLoading = true
                     session.hasSslError = false
+                    userscriptManager.onPageChanged(session.id, url)
                     syncNavigationStateUi(session)
                 }
 
                 override fun onPageCommitVisible(view: WebView, url: String) {
                     super.onPageCommitVisible(view, url)
                     session.currentUrl = url
+                    userscriptManager.onPageChanged(session.id, url)
                     refreshNavigationStateFromWebView(view, session)
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     session.currentUrl = url
+                    userscriptManager.onPageChanged(session.id, url)
                     session.pageTitle = view.title ?: ""
                     session.pageLoaded = true
                     session.isLoading = false
@@ -1183,6 +1224,7 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
                 WebSessionBrowserHost(
                     appContext = appContext,
                     store = historyStore,
+                    userscriptStore = userscriptManager.uiStore,
                     callbacks = createBrowserHostCallbacks(appContext)
                 )
             browserHost = host
@@ -1309,6 +1351,44 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
             override fun onToggleDesktopMode() {
                 setDesktopModeEnabled(!desktopModeEnabled)
             }
+
+            override fun onOpenUserscripts() {
+                runOnMainSync {
+                    openUserscriptSheetOnMain()
+                }
+            }
+
+            override fun onImportUserscript() {
+                userscriptManager.beginLocalImport()
+            }
+
+            override fun onInstallUserscriptFromUrl(url: String) {
+                userscriptManager.beginUrlInstall(url)
+            }
+
+            override fun onConfirmUserscriptInstall() {
+                userscriptManager.confirmPendingInstall()
+            }
+
+            override fun onCancelUserscriptInstall() {
+                userscriptManager.cancelPendingInstall()
+            }
+
+            override fun onSetUserscriptEnabled(scriptId: Long, enabled: Boolean) {
+                userscriptManager.setScriptEnabled(scriptId, enabled)
+            }
+
+            override fun onDeleteUserscript(scriptId: Long) {
+                userscriptManager.deleteScript(scriptId)
+            }
+
+            override fun onCheckUserscriptUpdate(scriptId: Long) {
+                userscriptManager.checkForUpdate(scriptId)
+            }
+
+            override fun onInvokeUserscriptMenu(commandId: String) {
+                userscriptManager.invokeMenuCommand(activeSessionId, commandId)
+            }
         }
 
     private fun destroyOverlayOnMain() {
@@ -1323,6 +1403,13 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
         if (expanded) {
             refreshSessionUiOnMain()
         }
+    }
+
+    private fun openUserscriptSheetOnMain() {
+        ensureOverlayOnMain(context.applicationContext, initialExpanded = true)
+        setExpandedOnMain(true)
+        browserHost?.showSheet(WebSessionBrowserSheetRoute.USERSCRIPTS)
+        refreshSessionUiOnMain()
     }
 
     private fun keepActiveWebViewRunningOnMain(expanded: Boolean) {
@@ -1361,6 +1448,18 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
         return session
     }
 
+    private fun openUserscriptTabOnMain(
+        appContext: Context,
+        url: String,
+        active: Boolean
+    ) {
+        val previousActiveId = activeSessionId
+        val newSession = createSessionTabOnMain(appContext, initialUrl = url)
+        if (!active && !previousActiveId.isNullOrBlank() && previousActiveId != newSession.id) {
+            activateSessionOnMain(previousActiveId)
+        }
+    }
+
     private fun navigateSessionOnMain(
         session: WebSession,
         targetUrl: String,
@@ -1387,6 +1486,26 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
             navigateSessionOnMain(session, url)
         }
         ensureSessionAttachedOnMain(session.id)
+    }
+
+    private fun handleUserscriptDownloadOnMain(
+        sessionId: String,
+        url: String,
+        fileName: String?
+    ) {
+        val session = sessions[sessionId] ?: getActiveSessionOnMain()
+        if (session == null) {
+            showToast(context.getString(R.string.web_session_userscript_download_failed))
+            return
+        }
+        handleRegularDownload(
+            session = session,
+            url = url,
+            userAgent = session.webView.settings.userAgentString.orEmpty(),
+            contentDisposition =
+                fileName?.takeIf { it.isNotBlank() }?.let { "attachment; filename=\"$it\"" },
+            mimeType = null
+        )
     }
 
     private fun activateSessionOnMain(sessionId: String) {
@@ -1422,6 +1541,10 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
         val resolvedActiveId = resolvePreferredSessionId()
         activeSessionId = resolvedActiveId
         host.attachActiveWebView(resolvedActiveId?.let { sessions[it]?.webView })
+        userscriptManager.updateVisibleSession(
+            sessionId = resolvedActiveId,
+            pageUrl = resolvedActiveId?.let { sessions[it]?.currentUrl }
+        )
         host.updateBrowserState(buildBrowserState(resolvedActiveId))
     }
 
@@ -1459,7 +1582,8 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
                     }
                 },
             sessionHistory =
-                activeSession?.let { buildSessionHistory(it.webView) } ?: emptyList()
+                activeSession?.let { buildSessionHistory(it.webView) } ?: emptyList(),
+            userscriptMenuCommands = userscriptManager.getMenuCommands(activeId)
         )
     }
 
@@ -1586,7 +1710,15 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
         val rawUrl = uri.toString()
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return false
         return when (scheme) {
-            "http", "https" -> false
+            "http", "https" -> {
+                if (isUserscriptInstallUri(uri)) {
+                    userscriptManager.beginUrlInstall(rawUrl, UserscriptInstallSourceType.PAGE_LINK)
+                    openUserscriptSheetOnMain()
+                    true
+                } else {
+                    false
+                }
+            }
             "about" -> false
             "intent" -> handleIntentSchemeOnMain(session, rawUrl)
             else -> {
@@ -1597,6 +1729,9 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
             }
         }
     }
+
+    private fun isUserscriptInstallUri(uri: Uri): Boolean =
+        uri.path?.endsWith(".user.js", ignoreCase = true) == true
 
     private fun handleIntentSchemeOnMain(session: WebSession, rawUrl: String): Boolean {
         val intent =
@@ -1794,6 +1929,7 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
         removeSessionOrder(sessionId)
 
         runOnMainSync {
+            userscriptManager.detachSession(sessionId)
             if (activeSessionId == sessionId) {
                 activeSessionId = null
                 browserHost?.attachActiveWebView(null)
@@ -2378,6 +2514,271 @@ class StandardWebSessionTools(private val context: Context) : ToolExecutor {
     }
 
     private fun quoteJs(value: String): String = JSONObject.quote(value)
+
+    private fun requireUserscriptSupport(toolName: String): ToolResult? {
+        val supportState = userscriptManager.supportState()
+        return if (supportState.isSupported) {
+            null
+        } else {
+            error(
+                toolName,
+                supportState.reason ?: "Native userscript support is not available on this device"
+            )
+        }
+    }
+
+    private fun webUserscriptList(tool: AITool): ToolResult {
+        requireUserscriptSupport(tool.name)?.let { return it }
+
+        val includeDisabled = boolParam(tool, "include_disabled", true)
+        val scripts =
+            runBlocking(Dispatchers.IO) {
+                userscriptRepository.listInstalledScripts()
+            }.let { installed ->
+                if (includeDisabled) installed else installed.filter { it.enabled }
+            }
+
+        val payload =
+            JSONObject()
+                .put("status", "ok")
+                .put("count", scripts.size)
+                .put("scripts", userscriptArrayJson(scripts))
+
+        return ok(tool.name, payload)
+    }
+
+    private fun webUserscriptInstall(tool: AITool): ToolResult {
+        requireUserscriptSupport(tool.name)?.let { return it }
+
+        val url = param(tool, "url")?.trim().orEmpty()
+        val path = param(tool, "path")?.trim().orEmpty()
+        val source = param(tool, "source")?.takeIf { it.isNotBlank() }
+        val sourceUrl = param(tool, "source_url")?.trim()?.takeIf { it.isNotBlank() }
+        val sourceDisplay = param(tool, "source_display")?.trim()?.takeIf { it.isNotBlank() }
+        val sourceCount = listOf(url.isNotBlank(), path.isNotBlank(), source != null).count { it }
+        if (sourceCount != 1) {
+            return error(tool.name, "Exactly one of url, path, or source is required")
+        }
+
+        val preview =
+            runBlocking(Dispatchers.IO) {
+                when {
+                    url.isNotBlank() ->
+                        userscriptRepository.fetchRemotePreview(
+                            rawUrl = url,
+                            sourceType = UserscriptInstallSourceType.REMOTE_URL
+                        )
+
+                    path.isNotBlank() -> {
+                        val file = File(path)
+                        require(file.isAbsolute) { "path must be absolute" }
+                        require(file.exists() && file.isFile) { "userscript file does not exist: $path" }
+                        userscriptRepository.prepareInstallPreview(
+                            rawSource = file.readText(),
+                            sourceType = UserscriptInstallSourceType.LOCAL_FILE,
+                            sourceUrl = sourceUrl ?: file.toURI().toString(),
+                            sourceDisplay = sourceDisplay ?: file.absolutePath
+                        )
+                    }
+
+                    else ->
+                        userscriptRepository.prepareInstallPreview(
+                            rawSource = source!!,
+                            sourceType = UserscriptInstallSourceType.TOOL_INPUT,
+                            sourceUrl = sourceUrl,
+                            sourceDisplay = sourceDisplay ?: sourceUrl ?: "tool input"
+                        )
+                }
+            }
+
+        val installed =
+            runBlocking(Dispatchers.IO) {
+                userscriptRepository.install(preview)
+            }
+
+        val payload =
+            JSONObject()
+                .put("status", "installed")
+                .put("script", userscriptJson(installed))
+                .put("supported_grants", stringArrayJson(preview.supportedGrants))
+                .put("unsupported_grants", stringArrayJson(preview.unsupportedGrants))
+
+        return ok(tool.name, payload)
+    }
+
+    private fun webUserscriptStart(tool: AITool): ToolResult {
+        requireUserscriptSupport(tool.name)?.let { return it }
+
+        val target = resolveUserscriptTarget(tool) ?: return error(tool.name, lastUserscriptResolveError(tool))
+        val desiredEnabled = true
+        val updated =
+            runBlocking(Dispatchers.IO) {
+                if (target.enabled != desiredEnabled) {
+                    userscriptRepository.setEnabled(target.id, desiredEnabled)
+                }
+                userscriptRepository.getInstalledScript(target.id)
+            } ?: return error(tool.name, "Userscript not found after enabling: ${target.id}")
+
+        val payload =
+            JSONObject()
+                .put("status", "enabled")
+                .put("changed", target.enabled != desiredEnabled)
+                .put("script", userscriptJson(updated))
+
+        return ok(tool.name, payload)
+    }
+
+    private fun webUserscriptStop(tool: AITool): ToolResult {
+        requireUserscriptSupport(tool.name)?.let { return it }
+
+        val target = resolveUserscriptTarget(tool) ?: return error(tool.name, lastUserscriptResolveError(tool))
+        val desiredEnabled = false
+        val updated =
+            runBlocking(Dispatchers.IO) {
+                if (target.enabled != desiredEnabled) {
+                    userscriptRepository.setEnabled(target.id, desiredEnabled)
+                }
+                userscriptRepository.getInstalledScript(target.id)
+            } ?: return error(tool.name, "Userscript not found after disabling: ${target.id}")
+
+        val payload =
+            JSONObject()
+                .put("status", "disabled")
+                .put("changed", target.enabled != desiredEnabled)
+                .put("script", userscriptJson(updated))
+
+        return ok(tool.name, payload)
+    }
+
+    private fun webUserscriptUninstall(tool: AITool): ToolResult {
+        requireUserscriptSupport(tool.name)?.let { return it }
+
+        val target = resolveUserscriptTarget(tool) ?: return error(tool.name, lastUserscriptResolveError(tool))
+        runBlocking(Dispatchers.IO) {
+            userscriptRepository.deleteUserscript(target.id)
+        }
+
+        val payload =
+            JSONObject()
+                .put("status", "uninstalled")
+                .put("script", userscriptJson(target))
+
+        return ok(tool.name, payload)
+    }
+
+    private fun resolveUserscriptTarget(tool: AITool): UserscriptListItem? {
+        val rawScriptId = param(tool, "script_id")?.trim()
+        val name = param(tool, "name")?.trim()?.takeIf { it.isNotBlank() }
+        val namespace = param(tool, "namespace")?.trim()?.takeIf { it.isNotBlank() }
+        val sourceUrl = param(tool, "source_url")?.trim()?.takeIf { it.isNotBlank() }
+        val installed =
+            runBlocking(Dispatchers.IO) {
+                userscriptRepository.listInstalledScripts()
+            }
+
+        if (!rawScriptId.isNullOrBlank()) {
+            val scriptId = rawScriptId.toLongOrNull() ?: return null
+            return installed.firstOrNull { it.id == scriptId }
+        }
+
+        if (name.isNullOrBlank()) {
+            return null
+        }
+
+        val matches =
+            installed.filter { script ->
+                script.name.equals(name, ignoreCase = true) &&
+                    (namespace == null || script.namespace == namespace) &&
+                    (sourceUrl == null || script.sourceUrl == sourceUrl)
+            }
+
+        return if (matches.size == 1) matches.first() else null
+    }
+
+    private fun lastUserscriptResolveError(tool: AITool): String {
+        val rawScriptId = param(tool, "script_id")?.trim()
+        val name = param(tool, "name")?.trim()?.takeIf { it.isNotBlank() }
+        val namespace = param(tool, "namespace")?.trim()?.takeIf { it.isNotBlank() }
+        val sourceUrl = param(tool, "source_url")?.trim()?.takeIf { it.isNotBlank() }
+
+        if (!rawScriptId.isNullOrBlank() && rawScriptId.toLongOrNull() == null) {
+            return "script_id must be an integer"
+        }
+        if (rawScriptId.isNullOrBlank() && name.isNullOrBlank()) {
+            return "script_id or name is required"
+        }
+
+        val installed =
+            runBlocking(Dispatchers.IO) {
+                userscriptRepository.listInstalledScripts()
+            }
+        if (!rawScriptId.isNullOrBlank()) {
+            return "Userscript not found: script_id=$rawScriptId"
+        }
+
+        val matches =
+            installed.filter { script ->
+                script.name.equals(name, ignoreCase = true) &&
+                    (namespace == null || script.namespace == namespace) &&
+                    (sourceUrl == null || script.sourceUrl == sourceUrl)
+            }
+
+        return when {
+            matches.isEmpty() ->
+                buildString {
+                    append("Userscript not found")
+                    append(": name=")
+                    append(name)
+                    if (namespace != null) {
+                        append(", namespace=")
+                        append(namespace)
+                    }
+                    if (sourceUrl != null) {
+                        append(", source_url=")
+                        append(sourceUrl)
+                    }
+                }
+
+            else ->
+                "Userscript is ambiguous. Provide script_id or narrow it with namespace/source_url."
+        }
+    }
+
+    private fun userscriptArrayJson(items: List<UserscriptListItem>): JSONArray =
+        JSONArray().apply {
+            items.forEach { item ->
+                put(userscriptJson(item))
+            }
+        }
+
+    private fun stringArrayJson(items: List<String>): JSONArray =
+        JSONArray().apply {
+            items.forEach { item ->
+                put(item)
+            }
+        }
+
+    private fun userscriptJson(item: UserscriptListItem): JSONObject {
+        return JSONObject()
+            .put("script_id", item.id)
+            .put("name", item.name)
+            .put("namespace", item.namespace ?: JSONObject.NULL)
+            .put("version", item.version)
+            .put("description", item.description ?: JSONObject.NULL)
+            .put("enabled", item.enabled)
+            .put("source_display", item.sourceDisplay ?: JSONObject.NULL)
+            .put("source_url", item.sourceUrl ?: JSONObject.NULL)
+            .put("homepage", item.homepage ?: JSONObject.NULL)
+            .put("update_url", item.updateUrl ?: JSONObject.NULL)
+            .put("download_url", item.downloadUrl ?: JSONObject.NULL)
+            .put("grants", stringArrayJson(item.grants))
+            .put("unsupported_grants", stringArrayJson(item.unsupportedGrants))
+            .put("matches", stringArrayJson(item.matches))
+            .put("includes", stringArrayJson(item.includes))
+            .put("connects", stringArrayJson(item.connects))
+            .put("installed_at", item.installedAt)
+            .put("updated_at", item.updatedAt)
+    }
 
     private fun parseHeaders(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) {

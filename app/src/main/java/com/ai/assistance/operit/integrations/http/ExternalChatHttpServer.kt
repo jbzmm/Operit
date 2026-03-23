@@ -9,12 +9,24 @@ import com.ai.assistance.operit.integrations.externalchat.ExternalChatHttpReques
 import com.ai.assistance.operit.integrations.externalchat.ExternalChatRequestExecutor
 import com.ai.assistance.operit.integrations.externalchat.ExternalChatResponseMode
 import com.ai.assistance.operit.integrations.externalchat.ExternalChatResult
+import com.ai.assistance.operit.integrations.externalchat.ExternalChatStreamEnvelope
+import com.ai.assistance.operit.integrations.externalchat.ExternalChatStreamingStartResult
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.util.AppLogger
 import fi.iki.elonen.NanoHTTPD
+import java.io.BufferedWriter
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
@@ -154,6 +166,21 @@ class ExternalChatHttpServer(
             ).withCors()
         }
 
+        if (request.stream && responseMode == ExternalChatResponseMode.ASYNC_CALLBACK) {
+            return jsonResponse(
+                Response.Status.BAD_REQUEST,
+                ExternalChatResult(
+                    requestId = resolvedRequestId,
+                    success = false,
+                    error = "Invalid parameter: stream=true is not compatible with async_callback"
+                )
+            ).withCors()
+        }
+
+        if (request.stream) {
+            return sseResponse(request, resolvedRequestId).withCors()
+        }
+
         val callbackUrl = request.callbackUrl?.trim()
         if (responseMode == ExternalChatResponseMode.ASYNC_CALLBACK) {
             if (callbackUrl.isNullOrBlank()) {
@@ -194,6 +221,133 @@ class ExternalChatHttpServer(
             executor.execute(request.toExecutionRequest(resolvedRequestId))
         }
         return jsonResponse(Response.Status.OK, result).withCors()
+    }
+
+    private fun sseResponse(request: ExternalChatHttpRequest, resolvedRequestId: String): Response {
+        val pipeInput = PipedInputStream(SSE_PIPE_BUFFER_SIZE)
+        val pipeOutput = PipedOutputStream(pipeInput)
+        val streamingSessionRef =
+            AtomicReference<com.ai.assistance.operit.integrations.externalchat.ExternalChatStreamingSession?>(
+                null
+            )
+
+        val streamJob: Job =
+            serviceScope.launch(Dispatchers.IO) {
+                pipeOutput.bufferedWriter(StandardCharsets.UTF_8).use { writer ->
+                    try {
+                        when (
+                            val startResult =
+                                executor.startStreaming(request.toExecutionRequest(resolvedRequestId))
+                        ) {
+                            is ExternalChatStreamingStartResult.Failed -> {
+                                writeSseEvent(
+                                    writer,
+                                    startResult.result.toStreamEnvelope(
+                                        event = STREAM_EVENT_ERROR,
+                                        fallbackRequestId = resolvedRequestId
+                                    )
+                                )
+                            }
+
+                            is ExternalChatStreamingStartResult.Started -> {
+                                val streamSession = startResult.session
+                                streamingSessionRef.set(streamSession)
+                                writeSseEvent(
+                                    writer,
+                                    ExternalChatStreamEnvelope(
+                                        event = STREAM_EVENT_START,
+                                        requestId = streamSession.requestId,
+                                        chatId = streamSession.chatId
+                                    )
+                                )
+
+                                val fullResponse = StringBuilder()
+                                streamSession.responseStreamSession.responseStream.collect { chunk ->
+                                    fullResponse.append(chunk)
+                                    writeSseEvent(
+                                        writer,
+                                        ExternalChatStreamEnvelope(
+                                            event = STREAM_EVENT_DELTA,
+                                            requestId = streamSession.requestId,
+                                            chatId = streamSession.chatId,
+                                            delta = chunk
+                                        )
+                                    )
+                                }
+
+                                val finalState = streamSession.responseStreamSession.currentState()
+                                if (finalState is InputProcessingState.Error) {
+                                    writeSseEvent(
+                                        writer,
+                                        ExternalChatStreamEnvelope(
+                                            event = STREAM_EVENT_ERROR,
+                                            requestId = streamSession.requestId,
+                                            chatId = streamSession.chatId,
+                                            aiResponse = fullResponse.toString().takeIf { it.isNotBlank() },
+                                            success = false,
+                                            error = finalState.message
+                                        )
+                                    )
+                                } else {
+                                    writeSseEvent(
+                                        writer,
+                                        ExternalChatStreamEnvelope(
+                                            event = STREAM_EVENT_DONE,
+                                            requestId = streamSession.requestId,
+                                            chatId = streamSession.chatId,
+                                            aiResponse = fullResponse.toString(),
+                                            success = true
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        streamingSessionRef.get()?.responseStreamSession?.cancel()
+                        throw e
+                    } catch (e: IOException) {
+                        AppLogger.i(TAG, "SSE client disconnected: requestId=$resolvedRequestId")
+                        streamingSessionRef.get()?.responseStreamSession?.cancel()
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "SSE stream failed: requestId=$resolvedRequestId", e)
+                        val streamSession = streamingSessionRef.get()
+                        runCatching {
+                            writeSseEvent(
+                                writer,
+                                ExternalChatStreamEnvelope(
+                                    event = STREAM_EVENT_ERROR,
+                                    requestId = streamSession?.requestId ?: resolvedRequestId,
+                                    chatId = streamSession?.chatId,
+                                    success = false,
+                                    error = e.message ?: "Unknown error"
+                                )
+                            )
+                        }
+                        streamSession?.responseStreamSession?.cancel()
+                    } finally {
+                        streamingSessionRef.get()?.cleanup()
+                    }
+                }
+            }
+
+        val responseInput =
+            object : FilterInputStream(pipeInput) {
+                override fun close() {
+                    try {
+                        super.close()
+                    } finally {
+                        streamJob.cancel()
+                        streamingSessionRef.get()?.responseStreamSession?.cancel()
+                        streamingSessionRef.get()?.cleanup()
+                    }
+                }
+            }
+
+        return newChunkedResponse(Response.Status.OK, SSE_MIME_TYPE, responseInput).apply {
+            addHeader("Cache-Control", "no-cache")
+            addHeader("Connection", "keep-alive")
+            addHeader("X-Accel-Buffering", "no")
+        }
     }
 
     private fun requireBearerToken(session: IHTTPSession): Response? {
@@ -327,10 +481,38 @@ class ExternalChatHttpServer(
         return newFixedLengthResponse(status, JSON_MIME_TYPE, json.encodeToString(body))
     }
 
+    private fun writeSseEvent(writer: BufferedWriter, payload: ExternalChatStreamEnvelope) {
+        val serialized = json.encodeToString(payload)
+        writer.write("event: ")
+        writer.write(payload.event)
+        writer.newLine()
+        serialized.lineSequence().forEach { line ->
+            writer.write("data: ")
+            writer.write(line)
+            writer.newLine()
+        }
+        writer.newLine()
+        writer.flush()
+    }
+
+    private fun ExternalChatResult.toStreamEnvelope(
+        event: String,
+        fallbackRequestId: String
+    ): ExternalChatStreamEnvelope {
+        return ExternalChatStreamEnvelope(
+            event = event,
+            requestId = requestId ?: fallbackRequestId,
+            chatId = chatId,
+            aiResponse = aiResponse,
+            success = success,
+            error = error
+        )
+    }
+
     private fun Response.withCors(): Response {
         addHeader("Access-Control-Allow-Origin", "*")
         addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        addHeader("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        addHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
         addHeader("Access-Control-Max-Age", "3600")
         return this
     }
@@ -341,6 +523,12 @@ class ExternalChatHttpServer(
         private const val CHAT_PATH = "/api/external-chat"
         private const val HEALTH_PATH = "/api/health"
         private const val JSON_MIME_TYPE = "application/json; charset=utf-8"
+        private const val SSE_MIME_TYPE = "text/event-stream; charset=utf-8"
+        private const val SSE_PIPE_BUFFER_SIZE = 64 * 1024
+        private const val STREAM_EVENT_START = "start"
+        private const val STREAM_EVENT_DELTA = "delta"
+        private const val STREAM_EVENT_DONE = "done"
+        private const val STREAM_EVENT_ERROR = "error"
         private val JSON_MEDIA_TYPE = JSON_MIME_TYPE.toMediaType()
         private val json = Json {
             ignoreUnknownKeys = true

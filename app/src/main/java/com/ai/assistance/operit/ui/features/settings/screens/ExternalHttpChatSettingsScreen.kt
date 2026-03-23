@@ -53,9 +53,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.data.preferences.ExternalHttpApiPreferences
 import com.ai.assistance.operit.integrations.http.ExternalChatHttpNetworkInfo
-import com.ai.assistance.operit.integrations.http.ExternalChatHttpService
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import kotlinx.coroutines.launch
 
@@ -68,7 +68,7 @@ fun ExternalHttpChatSettingsScreen(onBackPressed: () -> Unit) {
     val enabled by preferences.enabledFlow.collectAsState(initial = false)
     val savedPort by preferences.portFlow.collectAsState(initial = ExternalHttpApiPreferences.DEFAULT_PORT)
     val bearerToken by preferences.bearerTokenFlow.collectAsState(initial = "")
-    val serviceState by ExternalChatHttpService.serviceState.collectAsState()
+    val serviceState by AIForegroundService.externalHttpState.collectAsState()
 
     var portText by remember { mutableStateOf(savedPort.toString()) }
     LaunchedEffect(savedPort) {
@@ -90,7 +90,7 @@ fun ExternalHttpChatSettingsScreen(onBackPressed: () -> Unit) {
 curl -X POST "$sampleBaseUrl/api/external-chat" \
   -H "Authorization: Bearer $curlToken" \
   -H "Content-Type: application/json; charset=utf-8" \
-  -d '{"message":"你好","response_mode":"sync","show_floating":true}'
+  -d '{"message":"你好","response_mode":"sync","show_floating":true,"initial_mode":"WINDOW"}'
         """.trimIndent()
     }
     val asyncCurl = remember(sampleBaseUrl, curlToken) {
@@ -118,6 +118,7 @@ adb shell am broadcast \
   --es request_id "req-001" \
   --es message "你好" \
   --ez show_floating true \
+  --es initial_mode "WINDOW" \
   --es reply_package "YOUR.APP.PACKAGE"
         """.trimIndent()
     }
@@ -144,7 +145,7 @@ adb shell am broadcast \
             }
             preferences.setPort(parsedPort)
             if (enabled) {
-                ExternalChatHttpService.refresh(context)
+                AIForegroundService.ensureRunningForExternalHttp(context)
             }
             showToast(context.getString(R.string.external_http_chat_port_saved))
         }
@@ -188,11 +189,11 @@ adb shell am broadcast \
                                 if (checked) {
                                     preferences.ensureBearerToken()
                                     preferences.setEnabled(true)
-                                    ExternalChatHttpService.start(context)
+                                    AIForegroundService.ensureRunningForExternalHttp(context)
                                     showToast(context.getString(R.string.external_http_chat_service_enabled))
                                 } else {
                                     preferences.setEnabled(false)
-                                    ExternalChatHttpService.stop(context)
+                                    AIForegroundService.stopExternalHttp(context)
                                     showToast(context.getString(R.string.external_http_chat_service_disabled))
                                 }
                             }
@@ -226,7 +227,7 @@ adb shell am broadcast \
                         Text(stringResource(R.string.external_http_chat_save_port))
                     }
                     if (enabled) {
-                        TextButton(onClick = { ExternalChatHttpService.refresh(context) }) {
+                        TextButton(onClick = { AIForegroundService.ensureRunningForExternalHttp(context) }) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Text(stringResource(R.string.external_http_chat_restart_service))
                         }

@@ -61,6 +61,11 @@ export interface ToolResultMap {
     'web_wait_for': StringResultData;
     'web_snapshot': StringResultData;
     'web_file_upload': StringResultData;
+    'web_userscript_list': StringResultData;
+    'web_userscript_install': StringResultData;
+    'web_userscript_start': StringResultData;
+    'web_userscript_stop': StringResultData;
+    'web_userscript_uninstall': StringResultData;
     'multipart_request': HttpResponseData;
     'manage_cookies': HttpResponseData;
 

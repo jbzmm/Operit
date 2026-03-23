@@ -297,6 +297,65 @@ fun getJsToolsDefinition(): String {
                     }
                     return toolCall("web_file_upload", params);
                 },
+                webUserscriptList: (options) => {
+                    const params = { ...(options || {}) };
+                    if (params.include_disabled !== undefined) {
+                        params.include_disabled = params.include_disabled ? "true" : "false";
+                    }
+                    return toolCall("web_userscript_list", params);
+                },
+                webUserscriptInstall: (options) => {
+                    if (!options || typeof options !== "object" || Array.isArray(options)) {
+                        throw new Error("webUserscriptInstall only accepts one options object");
+                    }
+                    const params = { ...options };
+                    const presentCount = [params.url, params.path, params.source].filter((item) => item !== undefined && item !== null && String(item).trim() !== "").length;
+                    if (presentCount !== 1) {
+                        throw new Error("Exactly one of url, path, or source is required");
+                    }
+                    ["url", "path", "source", "source_url", "source_display"].forEach((key) => {
+                        if (params[key] !== undefined && params[key] !== null) {
+                            params[key] = String(params[key]);
+                        }
+                    });
+                    return toolCall("web_userscript_install", params);
+                },
+                webUserscriptStart: (options) => {
+                    if (!options || typeof options !== "object" || Array.isArray(options)) {
+                        throw new Error("webUserscriptStart only accepts one options object");
+                    }
+                    const params = { ...options };
+                    ["script_id", "name", "namespace", "source_url"].forEach((key) => {
+                        if (params[key] !== undefined && params[key] !== null) {
+                            params[key] = String(params[key]);
+                        }
+                    });
+                    return toolCall("web_userscript_start", params);
+                },
+                webUserscriptStop: (options) => {
+                    if (!options || typeof options !== "object" || Array.isArray(options)) {
+                        throw new Error("webUserscriptStop only accepts one options object");
+                    }
+                    const params = { ...options };
+                    ["script_id", "name", "namespace", "source_url"].forEach((key) => {
+                        if (params[key] !== undefined && params[key] !== null) {
+                            params[key] = String(params[key]);
+                        }
+                    });
+                    return toolCall("web_userscript_stop", params);
+                },
+                webUserscriptUninstall: (options) => {
+                    if (!options || typeof options !== "object" || Array.isArray(options)) {
+                        throw new Error("webUserscriptUninstall only accepts one options object");
+                    }
+                    const params = { ...options };
+                    ["script_id", "name", "namespace", "source_url"].forEach((key) => {
+                        if (params[key] !== undefined && params[key] !== null) {
+                            params[key] = String(params[key]);
+                        }
+                    });
+                    return toolCall("web_userscript_uninstall", params);
+                },
                 // 新增增强版HTTP请求
                 http: (options) => {
                     const params = { ...options };

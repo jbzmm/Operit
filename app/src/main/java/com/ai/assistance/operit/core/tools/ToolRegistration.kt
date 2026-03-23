@@ -900,6 +900,78 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    handler.registerTool(
+            name = "web_userscript_list",
+            descriptionGenerator = { tool ->
+                val includeDisabled = tool.parameters.find { it.name == "include_disabled" }?.value
+                if (includeDisabled.equals("false", ignoreCase = true)) {
+                    "List enabled web userscripts"
+                } else {
+                    "List installed web userscripts"
+                }
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_userscript_install",
+            descriptionGenerator = { tool ->
+                val url = tool.parameters.find { it.name == "url" }?.value
+                val path = tool.parameters.find { it.name == "path" }?.value
+                when {
+                    !url.isNullOrBlank() -> "Install web userscript from $url"
+                    !path.isNullOrBlank() -> "Install web userscript from local file $path"
+                    else -> "Install web userscript from provided source"
+                }
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_userscript_start",
+            descriptionGenerator = { tool ->
+                val scriptId = tool.parameters.find { it.name == "script_id" }?.value
+                val name = tool.parameters.find { it.name == "name" }?.value
+                "Enable web userscript ${scriptId ?: name ?: "(missing target)"}"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_userscript_stop",
+            descriptionGenerator = { tool ->
+                val scriptId = tool.parameters.find { it.name == "script_id" }?.value
+                val name = tool.parameters.find { it.name == "name" }?.value
+                "Disable web userscript ${scriptId ?: name ?: "(missing target)"}"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_userscript_uninstall",
+            descriptionGenerator = { tool ->
+                val scriptId = tool.parameters.find { it.name == "script_id" }?.value
+                val name = tool.parameters.find { it.name == "name" }?.value
+                "Uninstall web userscript ${scriptId ?: name ?: "(missing target)"}"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
     // 休眠工具
     handler.registerTool(
             name = "sleep",

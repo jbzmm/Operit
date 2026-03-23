@@ -36,3 +36,4 @@ linux_ssh
 deepsearching
 apktool
 remote_operit
+pdf_vision_parser

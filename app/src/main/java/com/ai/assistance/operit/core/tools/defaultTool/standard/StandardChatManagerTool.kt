@@ -45,6 +45,26 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 
+data class MessageSendStreamSession(
+    val chatId: String,
+    val message: String,
+    val responseStream: SharedStream<String>,
+    private val currentStateProvider: () -> InputProcessingState,
+    private val cancelAction: () -> Unit
+) {
+    fun currentState(): InputProcessingState = currentStateProvider()
+
+    fun cancel() {
+        cancelAction()
+    }
+}
+
+sealed class MessageSendStreamStartResult {
+    data class Started(val session: MessageSendStreamSession) : MessageSendStreamStartResult()
+
+    data class Failed(val result: ToolResult) : MessageSendStreamStartResult()
+}
+
 /**
  * 对话管理工具
  * 通过绑定 FloatingChatService 来管理对话，实现创建、切换、列出对话和发送消息等功能
@@ -1148,31 +1168,39 @@ class StandardChatManagerTool(private val context: Context) {
     /**
      * 向AI发送消息
      */
-    suspend fun sendMessageToAI(tool: AITool): ToolResult {
+    suspend fun startMessageToAIStream(tool: AITool): MessageSendStreamStartResult {
         return try {
             if (!ensureServiceConnected()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = "", message = ""),
-                    error = "Service not connected"
+                return MessageSendStreamStartResult.Failed(
+                    ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = MessageSendResultData(chatId = "", message = ""),
+                        error = "Service not connected"
+                    )
                 )
             }
 
-            val core = chatCore ?: return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = MessageSendResultData(chatId = "", message = ""),
-                error = "ChatServiceCore not initialized"
-            )
+            val core =
+                chatCore
+                    ?: return MessageSendStreamStartResult.Failed(
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(chatId = "", message = ""),
+                            error = "ChatServiceCore not initialized"
+                        )
+                    )
 
             val message = tool.parameters.find { it.name == "message" }?.value
             if (message.isNullOrBlank()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = "", message = ""),
-                    error = "Invalid parameter: missing message"
+                return MessageSendStreamStartResult.Failed(
+                    ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = MessageSendResultData(chatId = "", message = ""),
+                        error = "Invalid parameter: missing message"
+                    )
                 )
             }
 
@@ -1181,11 +1209,13 @@ class StandardChatManagerTool(private val context: Context) {
             if (!roleCardId.isNullOrBlank()) {
                 val cardExists = runCatching { roleCardManager.getCharacterCard(roleCardId) }.isSuccess
                 if (!cardExists) {
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(chatId = "", message = message),
-                        error = "Invalid parameter: role_card_id not found"
+                    return MessageSendStreamStartResult.Failed(
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(chatId = "", message = message),
+                            error = "Invalid parameter: role_card_id not found"
+                        )
                     )
                 }
             }
@@ -1201,11 +1231,13 @@ class StandardChatManagerTool(private val context: Context) {
                 if (hasTargetChat) {
                     val chatExists = core.chatHistories.value.any { it.id == targetChatId }
                     if (!chatExists) {
-                        return ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = MessageSendResultData(chatId = targetChatId!!, message = message),
-                            error = "Specified chat does not exist: $targetChatId"
+                        return MessageSendStreamStartResult.Failed(
+                            ToolResult(
+                                toolName = tool.name,
+                                success = false,
+                                result = MessageSendResultData(chatId = targetChatId!!, message = message),
+                                error = "Specified chat does not exist: $targetChatId"
+                            )
                         )
                     }
                 }
@@ -1221,11 +1253,13 @@ class StandardChatManagerTool(private val context: Context) {
                         }
                     }
                 } catch (e: TimeoutCancellationException) {
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(chatId = preflightChatId ?: "", message = message),
-                        error = "Previous message is still being processed"
+                    return MessageSendStreamStartResult.Failed(
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(chatId = preflightChatId ?: "", message = message),
+                            error = "Previous message is still being processed"
+                        )
                     )
                 }
 
@@ -1262,11 +1296,13 @@ class StandardChatManagerTool(private val context: Context) {
                 }
 
                 if (resolvedChatId == null) {
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(chatId = preflightChatId ?: "", message = message),
-                        error = "Unable to get current chat ID"
+                    return MessageSendStreamStartResult.Failed(
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(chatId = preflightChatId ?: "", message = message),
+                            error = "Unable to get current chat ID"
+                        )
                     )
                 }
 
@@ -1286,59 +1322,95 @@ class StandardChatManagerTool(private val context: Context) {
                     requireNotNull(stream)
                 } catch (e: TimeoutCancellationException) {
                     runCatching { core.cancelMessage(resolvedChatId) }
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(chatId = resolvedChatId, message = message),
-                        error = "Timeout waiting for AI response"
+                    return MessageSendStreamStartResult.Failed(
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(chatId = resolvedChatId, message = message),
+                            error = "Timeout waiting for AI response"
+                        )
                     )
                 }
 
-                val aiResponse = try {
-                    withTimeout(AI_RESPONSE_TIMEOUT) {
-                        val sb = StringBuilder()
-                        responseStream.collect { chunk: String ->
-                            sb.append(chunk)
-                        }
-                        sb.toString()
-                    }
-                } catch (e: TimeoutCancellationException) {
-                    runCatching { core.cancelMessage(resolvedChatId) }
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(chatId = resolvedChatId, message = message),
-                        error = "Timeout waiting for AI reply"
-                    )
-                }
-
-                val finalState =
-                    core.inputProcessingStateByChatId.value[resolvedChatId] ?: InputProcessingState.Idle
-                if (finalState is InputProcessingState.Error) {
-                    return ToolResult(
-                        toolName = tool.name,
-                        success = false,
-                        result = MessageSendResultData(
-                            chatId = resolvedChatId,
-                            message = message,
-                            aiResponse = aiResponse,
-                            receivedAt = System.currentTimeMillis()
-                        ),
-                        error = finalState.message
-                    )
-                }
-
-                ToolResult(
-                    toolName = tool.name,
-                    success = true,
-                    result = MessageSendResultData(
+                MessageSendStreamStartResult.Started(
+                    MessageSendStreamSession(
                         chatId = resolvedChatId,
                         message = message,
-                        aiResponse = aiResponse,
-                        receivedAt = System.currentTimeMillis()
+                        responseStream = responseStream,
+                        currentStateProvider = {
+                            core.inputProcessingStateByChatId.value[resolvedChatId]
+                                ?: InputProcessingState.Idle
+                        },
+                        cancelAction = {
+                            runCatching { core.cancelMessage(resolvedChatId) }
+                        }
                     )
                 )
-            } finally {
+            } finally {}
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to send message", e)
+            MessageSendStreamStartResult.Failed(
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = MessageSendResultData(chatId = "", message = ""),
+                    error = "Error sending message: ${e.message}"
+                )
+            )
+        }
+    }
+
+    suspend fun sendMessageToAI(tool: AITool): ToolResult {
+        return try {
+            when (val startResult = startMessageToAIStream(tool)) {
+                is MessageSendStreamStartResult.Failed -> startResult.result
+                is MessageSendStreamStartResult.Started -> {
+                    val session = startResult.session
+                    val aiResponse =
+                        try {
+                            withTimeout(AI_RESPONSE_TIMEOUT) {
+                                val sb = StringBuilder()
+                                session.responseStream.collect { chunk: String ->
+                                    sb.append(chunk)
+                                }
+                                sb.toString()
+                            }
+                        } catch (e: TimeoutCancellationException) {
+                            runCatching { session.cancel() }
+                            return ToolResult(
+                                toolName = tool.name,
+                                success = false,
+                                result = MessageSendResultData(chatId = session.chatId, message = session.message),
+                                error = "Timeout waiting for AI reply"
+                            )
+                        }
+
+                    val finalState = session.currentState()
+                    if (finalState is InputProcessingState.Error) {
+                        ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = MessageSendResultData(
+                                chatId = session.chatId,
+                                message = session.message,
+                                aiResponse = aiResponse,
+                                receivedAt = System.currentTimeMillis()
+                            ),
+                            error = finalState.message
+                        )
+                    } else {
+                        ToolResult(
+                            toolName = tool.name,
+                            success = true,
+                            result = MessageSendResultData(
+                                chatId = session.chatId,
+                                message = session.message,
+                                aiResponse = aiResponse,
+                                receivedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to send message", e)

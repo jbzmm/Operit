@@ -985,7 +985,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
             // 清理图片缓存
             com.ai.assistance.operit.util.ImagePoolManager.removeImage(imageId)
             
-            result.toString()
+            ChatUtils.removeThinkingContent(result.toString()).trim()
         } catch (e: Exception) {
             AppLogger.e(TAG, "识图分析失败", e)
             "Image recognition failed: ${e.message}"
@@ -1029,7 +1029,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
             }
 
             com.ai.assistance.operit.util.MediaPoolManager.removeMedia(mediaId)
-            result.toString()
+            ChatUtils.removeThinkingContent(result.toString()).trim()
         } catch (e: Exception) {
             AppLogger.e(TAG, "音频识别失败", e)
             "Audio recognition failed: ${e.message}"
@@ -1073,7 +1073,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
             }
 
             com.ai.assistance.operit.util.MediaPoolManager.removeMedia(mediaId)
-            result.toString()
+            ChatUtils.removeThinkingContent(result.toString()).trim()
         } catch (e: Exception) {
             AppLogger.e(TAG, "视频识别失败", e)
             "Video recognition failed: ${e.message}"

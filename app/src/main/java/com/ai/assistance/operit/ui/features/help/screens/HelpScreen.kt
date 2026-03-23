@@ -19,41 +19,16 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.token.webview.WebViewConfig
-import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun HelpScreen(onBackPressed: () -> Unit = {}) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
-    val helpUrls = remember {
-        listOf(
-            "https://operit.aaswordsman.org",
-            "https://operit.dev.tc",
-            "https://aaswordman.github.io/OperitWeb/"
-        )
-    }
-    var currentUrlIndex by remember { mutableStateOf(0) }
-    val latencies = remember {
-        mutableStateListOf<Long?>().apply {
-            repeat(helpUrls.size) { add(null) }
-        }
-    }
-    val pingCompleted = remember {
-        mutableStateListOf<Boolean>().apply {
-            repeat(helpUrls.size) { add(false) }
-        }
-    }
-    var showMirrorDialog by remember { mutableStateOf(true) }
+    val helpUrl = "https://operit.app"
     val focusRequester = remember { FocusRequester() }
-    val isCurrentScreen = LocalIsCurrentScreen.current
-    
+
     // 创建WebView实例
-    val webView = remember { 
+    val webView = remember {
         WebViewConfig.createWebView(context).apply {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -96,15 +71,7 @@ fun HelpScreen(onBackPressed: () -> Unit = {}) {
     }
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
-    }
-    LaunchedEffect(helpUrls) {
-        helpUrls.forEachIndexed { index, url ->
-            launch {
-                val latency = pingUrl(url)
-                latencies[index] = latency
-                pingCompleted[index] = true
-            }
-        }
+        webView.loadUrl(helpUrl)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -141,71 +108,6 @@ fun HelpScreen(onBackPressed: () -> Unit = {}) {
                     )
                 }
             }
-        }
-
-        if (showMirrorDialog && isCurrentScreen) {
-            AlertDialog(
-                onDismissRequest = { /* 必须选择一个镜像，不允许直接关闭 */ },
-                title = {
-                    Text(text = stringResource(R.string.help_mirror_dialog_title))
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        helpUrls.forEachIndexed { index, url ->
-                            val label = when (index) {
-                                0 -> stringResource(R.string.help_mirror_label_main)
-                                1 -> stringResource(R.string.help_mirror_label_mirror1)
-                                else -> stringResource(R.string.help_mirror_label_legacy)
-                            }
-                            val latency = latencies.getOrNull(index)
-                            val completed = pingCompleted.getOrNull(index) ?: false
-                            val latencyText = when {
-                                latency != null -> stringResource(R.string.help_mirror_latency_ms, latency)
-                                completed -> stringResource(R.string.help_mirror_latency_timeout)
-                                else -> stringResource(R.string.help_mirror_latency_testing)
-                            }
-
-                            Button(
-                                onClick = {
-                                    if (currentUrlIndex != index) {
-                                        currentUrlIndex = index
-                                    }
-                                    showMirrorDialog = false
-                                    webView.loadUrl(url)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(text = "$label ($latencyText)")
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {}
-            )
-        }
-    }
-}
-
-private suspend fun pingUrl(url: String, timeoutMs: Int = 3000): Long? {
-    return withContext(Dispatchers.IO) {
-        try {
-            val start = System.currentTimeMillis()
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = timeoutMs
-            connection.readTimeout = timeoutMs
-            connection.requestMethod = "HEAD"
-            connection.instanceFollowRedirects = true
-            connection.connect()
-            val code = connection.responseCode
-            connection.disconnect()
-            if (code in 200..399) {
-                System.currentTimeMillis() - start
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            null
         }
     }
 }

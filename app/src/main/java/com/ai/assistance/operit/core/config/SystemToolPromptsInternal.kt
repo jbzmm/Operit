@@ -387,6 +387,150 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "web_userscript_list",
+                            description = "List installed WebSession userscripts.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "include_disabled",
+                                        type = "boolean",
+                                        description = "optional, include disabled userscripts",
+                                        required = false,
+                                        default = "true"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_install",
+                            description = "Install a WebSession userscript from a URL, a local file path, or inline source text.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "optional, remote userscript URL; exactly one of url/path/source is required",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "path",
+                                        type = "string",
+                                        description = "optional, absolute local .user.js file path; exactly one of url/path/source is required",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source",
+                                        type = "string",
+                                        description = "optional, raw userscript source text; exactly one of url/path/source is required",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "optional, canonical source URL stored for inline/local installs",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_display",
+                                        type = "string",
+                                        description = "optional, source label shown in userscript library",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_start",
+                            description = "Enable an installed WebSession userscript.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "optional, installed userscript id; preferred when known",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "optional, userscript name when script_id is omitted",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "optional, userscript namespace used to disambiguate name lookups",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "optional, source URL used to disambiguate duplicate names",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_stop",
+                            description = "Disable an installed WebSession userscript.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "optional, installed userscript id; preferred when known",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "optional, userscript name when script_id is omitted",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "optional, userscript namespace used to disambiguate name lookups",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "optional, source URL used to disambiguate duplicate names",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_uninstall",
+                            description = "Uninstall a WebSession userscript from the local library.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "optional, installed userscript id; preferred when known",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "optional, userscript name when script_id is omitted",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "optional, userscript namespace used to disambiguate name lookups",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "optional, source URL used to disambiguate duplicate names",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "calculate",
                             description = "Evaluate a math expression.",
                             parametersStructured =
@@ -2970,6 +3114,150 @@ object SystemToolPromptsInternal {
                                         description = "可选，是否包含图片列表",
                                         required = false,
                                         default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_list",
+                            description = "列出已安装的 WebSession 油猴脚本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "include_disabled",
+                                        type = "boolean",
+                                        description = "可选，是否包含已禁用脚本",
+                                        required = false,
+                                        default = "true"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_install",
+                            description = "从 URL、本地文件路径或内联源码安装 WebSession 油猴脚本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "可选，远程脚本 URL；url/path/source 三者必须且只能传一个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "path",
+                                        type = "string",
+                                        description = "可选，绝对本地 .user.js 文件路径；url/path/source 三者必须且只能传一个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source",
+                                        type = "string",
+                                        description = "可选，原始 userscript 源码；url/path/source 三者必须且只能传一个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "可选，为本地或内联安装补充记录的源地址",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_display",
+                                        type = "string",
+                                        description = "可选，在脚本库中显示的来源标签",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_start",
+                            description = "启用一个已安装的 WebSession 油猴脚本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "可选，已安装脚本 ID；已知时优先传这个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "可选，不传 script_id 时按脚本名查找",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "可选，用于在按名称查找时消歧",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "可选，用于在重名脚本间进一步消歧",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_stop",
+                            description = "禁用一个已安装的 WebSession 油猴脚本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "可选，已安装脚本 ID；已知时优先传这个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "可选，不传 script_id 时按脚本名查找",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "可选，用于在按名称查找时消歧",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "可选，用于在重名脚本间进一步消歧",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_userscript_uninstall",
+                            description = "从本地脚本库卸载一个 WebSession 油猴脚本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "script_id",
+                                        type = "integer",
+                                        description = "可选，已安装脚本 ID；已知时优先传这个",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "可选，不传 script_id 时按脚本名查找",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "namespace",
+                                        type = "string",
+                                        description = "可选，用于在按名称查找时消歧",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_url",
+                                        type = "string",
+                                        description = "可选，用于在重名脚本间进一步消歧",
+                                        required = false
                                     )
                                 )
                         ),

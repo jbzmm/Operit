@@ -342,13 +342,18 @@
 const codeRunner = (function () {
 
   const CARGO_MIRROR_ENV = 'export CARGO_REGISTRIES_CRATES_IO_REPLACE_WITH="ustc" && export CARGO_REGISTRIES_USTC_INDEX="https://mirrors.ustc.edu.cn/crates.io-index"';
+  const CODE_RUNNER_HIDDEN_EXECUTOR_KEY = "code_runner_hidden_executor";
   const NODE_WORKSPACE_DIR = "$HOME/.code_runner/node";
 
-  // Helper function to execute a terminal command using the new session-based API
-  async function executeTerminalCommand(command: string, timeoutMs?: number): Promise<import("./types/results").TerminalCommandResultData> {
-    // Use a consistent session name to allow for session reuse
-    const session = await Tools.System.terminal.create("code_runner_session");
-    return await Tools.System.terminal.exec(session.sessionId, command);
+  // Use a persistent hidden executor so commands share one login context without shell wrapping.
+  async function executeTerminalCommand(command: string, timeoutMs?: number): Promise<import("./types/results").HiddenTerminalCommandResultData> {
+    const options: { executorKey: string; timeoutMs?: number } = {
+      executorKey: CODE_RUNNER_HIDDEN_EXECUTOR_KEY
+    };
+    if (timeoutMs !== undefined) {
+      options.timeoutMs = timeoutMs;
+    }
+    return await Tools.System.terminal.hiddenExec(command, options);
   }
 
   // Ensure a persistent Python venv under ~/.code_runner/py and return python/pip paths

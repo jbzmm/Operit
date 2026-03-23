@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.defaultTool.websession.browser
 
 import androidx.compose.runtime.Immutable
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.UserscriptPageMenuCommand
 import kotlinx.serialization.Serializable
 
 internal enum class WebSessionBrowserSheetRoute {
@@ -8,7 +9,8 @@ internal enum class WebSessionBrowserSheetRoute {
     TABS,
     MENU,
     HISTORY,
-    BOOKMARKS
+    BOOKMARKS,
+    USERSCRIPTS
 }
 
 @Immutable
@@ -39,7 +41,8 @@ internal data class WebSessionBrowserState(
     val hasSslError: Boolean = false,
     val isDesktopMode: Boolean = true,
     val tabs: List<WebSessionBrowserTab> = emptyList(),
-    val sessionHistory: List<WebSessionSessionHistoryItem> = emptyList()
+    val sessionHistory: List<WebSessionSessionHistoryItem> = emptyList(),
+    val userscriptMenuCommands: List<UserscriptPageMenuCommand> = emptyList()
 )
 
 @Immutable

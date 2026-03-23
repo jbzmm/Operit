@@ -138,7 +138,7 @@ class SpeechInteractionManager(
         coroutineScope.launch {
             try {
                 try {
-                    AIForegroundService.ensureMicrophoneForeground(context)
+                    AIForegroundService.ensureMicrophoneForeground(context, forceStart = true)
                 } catch (e: Exception) {
                     AppLogger.w(TAG, "Failed to request microphone foreground", e)
                 }

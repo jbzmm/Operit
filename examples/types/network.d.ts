@@ -125,6 +125,55 @@ export namespace Net {
     ): Promise<StringResultData>;
 
     /**
+     * List installed WebSession userscripts.
+     */
+    function webUserscriptList(options?: {
+        include_disabled?: boolean;
+    }): Promise<StringResultData>;
+
+    /**
+     * Install a WebSession userscript from a remote URL, local file path, or inline source text.
+     * Exactly one of `url`, `path`, or `source` is required.
+     */
+    function webUserscriptInstall(options: {
+        url?: string;
+        path?: string;
+        source?: string;
+        source_url?: string;
+        source_display?: string;
+    }): Promise<StringResultData>;
+
+    /**
+     * Enable an installed WebSession userscript.
+     */
+    function webUserscriptStart(options: {
+        script_id?: string | number;
+        name?: string;
+        namespace?: string;
+        source_url?: string;
+    }): Promise<StringResultData>;
+
+    /**
+     * Disable an installed WebSession userscript.
+     */
+    function webUserscriptStop(options: {
+        script_id?: string | number;
+        name?: string;
+        namespace?: string;
+        source_url?: string;
+    }): Promise<StringResultData>;
+
+    /**
+     * Uninstall an installed WebSession userscript.
+     */
+    function webUserscriptUninstall(options: {
+        script_id?: string | number;
+        name?: string;
+        namespace?: string;
+        source_url?: string;
+    }): Promise<StringResultData>;
+
+    /**
      * Enhanced HTTP request with flexible options
      * @param options - HTTP request options
      */

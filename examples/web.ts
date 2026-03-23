@@ -113,6 +113,54 @@
                 { "name": "session_id", "description": { "zh": "可选，不传则关闭 Kotlin 侧当前活动会话", "en": "Optional. Closes active Kotlin-side session when omitted." }, "type": "string", "required": false },
                 { "name": "close_all", "description": { "zh": "可选，是否关闭全部会话", "en": "Optional, close all sessions." }, "type": "boolean", "required": false }
             ]
+        },
+        {
+            "name": "userscript_list",
+            "description": { "zh": "列出已安装的油猴脚本。", "en": "List installed userscripts." },
+            "parameters": [
+                { "name": "include_disabled", "description": { "zh": "可选，是否包含已禁用脚本", "en": "Optional include disabled userscripts." }, "type": "boolean", "required": false }
+            ]
+        },
+        {
+            "name": "userscript_install",
+            "description": { "zh": "从 URL、本地文件或源码安装油猴脚本。", "en": "Install a userscript from URL, local file, or source text." },
+            "parameters": [
+                { "name": "url", "description": { "zh": "可选，远程脚本 URL。url/path/source 必须且只能传一个。", "en": "Optional remote userscript URL. Exactly one of url/path/source is required." }, "type": "string", "required": false },
+                { "name": "path", "description": { "zh": "可选，绝对本地 .user.js 路径。url/path/source 必须且只能传一个。", "en": "Optional absolute local .user.js path. Exactly one of url/path/source is required." }, "type": "string", "required": false },
+                { "name": "source", "description": { "zh": "可选，userscript 源码。url/path/source 必须且只能传一个。", "en": "Optional userscript source text. Exactly one of url/path/source is required." }, "type": "string", "required": false },
+                { "name": "source_url", "description": { "zh": "可选，为本地或源码安装补充的来源 URL。", "en": "Optional source URL recorded for local or inline installs." }, "type": "string", "required": false },
+                { "name": "source_display", "description": { "zh": "可选，脚本库中显示的来源标签。", "en": "Optional source label shown in library." }, "type": "string", "required": false }
+            ]
+        },
+        {
+            "name": "userscript_start",
+            "description": { "zh": "启用一个已安装的油猴脚本。", "en": "Enable an installed userscript." },
+            "parameters": [
+                { "name": "script_id", "description": { "zh": "可选，已安装脚本 ID；已知时优先传这个。", "en": "Optional installed script id; preferred when known." }, "type": "string", "required": false },
+                { "name": "name", "description": { "zh": "可选，不传 script_id 时按脚本名查找。", "en": "Optional script name when script_id is omitted." }, "type": "string", "required": false },
+                { "name": "namespace", "description": { "zh": "可选，用于消歧。", "en": "Optional namespace used to disambiguate names." }, "type": "string", "required": false },
+                { "name": "source_url", "description": { "zh": "可选，用于重名脚本消歧。", "en": "Optional source URL used to disambiguate duplicates." }, "type": "string", "required": false }
+            ]
+        },
+        {
+            "name": "userscript_stop",
+            "description": { "zh": "禁用一个已安装的油猴脚本。", "en": "Disable an installed userscript." },
+            "parameters": [
+                { "name": "script_id", "description": { "zh": "可选，已安装脚本 ID；已知时优先传这个。", "en": "Optional installed script id; preferred when known." }, "type": "string", "required": false },
+                { "name": "name", "description": { "zh": "可选，不传 script_id 时按脚本名查找。", "en": "Optional script name when script_id is omitted." }, "type": "string", "required": false },
+                { "name": "namespace", "description": { "zh": "可选，用于消歧。", "en": "Optional namespace used to disambiguate names." }, "type": "string", "required": false },
+                { "name": "source_url", "description": { "zh": "可选，用于重名脚本消歧。", "en": "Optional source URL used to disambiguate duplicates." }, "type": "string", "required": false }
+            ]
+        },
+        {
+            "name": "userscript_uninstall",
+            "description": { "zh": "卸载一个已安装的油猴脚本。", "en": "Uninstall an installed userscript." },
+            "parameters": [
+                { "name": "script_id", "description": { "zh": "可选，已安装脚本 ID；已知时优先传这个。", "en": "Optional installed script id; preferred when known." }, "type": "string", "required": false },
+                { "name": "name", "description": { "zh": "可选，不传 script_id 时按脚本名查找。", "en": "Optional script name when script_id is omitted." }, "type": "string", "required": false },
+                { "name": "namespace", "description": { "zh": "可选，用于消歧。", "en": "Optional namespace used to disambiguate names." }, "type": "string", "required": false },
+                { "name": "source_url", "description": { "zh": "可选，用于重名脚本消歧。", "en": "Optional source URL used to disambiguate duplicates." }, "type": "string", "required": false }
+            ]
         }
     ]
 }*/
@@ -178,6 +226,65 @@ const Web = (function () {
         }
         const sid = String(raw).trim();
         return sid.length > 0 ? sid : undefined;
+    }
+
+    function normalizeUserscriptLocator(params: AnyObject = {}, requireTarget: boolean = true): AnyObject {
+        const result: AnyObject = {};
+
+        if (params.script_id !== undefined && params.script_id !== null) {
+            const scriptId = String(params.script_id).trim();
+            if (scriptId) {
+                result.script_id = scriptId;
+            }
+        }
+        if (params.name !== undefined && params.name !== null) {
+            const name = String(params.name).trim();
+            if (name) {
+                result.name = name;
+            }
+        }
+        if (params.namespace !== undefined && params.namespace !== null) {
+            const namespace = String(params.namespace).trim();
+            if (namespace) {
+                result.namespace = namespace;
+            }
+        }
+        if (params.source_url !== undefined && params.source_url !== null) {
+            const sourceUrl = String(params.source_url).trim();
+            if (sourceUrl) {
+                result.source_url = sourceUrl;
+            }
+        }
+
+        if (requireTarget && !result.script_id && !result.name) {
+            throw new Error('script_id 或 name 至少传一个');
+        }
+
+        return result;
+    }
+
+    function normalizeUserscriptInstallParams(params: AnyObject): AnyObject {
+        if (!params || typeof params !== 'object' || Array.isArray(params)) {
+            throw new Error('安装参数必须是对象');
+        }
+
+        const normalized: AnyObject = {};
+        ['url', 'path', 'source', 'source_url', 'source_display'].forEach((key) => {
+            if (params[key] === undefined || params[key] === null) {
+                return;
+            }
+            const value = String(params[key]).trim();
+            if (value) {
+                normalized[key] = value;
+            }
+        });
+
+        const sourceCount = [normalized.url, normalized.path, normalized.source].filter(Boolean).length;
+        if (sourceCount !== 1) {
+            throw new Error('url/path/source 必须且只能传一个');
+        }
+
+        return normalized;
     }
 
     function extractUrlFromPayload(payload: AnyObject): string | undefined {
@@ -470,6 +577,47 @@ const Web = (function () {
         return toPayload(await Tools.Net.stopWeb({ close_all: false }));
     }
 
+    async function userscript_list(params: AnyObject = {}): Promise<AnyObject> {
+        return toPayload(
+            await Tools.Net.webUserscriptList({
+                include_disabled:
+                    params.include_disabled !== undefined ? Boolean(params.include_disabled) : undefined,
+            })
+        );
+    }
+
+    async function userscript_install(params: AnyObject = {}): Promise<AnyObject> {
+        return toPayload(
+            await Tools.Net.webUserscriptInstall(
+                normalizeUserscriptInstallParams(params)
+            )
+        );
+    }
+
+    async function userscript_start(params: AnyObject = {}): Promise<AnyObject> {
+        return toPayload(
+            await Tools.Net.webUserscriptStart(
+                normalizeUserscriptLocator(params, true)
+            )
+        );
+    }
+
+    async function userscript_stop(params: AnyObject = {}): Promise<AnyObject> {
+        return toPayload(
+            await Tools.Net.webUserscriptStop(
+                normalizeUserscriptLocator(params, true)
+            )
+        );
+    }
+
+    async function userscript_uninstall(params: AnyObject = {}): Promise<AnyObject> {
+        return toPayload(
+            await Tools.Net.webUserscriptUninstall(
+                normalizeUserscriptLocator(params, true)
+            )
+        );
+    }
+
     async function wrap(
         toolName: string,
         fn: (params?: AnyObject) => Promise<AnyObject>,
@@ -496,7 +644,7 @@ const Web = (function () {
     async function main() {
         complete({
             success: true,
-            message: 'Web 已就绪，可调用 start/goto/click/fill/evaluate/wait_for/snapshot/content/open_in_system_browser/upload/close',
+            message: 'Web 已就绪，可调用 start/goto/click/fill/evaluate/wait_for/snapshot/content/open_in_system_browser/upload/close/userscript_list/userscript_install/userscript_start/userscript_stop/userscript_uninstall',
         });
     }
 
@@ -512,6 +660,11 @@ const Web = (function () {
         open_in_system_browser: (params: AnyObject) => wrap('open_in_system_browser', open_in_system_browser, params),
         upload: (params: AnyObject) => wrap('upload', upload, params),
         close: (params: AnyObject) => wrap('close', close, params),
+        userscript_list: (params: AnyObject) => wrap('userscript_list', userscript_list, params),
+        userscript_install: (params: AnyObject) => wrap('userscript_install', userscript_install, params),
+        userscript_start: (params: AnyObject) => wrap('userscript_start', userscript_start, params),
+        userscript_stop: (params: AnyObject) => wrap('userscript_stop', userscript_stop, params),
+        userscript_uninstall: (params: AnyObject) => wrap('userscript_uninstall', userscript_uninstall, params),
         main,
     };
 })();
@@ -527,4 +680,9 @@ exports.content = Web.content;
 exports.open_in_system_browser = Web.open_in_system_browser;
 exports.upload = Web.upload;
 exports.close = Web.close;
+exports.userscript_list = Web.userscript_list;
+exports.userscript_install = Web.userscript_install;
+exports.userscript_start = Web.userscript_start;
+exports.userscript_stop = Web.userscript_stop;
+exports.userscript_uninstall = Web.userscript_uninstall;
 exports.main = Web.main;

@@ -21,6 +21,8 @@ data class ExternalChatRequest(
     val createIfNone: Boolean = true,
     @SerialName("show_floating")
     val showFloating: Boolean = false,
+    @SerialName("initial_mode")
+    val initialMode: String? = null,
     @SerialName("auto_exit_after_ms")
     val autoExitAfterMs: Long = -1L,
     @SerialName("stop_after")
@@ -62,10 +64,14 @@ data class ExternalChatHttpRequest(
     val createIfNone: Boolean = true,
     @SerialName("show_floating")
     val showFloating: Boolean = false,
+    @SerialName("initial_mode")
+    val initialMode: String? = null,
     @SerialName("auto_exit_after_ms")
     val autoExitAfterMs: Long = -1L,
     @SerialName("stop_after")
     val stopAfter: Boolean = false,
+    @SerialName("stream")
+    val stream: Boolean = false,
     @SerialName("response_mode")
     val responseMode: String = "sync",
     @SerialName("callback_url")
@@ -92,6 +98,7 @@ data class ExternalChatHttpRequest(
             chatId = chatId,
             createIfNone = createIfNone,
             showFloating = showFloating,
+            initialMode = initialMode,
             autoExitAfterMs = autoExitAfterMs,
             stopAfter = stopAfter
         )
@@ -120,4 +127,22 @@ data class ExternalChatHealthResponse(
     val port: Int,
     @SerialName("version_name")
     val versionName: String
+)
+
+@Serializable
+data class ExternalChatStreamEnvelope(
+    @SerialName("event")
+    val event: String,
+    @SerialName("request_id")
+    val requestId: String,
+    @SerialName("chat_id")
+    val chatId: String? = null,
+    @SerialName("delta")
+    val delta: String? = null,
+    @SerialName("ai_response")
+    val aiResponse: String? = null,
+    @SerialName("success")
+    val success: Boolean? = null,
+    @SerialName("error")
+    val error: String? = null
 )

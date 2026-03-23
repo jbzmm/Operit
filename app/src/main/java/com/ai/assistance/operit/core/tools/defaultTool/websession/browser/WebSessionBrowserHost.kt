@@ -30,6 +30,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.tools.defaultTool.websession.userscript.ui.WebSessionUserscriptUiStateStore
 import com.ai.assistance.operit.ui.features.websession.browser.WebSessionBrowserScreen
 import com.ai.assistance.operit.ui.features.websession.browser.WebSessionFloatingTheme
 import com.ai.assistance.operit.ui.features.websession.browser.WebSessionMinimizedIndicator
@@ -38,6 +39,7 @@ import kotlin.math.roundToInt
 internal class WebSessionBrowserHost(
     private val appContext: Context,
     private val store: WebSessionHistoryStore,
+    private val userscriptStore: WebSessionUserscriptUiStateStore,
     private val callbacks: Callbacks
 ) {
     interface Callbacks {
@@ -57,6 +59,15 @@ internal class WebSessionBrowserHost(
         fun onOpenUrl(url: String)
         fun onClearHistory()
         fun onToggleDesktopMode()
+        fun onOpenUserscripts()
+        fun onImportUserscript()
+        fun onInstallUserscriptFromUrl(url: String)
+        fun onConfirmUserscriptInstall()
+        fun onCancelUserscriptInstall()
+        fun onSetUserscriptEnabled(scriptId: Long, enabled: Boolean)
+        fun onDeleteUserscript(scriptId: Long)
+        fun onCheckUserscriptUpdate(scriptId: Long)
+        fun onInvokeUserscriptMenu(commandId: String)
     }
 
     private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -105,12 +116,14 @@ internal class WebSessionBrowserHost(
                 setContent {
                     val bookmarks by store.bookmarksFlow.collectAsState(initial = emptyList())
                     val history by store.historyFlow.collectAsState(initial = emptyList())
+                    val userscriptUiState by userscriptStore.state.collectAsState()
 
                     WebSessionFloatingTheme {
                         WebSessionBrowserScreen(
                             hostState = hostState,
                             bookmarks = bookmarks,
                             globalHistory = history,
+                            userscriptUiState = userscriptUiState,
                             webViewHost = webViewHost,
                             onHostStateChange = { hostState = it },
                             onNavigate = callbacks::onNavigate,
@@ -128,7 +141,16 @@ internal class WebSessionBrowserHost(
                             onSelectSessionHistory = callbacks::onSelectSessionHistory,
                             onOpenUrl = callbacks::onOpenUrl,
                             onClearHistory = callbacks::onClearHistory,
-                            onToggleDesktopMode = callbacks::onToggleDesktopMode
+                            onToggleDesktopMode = callbacks::onToggleDesktopMode,
+                            onOpenUserscripts = callbacks::onOpenUserscripts,
+                            onImportUserscript = callbacks::onImportUserscript,
+                            onInstallUserscriptFromUrl = callbacks::onInstallUserscriptFromUrl,
+                            onConfirmUserscriptInstall = callbacks::onConfirmUserscriptInstall,
+                            onCancelUserscriptInstall = callbacks::onCancelUserscriptInstall,
+                            onSetUserscriptEnabled = callbacks::onSetUserscriptEnabled,
+                            onDeleteUserscript = callbacks::onDeleteUserscript,
+                            onCheckUserscriptUpdate = callbacks::onCheckUserscriptUpdate,
+                            onInvokeUserscriptMenu = callbacks::onInvokeUserscriptMenu
                         )
                     }
                 }
@@ -252,6 +274,10 @@ internal class WebSessionBrowserHost(
         if (root.windowToken != null) {
             windowManager.updateViewLayout(root, params)
         }
+    }
+
+    fun showSheet(route: WebSessionBrowserSheetRoute) {
+        hostState = hostState.copy(sheetRoute = route)
     }
 
     fun syncIndicatorWithMinimizedWindow() {

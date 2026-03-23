@@ -258,6 +258,7 @@ dependencies {
     
     // Window metrics library for foldables and adaptive layouts
     implementation(libs.window)
+    implementation(libs.androidx.webkit)
 
     // Document conversion libraries
     implementation(libs.itextg)

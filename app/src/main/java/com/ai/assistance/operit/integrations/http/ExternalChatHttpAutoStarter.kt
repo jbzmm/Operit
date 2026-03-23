@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.integrations.http
 
 import android.content.Context
+import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.data.preferences.ExternalHttpApiPreferences
 import com.ai.assistance.operit.util.AppLogger
 import java.util.concurrent.atomic.AtomicBoolean
@@ -36,14 +37,14 @@ object ExternalChatHttpAutoStarter {
                     return@launch
                 }
 
-                val currentState = ExternalChatHttpService.serviceState.value
+                val currentState = AIForegroundService.externalHttpState.value
                 if (currentState.isRunning && currentState.port == config.port) {
                     AppLogger.d(TAG, "External HTTP chat service already running on port ${config.port}: $reason")
                     return@launch
                 }
 
                 AppLogger.i(TAG, "Auto starting External HTTP chat service on port ${config.port}: $reason")
-                ExternalChatHttpService.start(appContext)
+                AIForegroundService.ensureRunningForExternalHttp(appContext)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to auto start External HTTP chat service: $reason", e)
             } finally {

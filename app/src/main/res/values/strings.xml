@@ -4273,16 +4273,12 @@
     <string name="external_http_chat_health_example">健康检查示例</string>
     <string name="external_http_chat_intent_title">Intent 调用说明</string>
     <string name="external_http_chat_intent_desc">广播入口仍然保留，适合本机 App 集成、Tasker 或 adb 调试</string>
-    <string name="external_http_chat_intent_overview">HTTP 与 Intent 参数语义一致，仅入口不同。\n\n请求 Action：%1$s\n默认回传 Action：%2$s\n\n常用 extras：message、request_id、group、create_new_chat、chat_id、create_if_none、show_floating、auto_exit_after_ms、stop_after、reply_action、reply_package\n\n处理完成后会通过广播回传 success、chat_id、ai_response、error；如果只希望回传给指定 App，请设置 reply_package。</string>
+    <string name="external_http_chat_intent_overview">HTTP 与 Intent 参数语义一致，仅入口不同。\n\n请求 Action：%1$s\n默认回传 Action：%2$s\n\n常用 extras：message、request_id、group、create_new_chat、chat_id、create_if_none、show_floating、initial_mode、auto_exit_after_ms、stop_after、reply_action、reply_package\n\n处理完成后会通过广播回传 success、chat_id、ai_response、error；如果只希望回传给指定 App，请设置 reply_package。</string>
     <string name="external_http_chat_copy_example">复制示例</string>
     <string name="external_http_chat_example_copied">示例命令已复制</string>
     <string name="external_http_chat_service_enabled">服务已启用</string>
     <string name="external_http_chat_service_disabled">服务已停用</string>
     <string name="external_http_chat_restart_service">重启服务</string>
-    <string name="external_http_chat_notification_channel_name">外部 HTTP 调用</string>
-    <string name="external_http_chat_notification_channel_desc">局域网 External HTTP Chat API 后台服务</string>
-    <string name="external_http_chat_notification_title">外部 HTTP 调用已开启</string>
-    <string name="external_http_chat_notification_text">正在监听端口 %1$d</string>
 
     <!-- Custom Emoji Management -->
     <string name="manage_custom_emoji">管理自定义表情</string>
@@ -5133,13 +5129,6 @@
 
     <!-- Help Screen - Mirror Selection Dialog -->
     <string name="help_loading_message">正在加载使用手册...</string>
-    <string name="help_mirror_dialog_title">选择帮助文档镜像</string>
-    <string name="help_mirror_label_main">主站</string>
-    <string name="help_mirror_label_mirror1">镜像一</string>
-    <string name="help_mirror_label_legacy">原站</string>
-    <string name="help_mirror_latency_ms">%1$dms</string>
-    <string name="help_mirror_latency_timeout">超时</string>
-    <string name="help_mirror_latency_testing">测试中...</string>
 
     <string name="vd_overlay_a11y_minimize">最小化</string>
     <string name="vd_overlay_a11y_exit_fullscreen">退出全屏</string>
@@ -6537,6 +6526,8 @@
     <string name="service_running_wake_pause">Operit 正在运行（唤醒暂停）</string>
     <string name="service_running_wake_listening">Operit 正在运行（唤醒监听中）</string>
     <string name="service_running_stats">运行对话 %1$d · 调用工具 %2$d</string>
+    <string name="service_running_http_listening">外部 HTTP 正在监听端口 %1$d</string>
+    <string name="service_running_with_http">%1$s · 外部 HTTP %2$d</string>
     <string name="service_voice_floating_window">语音悬浮窗</string>
     <string name="service_turn_off_wake">关闭唤醒</string>
     <string name="service_turn_on_wake">开启唤醒</string>
@@ -7045,6 +7036,52 @@
     <string name="web_session_close_current_tab">关闭当前标签页</string>
     <string name="web_session_close_all_tabs">关闭全部标签页</string>
     <string name="web_session_new_tab">新建标签页</string>
+    <string name="web_session_userscripts">Userscripts</string>
+    <string name="web_session_userscripts_subtitle">管理当前浏览器内安装的原生油猴脚本</string>
+    <string name="web_session_userscript_install">安装脚本</string>
+    <string name="web_session_userscript_install_from_url">脚本地址</string>
+    <string name="web_session_userscript_install_action">从链接安装</string>
+    <string name="web_session_userscript_import_local">导入本地文件</string>
+    <string name="web_session_userscript_install_preview">安装确认</string>
+    <string name="web_session_userscript_update_preview">更新确认</string>
+    <string name="web_session_userscript_library">已安装脚本</string>
+    <string name="web_session_userscript_none">还没有安装任何脚本</string>
+    <string name="web_session_userscript_logs">最近日志</string>
+    <string name="web_session_userscript_logs_empty">最近还没有脚本日志</string>
+    <string name="web_session_userscript_page_menu">当前页面脚本菜单</string>
+    <string name="web_session_userscript_page_menu_subtitle">点击执行该页面注册的脚本命令</string>
+    <string name="web_session_userscript_version">版本</string>
+    <string name="web_session_userscript_source">来源</string>
+    <string name="web_session_userscript_grants">Grant</string>
+    <string name="web_session_userscript_matches">匹配规则</string>
+    <string name="web_session_userscript_connects">@connect</string>
+    <string name="web_session_userscript_requires">@require</string>
+    <string name="web_session_userscript_resources">@resource</string>
+    <string name="web_session_userscript_update_url">更新地址</string>
+    <string name="web_session_userscript_unsupported_grants">未实现的 grant：%1$s</string>
+    <string name="web_session_userscript_confirm_install">确认安装</string>
+    <string name="web_session_userscript_cancel_install">取消</string>
+    <string name="web_session_userscript_update_action">确认更新</string>
+    <string name="web_session_userscript_check_update">检查更新</string>
+    <string name="web_session_userscript_delete">删除脚本</string>
+    <string name="web_session_userscript_unsupported">当前 WebView 不支持原生 userscript</string>
+    <string name="web_session_userscript_unsupported_summary">缺少文档开始注入或消息桥接能力，因此不会启用任何伪兼容方案。</string>
+    <string name="web_session_userscript_status_disabled">已停用</string>
+    <string name="web_session_userscript_status_unsupported">未支持</string>
+    <string name="web_session_userscript_status_not_matched">未命中</string>
+    <string name="web_session_userscript_status_queued">待运行</string>
+    <string name="web_session_userscript_status_running">运行中</string>
+    <string name="web_session_userscript_status_success">已运行</string>
+    <string name="web_session_userscript_status_error">异常</string>
+    <string name="web_session_userscript_invalid_url">脚本地址无效</string>
+    <string name="web_session_userscript_install_failed">脚本安装失败</string>
+    <string name="web_session_userscript_installed">已安装脚本：%1$s</string>
+    <string name="web_session_userscript_deleted">脚本已删除</string>
+    <string name="web_session_userscript_no_update">没有可更新的新版本</string>
+    <string name="web_session_userscript_notification_title">脚本通知</string>
+    <string name="web_session_userscript_notification_channel">Userscript 通知</string>
+    <string name="web_session_userscript_notification_denied">通知权限未授予，脚本通知无法显示</string>
+    <string name="web_session_userscript_download_failed">脚本下载失败</string>
 
     <string name="tool_windows_control_one_click">Windows 一键配置</string>
     <string name="tool_windows_control_one_click_desc">一键导出电脑端代理包，配置 HTTP Agent 环境变量并启用 windows_control</string>
