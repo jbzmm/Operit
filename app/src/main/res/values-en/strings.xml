@@ -2028,6 +2028,14 @@
     <string name="host_address">Host Address</string>
     <string name="port">Port</string>
     <string name="connection_type">Connection Type</string>
+    <string name="mcp_remote_bearer_token">Bearer Token (Optional)</string>
+    <string name="mcp_remote_bearer_token_hint">Enter a bearer token to generate the Authorization header</string>
+    <string name="mcp_remote_custom_headers">Custom Headers</string>
+    <string name="mcp_remote_custom_headers_desc">These headers are sent together with the bearer token. If you also set Authorization here, this value overrides the bearer token.</string>
+    <string name="mcp_remote_header_name">Header Name</string>
+    <string name="mcp_remote_header_value">Header Value</string>
+    <string name="mcp_remote_add_header">Add Header</string>
+    <string name="mcp_remote_remove_header">Remove Header</string>
     <string name="service_metadata">Service Metadata</string>
     <string name="plugin_name">Plugin Name</string>
     <string name="my_mcp_plugin">My MCP Plugin</string>

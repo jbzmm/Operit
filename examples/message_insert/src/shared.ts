@@ -100,6 +100,7 @@ export type ExtraInfoI18n = {
   weatherLocationLabel: string;
   weatherConditionLabel: string;
   weatherTemperatureLabel: string;
+  weatherFeelsLikeLabel: string;
   weatherHumidityLabel: string;
   weatherWindLabel: string;
   weatherSourceLabel: string;
@@ -195,6 +196,7 @@ const ZH_CN_I18N: ExtraInfoI18n = {
   weatherLocationLabel: "地点",
   weatherConditionLabel: "天气",
   weatherTemperatureLabel: "温度",
+  weatherFeelsLikeLabel: "体感",
   weatherHumidityLabel: "湿度",
   weatherWindLabel: "风速",
   weatherSourceLabel: "来源",
@@ -290,6 +292,7 @@ const EN_US_I18N: ExtraInfoI18n = {
   weatherLocationLabel: "Location",
   weatherConditionLabel: "Condition",
   weatherTemperatureLabel: "Temperature",
+  weatherFeelsLikeLabel: "Feels like",
   weatherHumidityLabel: "Humidity",
   weatherWindLabel: "Wind",
   weatherSourceLabel: "Source",
@@ -476,6 +479,45 @@ function formatLocalTimestamp(timestampMs: number): string {
   return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", locale).format(new DateClass(timestampMs));
 }
 
+function formatCoordinates(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}
+
+function buildLocationParts(location: any): string[] {
+  return [
+    location?.address,
+    location?.city,
+    location?.province,
+    location?.country,
+  ].map((item: unknown) => String(item || "").trim()).filter(Boolean);
+}
+
+async function readLocationSnapshot(): Promise<{
+  location: any;
+  latitude: number;
+  longitude: number;
+  addressParts: string[];
+}> {
+  const location = await Tools.System.getLocation(false, 8);
+  const latitude = Number(location?.latitude);
+  const longitude = Number(location?.longitude);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new Error("location coordinates unavailable");
+  }
+
+  return {
+    location,
+    latitude,
+    longitude,
+    addressParts: buildLocationParts(location),
+  };
+}
+
+function resolveWeatherLanguage(locale?: string): string {
+  return normalizeLocale(locale) === "en-US" ? "en" : "zh";
+}
+
 function buildCombinedAttachmentFileName(timestampMs: number): string {
   const SimpleDateFormat = Java.type("java.text.SimpleDateFormat");
   const DateClass = Java.type("java.util.Date");
@@ -547,9 +589,15 @@ function buildErrorContent(title: string, error: unknown): string {
   ].join("\n");
 }
 
-async function fetchWeatherPayload(): Promise<any> {
+async function fetchWeatherPayload(
+  latitude: number,
+  longitude: number,
+  locale?: string
+): Promise<any> {
+  const queryLocation = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+  const weatherLanguage = resolveWeatherLanguage(locale);
   const response = await Tools.Net.http({
-    url: "https://wttr.in/?format=j1",
+    url: `https://wttr.in/${queryLocation}?format=j1&lang=${weatherLanguage}`,
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -578,17 +626,20 @@ async function fetchWeatherPayload(): Promise<any> {
 
 async function buildWeatherContent(): Promise<string> {
   const text = resolveExtraInfoI18n();
-  const payload = await fetchWeatherPayload();
+  const locale = typeof getLang === "function" ? String(getLang() || "") : "";
+  const locationSnapshot = await readLocationSnapshot();
+  const payload = await fetchWeatherPayload(
+    locationSnapshot.latitude,
+    locationSnapshot.longitude,
+    locale
+  );
   const current = Array.isArray(payload?.current_condition) ? payload.current_condition[0] : null;
-  const nearestArea = Array.isArray(payload?.nearest_area) ? payload.nearest_area[0] : null;
-
-  const locationParts = [
-    nearestArea?.areaName?.[0]?.value,
-    nearestArea?.region?.[0]?.value,
-    nearestArea?.country?.[0]?.value,
-  ].map((item: unknown) => String(item || "").trim()).filter(Boolean);
-
-  const weatherDesc = String(current?.weatherDesc?.[0]?.value || "").trim();
+  const locationText = locationSnapshot.addressParts.length
+    ? `${locationSnapshot.addressParts.join(" / ")} (${formatCoordinates(locationSnapshot.latitude, locationSnapshot.longitude)})`
+    : formatCoordinates(locationSnapshot.latitude, locationSnapshot.longitude);
+  const weatherDesc = normalizeLocale(locale) === "en-US"
+    ? String(current?.weatherDesc?.[0]?.value || "").trim()
+    : String(current?.lang_zh?.[0]?.value || "").trim();
   const tempC = String(current?.temp_C || "").trim();
   const feelsLikeC = String(current?.FeelsLikeC || "").trim();
   const humidity = String(current?.humidity || "").trim();
@@ -596,9 +647,9 @@ async function buildWeatherContent(): Promise<string> {
 
   return [
     text.attachmentWeatherTitle,
-    `${text.weatherLocationLabel}: ${locationParts.join(" / ") || "-"}`,
+    `${text.weatherLocationLabel}: ${locationText}`,
     `${text.weatherConditionLabel}: ${weatherDesc || "-"}`,
-    `${text.weatherTemperatureLabel}: ${tempC ? `${tempC}°C` : "-"}${feelsLikeC ? ` (feels like ${feelsLikeC}°C)` : ""}`,
+    `${text.weatherTemperatureLabel}: ${tempC ? `${tempC}°C` : "-"}${feelsLikeC ? ` (${text.weatherFeelsLikeLabel}: ${feelsLikeC}°C)` : ""}`,
     `${text.weatherHumidityLabel}: ${humidity ? `${humidity}%` : "-"}`,
     `${text.weatherWindLabel}: ${windKmph ? `${windKmph} km/h` : "-"}`,
     `${text.weatherSourceLabel}: wttr.in`,
@@ -607,18 +658,10 @@ async function buildWeatherContent(): Promise<string> {
 
 async function buildLocationContent(): Promise<string> {
   const text = resolveExtraInfoI18n();
-  const location = await Tools.System.getLocation(false, 8);
-  const addressParts = [
-    location.address,
-    location.city,
-    location.province,
-    location.country,
-  ].map((item: unknown) => String(item || "").trim()).filter(Boolean);
+  const locationSnapshot = await readLocationSnapshot();
+  const { location, latitude, longitude, addressParts } = locationSnapshot;
 
-  const coordinates =
-    Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))
-      ? `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)}`
-      : "-";
+  const coordinates = formatCoordinates(latitude, longitude);
   const accuracy =
     Number.isFinite(Number(location.accuracy)) && Number(location.accuracy) > 0
       ? `${Math.round(Number(location.accuracy))} m`

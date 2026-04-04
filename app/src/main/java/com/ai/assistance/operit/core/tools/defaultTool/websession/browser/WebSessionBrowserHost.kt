@@ -91,12 +91,12 @@ internal class WebSessionBrowserHost(
     private var indicatorParams: WindowManager.LayoutParams? = null
     private var indicatorLifecycleOwner: WebSessionOverlayLifecycleOwner? = null
 
-    private var isExpanded: Boolean = true
+    private var isExpanded: Boolean = false
     private var hostState by mutableStateOf(WebSessionBrowserHostState())
     private var expandedWidthPx: Int? = null
     private var expandedHeightPx: Int? = null
 
-    fun ensureCreated(initialExpanded: Boolean = true) {
+    fun ensureCreated(initialExpanded: Boolean = false) {
         if (rootView != null) {
             if (isExpanded != initialExpanded) {
                 setExpanded(initialExpanded)

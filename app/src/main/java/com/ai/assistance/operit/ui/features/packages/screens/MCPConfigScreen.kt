@@ -224,6 +224,7 @@ fun MCPConfigScreen(
     var remoteConnectionType by remember { mutableStateOf("httpStream") }
     var remoteConnectionTypeExpanded by remember { mutableStateOf(false) }
     var remoteBearerToken by remember { mutableStateOf("") }
+    var remoteHeaders by remember { mutableStateOf<List<EditableHeader>>(emptyList()) }
     
     // 新增：配置导入相关状态
     var configJsonInput by remember { mutableStateOf("") }
@@ -232,6 +233,7 @@ fun MCPConfigScreen(
     var showRemoteEditDialog by remember { mutableStateOf(false) }
     var editingRemoteServer by remember { mutableStateOf<MCPLocalServer.PluginMetadata?>(null) }
 
+    val importDialogMaxContentHeight = (LocalConfiguration.current.screenHeightDp * 0.65f).dp
 
 
 
@@ -549,13 +551,19 @@ fun MCPConfigScreen(
             title = { Text(stringResource(R.string.import_or_connect_mcp_service)) },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = importDialogMaxContentHeight)
+                        .verticalScroll(rememberScrollState())
+                        .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // 添加顶部导入方式选择
                     Column {
                         ScrollableTabRow(
                             selectedTabIndex = importTabIndex,
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
                             edgePadding = 8.dp,
                             divider = {},
                             indicator = { tabPositions ->
@@ -749,10 +757,17 @@ fun MCPConfigScreen(
                             OutlinedTextField(
                                 value = remoteBearerToken,
                                 onValueChange = { remoteBearerToken = it },
-                                label = { Text("Bearer Token (Optional)") },
-                                placeholder = { Text("Enter bearer token for authentication") },
+                                label = { Text(stringResource(R.string.mcp_remote_bearer_token)) },
+                                placeholder = { Text(stringResource(R.string.mcp_remote_bearer_token_hint)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            RemoteHeadersEditor(
+                                headers = remoteHeaders,
+                                onHeadersChange = { remoteHeaders = it }
                             )
                         }
                         3 -> {
@@ -885,7 +900,8 @@ fun MCPConfigScreen(
                                 type = if(isRemote) "remote" else "local",
                                 endpoint = if(isRemote) remoteEndpointInput else null,
                                 connectionType = if(isRemote) remoteConnectionType else "httpStream",
-                                bearerToken = if(isRemote && remoteBearerToken.isNotBlank()) remoteBearerToken else null
+                                bearerToken = if(isRemote && remoteBearerToken.isNotBlank()) remoteBearerToken else null,
+                                headers = if(isRemote) remoteHeaders.toHeaderMap() else null
                             )
                             
                             if(isRemote){
@@ -909,6 +925,7 @@ fun MCPConfigScreen(
                             remoteConnectionType = "httpStream"
                             remoteConnectionTypeExpanded = false
                             remoteBearerToken = ""
+                            remoteHeaders = emptyList()
                             showImportDialog = false
 
                             awaitPluginVisible(importId) {
@@ -952,6 +969,7 @@ fun MCPConfigScreen(
                     remoteConnectionType = "httpStream"
                     remoteConnectionTypeExpanded = false
                     remoteBearerToken = ""
+                    remoteHeaders = emptyList()
                     configJsonInput = ""
                     showImportDialog = false 
                 }) {
@@ -1668,6 +1686,7 @@ fun RemoteServerEditDialog(
     var endpoint by remember { mutableStateOf(server.endpoint ?: "") }
     var connectionType by remember { mutableStateOf(server.connectionType ?: "httpStream") }
     var bearerToken by remember { mutableStateOf(server.bearerToken ?: "") }
+    var headers by remember { mutableStateOf(server.headers.toEditableHeaders()) }
     val connectionTypes = listOf("httpStream", "sse")
     var expanded by remember { mutableStateOf(false) }
     val isRemote = server.type == "remote"
@@ -1735,9 +1754,14 @@ fun RemoteServerEditDialog(
                     OutlinedTextField(
                         value = bearerToken,
                         onValueChange = { bearerToken = it },
-                        label = { Text("Bearer Token (Optional)") },
+                        label = { Text(stringResource(R.string.mcp_remote_bearer_token)) },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Enter bearer token for authentication") }
+                        placeholder = { Text(stringResource(R.string.mcp_remote_bearer_token_hint)) }
+                    )
+
+                    RemoteHeadersEditor(
+                        headers = headers,
+                        onHeadersChange = { headers = it }
                     )
                 }
             }
@@ -1750,7 +1774,8 @@ fun RemoteServerEditDialog(
                         description = description,
                         endpoint = if(isRemote) endpoint else server.endpoint,
                         connectionType = if(isRemote) connectionType else server.connectionType,
-                        bearerToken = if(isRemote && bearerToken.isNotBlank()) bearerToken else null
+                        bearerToken = if(isRemote && bearerToken.isNotBlank()) bearerToken else null,
+                        headers = if(isRemote) headers.toHeaderMap() else server.headers
                     )
                     onSave(updatedServer)
                 },
@@ -1765,4 +1790,110 @@ fun RemoteServerEditDialog(
             }
         }
     )
+}
+
+private data class EditableHeader(
+    val id: String = UUID.randomUUID().toString(),
+    val key: String = "",
+    val value: String = ""
+)
+
+private fun Map<String, String>?.toEditableHeaders(): List<EditableHeader> {
+    return this
+        ?.map { (key, value) -> EditableHeader(key = key, value = value) }
+        .orEmpty()
+}
+
+private fun List<EditableHeader>.toHeaderMap(): Map<String, String>? {
+    val headerEntries = LinkedHashMap<String, String>()
+
+    for (header in this) {
+        val key = header.key.trim()
+        if (key.isBlank()) {
+            continue
+        }
+        headerEntries[key] = header.value
+    }
+
+    return headerEntries.ifEmpty { null }
+}
+
+@Composable
+private fun RemoteHeadersEditor(
+    headers: List<EditableHeader>,
+    onHeadersChange: (List<EditableHeader>) -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.mcp_remote_custom_headers),
+            style = MaterialTheme.typography.titleSmall
+        )
+        Text(
+            text = stringResource(R.string.mcp_remote_custom_headers_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        headers.forEachIndexed { index, header ->
+            key(header.id) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = header.key,
+                        onValueChange = { newKey ->
+                            onHeadersChange(
+                                headers.toMutableList().apply {
+                                    this[index] = this[index].copy(key = newKey)
+                                }
+                            )
+                        },
+                        label = { Text(stringResource(R.string.mcp_remote_header_name)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = header.value,
+                        onValueChange = { newValue ->
+                            onHeadersChange(
+                                headers.toMutableList().apply {
+                                    this[index] = this[index].copy(value = newValue)
+                                }
+                            )
+                        },
+                        label = { Text(stringResource(R.string.mcp_remote_header_value)) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    IconButton(
+                        onClick = {
+                            onHeadersChange(headers.toMutableList().apply { removeAt(index) })
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.mcp_remote_remove_header)
+                        )
+                    }
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                onHeadersChange(headers + EditableHeader())
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(stringResource(R.string.mcp_remote_add_header))
+        }
+    }
 }

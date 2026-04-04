@@ -339,7 +339,7 @@ internal fun StandardBrowserSessionTools.configureWebView(
 
 internal fun StandardBrowserSessionTools.ensureOverlayOnMain(
     appContext: Context,
-    initialExpanded: Boolean = true
+    initialExpanded: Boolean = false
 ): WebSessionBrowserHost {
     StandardBrowserSessionTools.browserHost?.let { return it }
 

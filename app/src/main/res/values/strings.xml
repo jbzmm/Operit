@@ -2096,6 +2096,14 @@
     <string name="host_address">主机地址</string>
     <string name="port">端口</string>
     <string name="connection_type">连接类型</string>
+    <string name="mcp_remote_bearer_token">Bearer Token（可选）</string>
+    <string name="mcp_remote_bearer_token_hint">输入 Bearer Token，用于生成 Authorization 请求头</string>
+    <string name="mcp_remote_custom_headers">自定义请求头</string>
+    <string name="mcp_remote_custom_headers_desc">这里填写的请求头会和 Bearer Token 一起发送；如果你也填写了 Authorization，这里的值会覆盖 Bearer Token。</string>
+    <string name="mcp_remote_header_name">请求头名称</string>
+    <string name="mcp_remote_header_value">请求头值</string>
+    <string name="mcp_remote_add_header">添加请求头</string>
+    <string name="mcp_remote_remove_header">删除请求头</string>
     <string name="service_metadata">服务元数据</string>
     <string name="plugin_name">插件名称</string>
     <string name="my_mcp_plugin">我的MCP插件</string>
