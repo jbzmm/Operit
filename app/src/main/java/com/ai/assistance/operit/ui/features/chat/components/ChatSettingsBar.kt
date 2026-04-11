@@ -281,7 +281,7 @@ fun ChatSettingsBar(
             ) {
                 Box(modifier = Modifier.padding(top = 0.dp, bottom = 76.dp)) {
                     Card(
-                        modifier = Modifier.width(280.dp), // 加宽一级菜单以适应英文显示
+                        modifier = Modifier.width(320.dp), // Largura aumentada para suportar Português
                         shape = RoundedCornerShape(8.dp),
                             colors =
                                     CardDefaults.cardColors(
@@ -691,7 +691,8 @@ private fun SettingItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(36.dp)
+            .heightIn(min = 42.dp)
+            .padding(vertical = 4.dp)
             .padding(horizontal = 12.dp)
             .semantics {
                 contentDescription = title
@@ -882,7 +883,8 @@ private fun MemorySelectorItem(
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
-                .height(36.dp)
+                .heightIn(min = 42.dp)
+                .padding(vertical = 4.dp)
                 .semantics {
                     contentDescription = accessibilityDesc
                 }
@@ -1020,7 +1022,8 @@ private fun ModelSelectorItem(
         Row(
                 modifier =
                         Modifier.fillMaxWidth()
-                .height(36.dp)
+                .heightIn(min = 42.dp)
+                .padding(vertical = 4.dp)
                 .semantics {
                     contentDescription = accessibilityDesc
                 }
@@ -1257,7 +1260,8 @@ private fun PromptSelectorItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(36.dp)
+                .heightIn(min = 42.dp)
+                .padding(vertical = 4.dp)
                 .semantics {
                     contentDescription = accessibilityDesc
                 }
@@ -1382,7 +1386,8 @@ private fun ActionSettingItem(
     Row(
         modifier =
                 Modifier.fillMaxWidth()
-                        .height(36.dp)
+                        .heightIn(min = 42.dp)
+                        .padding(vertical = 4.dp)
                         .padding(vertical = 2.dp)
                         .padding(horizontal = 3.dp)
                         .border(
