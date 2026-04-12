@@ -30,7 +30,8 @@ object LocaleUtils {
         return listOf(
                 Language(AUTO_LANGUAGE_CODE, "Follow system", "跟随系统"),
                 Language("zh", "Chinese", "中文"),
-                Language("en", "English", "English")
+                Language("en", "English", "English"),
+                Language("pt", "Portuguese (Brazil)", "Português (Brasil)")
                 // 可以添加更多支持的语言
                 )
     }

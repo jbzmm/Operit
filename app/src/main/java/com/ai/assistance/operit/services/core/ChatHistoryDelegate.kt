@@ -107,7 +107,7 @@ class ChatHistoryDelegate(
             
             if (hasActiveStream) {
                 // 如果有正在进行的流式响应，不从数据库重新加载，保留内存中的状态
-                Log.d(TAG, "检测到活跃的流式响应，跳过从数据库加载聊天 $chatId")
+                AppLogger.d(TAG, "检测到活跃的流式响应，跳过从数据库加载聊天 $chatId")
                 return
             }
             
@@ -151,7 +151,7 @@ class ChatHistoryDelegate(
                 
                 if (hasActiveStream) {
                     // 如果有正在进行的流式响应，不重新加载，保留内存中的状态
-                    Log.d(TAG, "检测到活跃的流式响应，跳过智能重新加载聊天 $chatId")
+                    AppLogger.d(TAG, "检测到活跃的流式响应，跳过智能重新加载聊天 $chatId")
                     return@withLock
                 }
                 
@@ -201,7 +201,7 @@ class ChatHistoryDelegate(
             
             if (hasActiveStream) {
                 // 如果有正在进行的流式响应，不同步开场白，保留内存中的状态
-                Log.d(TAG, "检测到活跃的流式响应，跳过开场白同步")
+                AppLogger.d(TAG, "检测到活跃的流式响应，跳过开场白同步")
                 return@withLock
             }
             
