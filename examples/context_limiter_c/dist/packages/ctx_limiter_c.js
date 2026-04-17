@@ -3,12 +3,12 @@
 {
     "name": "ctx_limiter_c",
     "display_name": {
-        "zh": "楼层限制器 C",
-        "en": "Context Limiter C"
+        "zh": "楼层限制器",
+        "en": "Context Limiter"
     },
     "description": {
-        "zh": "截取最近N层上下文，保留SYSTEM消息和最近N层USER/ASSISTANT。",
-        "en": "Keep SYSTEM messages and only the latest N USER/ASSISTANT turns."
+        "zh": "截取最近N层上下文，保留SYSTEM消息和最近N层USER/ASSISTANT，主要用于无缓存 API，效果不错。",
+        "en": "Keep SYSTEM messages and only the latest N USER/ASSISTANT turns. Works especially well with non-cached APIs."
     },
     "enabledByDefault": true,
     "env": [

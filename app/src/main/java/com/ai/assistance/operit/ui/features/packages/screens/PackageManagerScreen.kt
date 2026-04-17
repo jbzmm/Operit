@@ -68,6 +68,7 @@ import com.ai.assistance.operit.R
 private data class ExternalPackageImportResult(
     val message: String,
     val availablePackages: Map<String, ToolPackage>,
+    val allAvailablePackages: Map<String, ToolPackage>,
     val importedPackages: List<String>,
     val packageLoadErrors: Map<String, String>,
     val packageLoadErrorInfos: List<PackageManager.PackageLoadErrorInfo>,
@@ -76,6 +77,7 @@ private data class ExternalPackageImportResult(
 
 private data class PackageManagerSnapshot(
     val availablePackages: Map<String, ToolPackage>,
+    val allAvailablePackages: Map<String, ToolPackage>,
     val importedPackages: List<String>,
     val packageLoadErrors: Map<String, String>,
     val packageLoadErrorInfos: List<PackageManager.PackageLoadErrorInfo>
@@ -101,6 +103,7 @@ fun PackageManagerScreen(
 
     // State for available and imported packages
     val availablePackages = remember { mutableStateOf<Map<String, ToolPackage>>(emptyMap()) }
+    val allAvailablePackages = remember { mutableStateOf<Map<String, ToolPackage>>(emptyMap()) }
     val importedPackages = remember { mutableStateOf<List<String>>(emptyList()) }
     // UI展示用的导入状态列表，与后端状态分离
     val visibleImportedPackages = remember { mutableStateOf<List<String>>(emptyList()) }
@@ -134,7 +137,7 @@ fun PackageManagerScreen(
 
     val requiredEnvByPackage by remember {
         derivedStateOf {
-            val packagesMap = availablePackages.value
+            val packagesMap = allAvailablePackages.value
             val imported = importedPackages.value.toSet()
 
             imported
@@ -210,6 +213,7 @@ fun PackageManagerScreen(
                                             val importMessage = packageManager.importPackageFromExternalStorage(tempFile.absolutePath)
 
                                             val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
+                                            val allAvailable = packageManager.getAvailablePackages()
                                             val imported = packageManager.getImportedPackages()
                                             val errors = packageManager.getPackageLoadErrors()
                                             val errorInfos = packageManager.getPackageLoadErrorInfos()
@@ -219,6 +223,7 @@ fun PackageManagerScreen(
                                             ExternalPackageImportResult(
                                                 message = importMessage,
                                                 availablePackages = available,
+                                                allAvailablePackages = allAvailable,
                                                 importedPackages = imported,
                                                 packageLoadErrors = errors,
                                                 packageLoadErrorInfos = errorInfos,
@@ -232,6 +237,7 @@ fun PackageManagerScreen(
                                     }
 
                                 availablePackages.value = loadResult.availablePackages
+                                allAvailablePackages.value = loadResult.allAvailablePackages
                                 importedPackages.value = loadResult.importedPackages
                                 packageLoadErrors.value = loadResult.packageLoadErrors
                                 packageLoadErrorInfos.value = loadResult.packageLoadErrorInfos
@@ -289,11 +295,13 @@ fun PackageManagerScreen(
             val loadResult =
                 withContext(Dispatchers.IO) {
                     val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
+                    val allAvailable = packageManager.getAvailablePackages()
                     val imported = packageManager.getImportedPackages()
                     val errors = packageManager.getPackageLoadErrors()
                     val errorInfos = packageManager.getPackageLoadErrorInfos()
                     PackageManagerSnapshot(
                         availablePackages = available,
+                        allAvailablePackages = allAvailable,
                         importedPackages = imported,
                         packageLoadErrors = errors,
                         packageLoadErrorInfos = errorInfos
@@ -301,6 +309,7 @@ fun PackageManagerScreen(
                 }
 
             availablePackages.value = loadResult.availablePackages
+            allAvailablePackages.value = loadResult.allAvailablePackages
             importedPackages.value = loadResult.importedPackages
             packageLoadErrors.value = loadResult.packageLoadErrors
             packageLoadErrorInfos.value = loadResult.packageLoadErrorInfos
@@ -726,12 +735,14 @@ fun PackageManagerScreen(
                             val loadResult =
                                 withContext(Dispatchers.IO) {
                                     val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
+                                    val allAvailable = packageManager.getAvailablePackages()
                                     val imported = packageManager.getImportedPackages()
-                                    available to imported
+                                    Triple(available, allAvailable, imported)
                                 }
 
                             availablePackages.value = loadResult.first
-                            importedPackages.value = loadResult.second
+                            allAvailablePackages.value = loadResult.second
+                            importedPackages.value = loadResult.third
                             visibleImportedPackages.value = importedPackages.value.toList()
                             AppLogger.d(
                                 "PackageManagerScreen",
@@ -803,12 +814,14 @@ fun PackageManagerScreen(
                                 withContext(Dispatchers.IO) {
                                     PackageManagerSnapshot(
                                         availablePackages = packageManager.getTopLevelAvailablePackages(forceRefresh = true),
+                                        allAvailablePackages = packageManager.getAvailablePackages(),
                                         importedPackages = packageManager.getImportedPackages(),
                                         packageLoadErrors = packageManager.getPackageLoadErrors(),
                                         packageLoadErrorInfos = packageManager.getPackageLoadErrorInfos()
                                     )
                                 }
                             availablePackages.value = refreshed.availablePackages
+                            allAvailablePackages.value = refreshed.allAvailablePackages
                             importedPackages.value = refreshed.importedPackages
                             packageLoadErrors.value = refreshed.packageLoadErrors
                             packageLoadErrorInfos.value = refreshed.packageLoadErrorInfos
