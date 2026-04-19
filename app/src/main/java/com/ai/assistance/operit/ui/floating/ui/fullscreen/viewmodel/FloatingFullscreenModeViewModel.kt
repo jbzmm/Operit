@@ -12,6 +12,7 @@ import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
 import com.ai.assistance.operit.ui.floating.ui.pet.AvatarEmotionManager
 import com.ai.assistance.operit.ui.floating.voice.SpeechInteractionManager
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.stream.Stream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -300,6 +301,8 @@ class FloatingFullscreenModeViewModel(
                     previousJob?.join()
                     speechManager.voiceService.speak(text, interrupt)
                 } catch (_: kotlinx.coroutines.CancellationException) {
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "TTS playback failed", e)
                 }
             }
     }
