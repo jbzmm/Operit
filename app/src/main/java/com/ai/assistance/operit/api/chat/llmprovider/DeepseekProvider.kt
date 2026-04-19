@@ -3,7 +3,6 @@ package com.ai.assistance.operit.api.chat.llmprovider
 import android.content.Context
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
 import com.ai.assistance.operit.core.chat.hooks.PromptTurnKind
-import com.ai.assistance.operit.core.chat.hooks.mergeAdjacentTurns
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ToolPrompt
@@ -160,7 +159,7 @@ class DeepseekProvider(
         useToolCall: Boolean
     ): JSONArray {
         val messagesArray = JSONArray()
-        val effectiveHistory = chatHistory.mergeAdjacentTurns()
+        val effectiveHistory = prepareHistoryForProvider(chatHistory, useToolCall)
 
         var queuedAssistantToolText: String? = null
         var queuedAssistantReasoning: String? = null

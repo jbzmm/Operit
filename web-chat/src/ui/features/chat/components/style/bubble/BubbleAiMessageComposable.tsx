@@ -1,4 +1,4 @@
-import { AttachmentChip } from '../../AttachmentChip';
+import { MessageAttachmentTag } from '../../attachments';
 import { CustomXmlRenderer } from '../../part/CustomXmlRenderer';
 import { BubbleImageBackgroundSurface } from './BubbleImageBackgroundSurface';
 import {
@@ -60,6 +60,8 @@ export function BubbleAiMessageComposable({
     .filter(Boolean)
     .join(' ');
   const showWideHeader = wideLayout && (showAvatar || headerName || headerMeta);
+  const attachmentBackground = theme?.bubble.assistant_bubble_color ?? theme?.palette?.surface_color;
+  const attachmentText = theme?.bubble.assistant_text_color ?? theme?.palette?.on_surface_color;
 
   if (wideLayout) {
     return (
@@ -99,7 +101,12 @@ export function BubbleAiMessageComposable({
         {message.attachments.length ? (
           <div className="chat-message-attachments">
             {message.attachments.map((attachment) => (
-              <AttachmentChip attachment={attachment} key={attachment.id} />
+              <MessageAttachmentTag
+                attachment={attachment}
+                backgroundColor={attachmentBackground}
+                key={attachment.id}
+                textColor={attachmentText}
+              />
             ))}
           </div>
         ) : null}
@@ -144,7 +151,12 @@ export function BubbleAiMessageComposable({
       {message.attachments.length ? (
         <div className="chat-message-attachments">
           {message.attachments.map((attachment) => (
-            <AttachmentChip attachment={attachment} key={attachment.id} />
+            <MessageAttachmentTag
+              attachment={attachment}
+              backgroundColor={attachmentBackground}
+              key={attachment.id}
+              textColor={attachmentText}
+            />
           ))}
         </div>
       ) : null}

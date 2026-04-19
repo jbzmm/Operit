@@ -1,4 +1,4 @@
-import { AttachmentChip } from '../../AttachmentChip';
+import { MessageAttachmentTag } from '../../attachments';
 import { GlassSurface } from '../../part/GlassSurface';
 import { effectiveUserDisplayContent, effectiveUserDisplayName } from '../../../util/chatUtils';
 import type {
@@ -54,6 +54,9 @@ export function UserMessageComposable({
     ...imageLinks.map(imageLinkToAttachment),
     ...message.attachments
   ];
+  const cursorAttachmentBackground =
+    cursorUserColor ?? theme?.bubble.user_bubble_color ?? theme?.palette?.surface_variant_color;
+  const cursorAttachmentText = cursorUserText ?? theme?.palette?.on_surface_color;
 
   return (
     <article className="cursor-user-message">
@@ -69,7 +72,12 @@ export function UserMessageComposable({
       {assetChips.length ? (
         <div className="chat-message-attachments cursor-attachment-row">
           {assetChips.map((attachment) => (
-            <AttachmentChip attachment={attachment} key={attachment.id} />
+            <MessageAttachmentTag
+              attachment={attachment}
+              backgroundColor={cursorAttachmentBackground}
+              key={attachment.id}
+              textColor={cursorAttachmentText}
+            />
           ))}
         </div>
       ) : null}

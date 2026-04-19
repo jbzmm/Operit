@@ -5,7 +5,6 @@ import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
 import com.ai.assistance.operit.core.chat.hooks.PromptTurnKind
-import com.ai.assistance.operit.core.chat.hooks.mergeAdjacentTurns
 import com.ai.assistance.operit.core.chat.hooks.toPromptTurns
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
@@ -622,7 +621,11 @@ class ClaudeProvider(
         preserveThinkInHistory: Boolean
     ): ClaudeSerializedHistory {
         val messagesArray = JSONArray()
-        val effectiveHistory = chatHistory.mergeAdjacentTurns()
+        val effectiveHistory =
+            StructuredToolCallBridge.compileHistoryForProvider(
+                chatHistory,
+                useToolCall = enableToolCall
+            )
 
         val systemMessages = effectiveHistory.filter { it.kind == PromptTurnKind.SYSTEM }
         val systemPrompt =

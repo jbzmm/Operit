@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -124,12 +125,7 @@ fun PhoneLayout(
         val drawerContentAlpha =
                 if (enableNavigationAnimation) 0.72f + (0.28f * drawerProgress)
                 else 0.8f + (0.2f * drawerProgress)
-        val scrimColor =
-                if (enableNavigationAnimation) {
-                        MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f * drawerProgress)
-                } else {
-                        Color.Transparent
-                }
+        val scrimColor = Color.Transparent
 
         // 侧边栏相关拖拽状态
         var currentDrag by remember { mutableStateOf(0f) }
@@ -310,22 +306,30 @@ fun PhoneLayout(
                         Box(modifier = Modifier.fillMaxSize()) { cachedDrawerContent() }
                 }
 
-                // 移除黑色遮罩层，改为透明的可点击区域以关闭抽屉
+                // 在主内容上方放置遮罩层，阻止右侧内容继续响应点击
                 if (isDrawerOpen) {
                         Box(
-                                modifier =
-                                        Modifier.fillMaxSize()
-                                                .offset(x = drawerWidth)
-                                                .background(scrimColor)
-                                                .zIndex(0.5f)
-                                                .clickable(
-                                                        interactionSource =
-                                                                remember {
-                                                                        MutableInteractionSource()
-                                                                },
-                                                        indication = null
-                                                ) { scope.launch { drawerState.close() } }
-                        )
+                                modifier = Modifier.fillMaxSize().zIndex(1.5f)
+                        ) {
+                                Box(
+                                        modifier =
+                                                Modifier.fillMaxSize()
+                                                        .padding(start = drawerWidth)
+                                                        .background(scrimColor)
+                                                        .clickable(
+                                                                interactionSource =
+                                                                        remember {
+                                                                                MutableInteractionSource()
+                                                                        },
+                                                                indication = null,
+                                                                onClick = {
+                                                                        scope.launch {
+                                                                                drawerState.close()
+                                                                        }
+                                                                }
+                                                        )
+                                )
+                        }
                 }
         }
 }

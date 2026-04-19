@@ -312,7 +312,13 @@
   margin-bottom: 0;
 }
 
-.chat-message-attachments,
+.chat-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .composer-attachment-strip {
   display: flex;
   flex-wrap: wrap;
@@ -322,6 +328,35 @@
 .chat-message-attachments.align-end,
 .bubble-message-composable.user .chat-message-attachments {
   justify-content: flex-end;
+}
+
+.message-attachment-tag {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(100%, 148px);
+  height: 24px;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: var(--message-attachment-bg);
+  color: var(--message-attachment-text);
+}
+
+.message-attachment-tag-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--message-attachment-icon);
+}
+
+.message-attachment-tag-label {
+  max-width: 120px;
+  overflow: hidden;
+  font-size: calc(12px * var(--chat-font-scale));
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attachment-chip {
@@ -400,7 +435,6 @@
   margin-left: auto;
 }
 
-.bubble-message-composable.user.is-compact .chat-message-attachments,
 .bubble-message-composable.ai.is-compact .chat-message-attachments,
 .bubble-message-composable.ai.is-compact .bubble-assistant-message {
   width: auto;
@@ -408,8 +442,7 @@
   max-width: min(85%, 760px);
 }
 
-.bubble-message-composable.user.is-wide .bubble-user-message,
-.bubble-message-composable.user.is-wide .chat-message-attachments {
+.bubble-message-composable.user.is-wide .bubble-user-message {
   width: fit-content;
   min-width: 0;
   max-width: min(100%, 760px);
@@ -484,25 +517,37 @@
 .bubble-user-image-strip {
   display: flex;
   width: 100%;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
+  padding: 0 0 4px 32px;
 }
 
 .bubble-user-image-card {
+  display: block;
+  appearance: none;
+  -webkit-appearance: none;
   width: 120px;
   height: 120px;
   overflow: hidden;
+  padding: 0;
   border: 1px solid var(--chat-border);
-  border-radius: 10px;
-  background: var(--chat-card-soft);
-  box-shadow: 0 8px 18px var(--chat-shadow);
+  border-radius: 8px;
+  background: var(--chat-surface-color);
+  box-shadow: 0 2px 6px var(--chat-shadow);
+  cursor: pointer;
 }
 
 .bubble-user-image-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.bubble-message-composable.user .chat-message-attachments {
+  width: 100%;
+  min-width: 0;
 }
 
 .bubble-message-composable.ai.is-compact.has-avatar .chat-message-attachments {

@@ -1,4 +1,4 @@
-import { AttachmentChip } from '../../AttachmentChip';
+import { MessageAttachmentTag } from '../../attachments';
 import { BubbleImageBackgroundSurface } from './BubbleImageBackgroundSurface';
 import {
   bubbleImageStyle,
@@ -62,9 +62,13 @@ function ReplyPreview({
 }
 
 function BubbleUserImageLinks({
-  imageLinks
+  backgroundColor,
+  imageLinks,
+  textColor
 }: {
+  backgroundColor?: string | null;
   imageLinks: WebMessageImageLink[];
+  textColor?: string | null;
 }) {
   if (!imageLinks.length) {
     return null;
@@ -74,11 +78,21 @@ function BubbleUserImageLinks({
     <div className="bubble-user-image-strip">
       {imageLinks.map((imageLink) =>
         imageLink.asset_url ? (
-          <div className="bubble-user-image-card" key={imageLink.id}>
+          <button
+            className="bubble-user-image-card"
+            key={imageLink.id}
+            onClick={() => window.open(imageLink.asset_url ?? '', '_blank', 'noopener,noreferrer')}
+            type="button"
+          >
             <img alt="User uploaded content" src={imageLink.asset_url} />
-          </div>
+          </button>
         ) : (
-          <AttachmentChip attachment={imageLinkToAttachment(imageLink)} key={imageLink.id} />
+          <MessageAttachmentTag
+            attachment={imageLinkToAttachment(imageLink)}
+            backgroundColor={backgroundColor}
+            key={imageLink.id}
+            textColor={textColor}
+          />
         )
       )}
     </div>
@@ -86,9 +100,13 @@ function BubbleUserImageLinks({
 }
 
 function BubbleUserAttachmentRow({
-  attachments
+  attachments,
+  backgroundColor,
+  textColor
 }: {
   attachments: WebMessageAttachment[];
+  backgroundColor?: string | null;
+  textColor?: string | null;
 }) {
   if (!attachments.length) {
     return null;
@@ -97,7 +115,12 @@ function BubbleUserAttachmentRow({
   return (
     <div className="chat-message-attachments align-end">
       {attachments.map((attachment) => (
-        <AttachmentChip attachment={attachment} key={attachment.id} />
+        <MessageAttachmentTag
+          attachment={attachment}
+          backgroundColor={backgroundColor}
+          key={attachment.id}
+          textColor={textColor}
+        />
       ))}
     </div>
   );
@@ -125,6 +148,8 @@ export function BubbleUserMessageComposable({
     : theme?.bubble.user_liquid_glass
       ? 'liquid'
       : undefined;
+  const attachmentBackground = theme?.bubble.user_bubble_color ?? theme?.palette?.surface_variant_color;
+  const attachmentText = theme?.bubble.user_text_color ?? theme?.palette?.on_surface_color;
   const backgroundStyle =
     theme?.bubble.user_water_glass || theme?.bubble.user_liquid_glass
       ? undefined
@@ -143,8 +168,16 @@ export function BubbleUserMessageComposable({
     return (
       <article className="bubble-message-composable user is-wide">
         <ReplyPreview align="end" message={message} />
-        <BubbleUserImageLinks imageLinks={imageLinks} />
-        <BubbleUserAttachmentRow attachments={message.attachments} />
+        <BubbleUserImageLinks
+          backgroundColor={attachmentBackground}
+          imageLinks={imageLinks}
+          textColor={attachmentText}
+        />
+        <BubbleUserAttachmentRow
+          attachments={message.attachments}
+          backgroundColor={attachmentBackground}
+          textColor={attachmentText}
+        />
 
         {showWideHeader ? (
           <div className="bubble-user-header">
@@ -176,8 +209,16 @@ export function BubbleUserMessageComposable({
   return (
     <article className="bubble-message-composable user is-compact">
       <ReplyPreview align="end" message={message} />
-      <BubbleUserImageLinks imageLinks={imageLinks} />
-      <BubbleUserAttachmentRow attachments={message.attachments} />
+      <BubbleUserImageLinks
+        backgroundColor={attachmentBackground}
+        imageLinks={imageLinks}
+        textColor={attachmentText}
+      />
+      <BubbleUserAttachmentRow
+        attachments={message.attachments}
+        backgroundColor={attachmentBackground}
+        textColor={attachmentText}
+      />
 
       <div className="bubble-inline-row user">
         <div className={`bubble-inline-stack user ${showAvatar ? 'has-avatar' : 'no-avatar'}`}>

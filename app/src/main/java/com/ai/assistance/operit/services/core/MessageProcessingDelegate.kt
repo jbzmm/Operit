@@ -221,7 +221,7 @@ class MessageProcessingDelegate(
         workspaceEnv: String?,
         replyToMessage: ChatMessage?,
         chatId: String? = null
-    ): String {
+    ): String = withContext(Dispatchers.IO) {
         val totalStartTime = messageTimingNow()
         val configId = functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
         val currentModelConfig = modelConfigManager.getModelConfigFlow(configId).first()
@@ -247,7 +247,7 @@ class MessageProcessingDelegate(
             startTimeMs = totalStartTime,
             details = "attachments=${attachments.size}, configId=$configId, finalLength=${finalMessageContent.length}"
         )
-        return finalMessageContent
+        finalMessageContent
     }
 
     fun getResponseStream(chatId: String): SharedStream<String>? {

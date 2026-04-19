@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -487,23 +488,86 @@ private fun ChatMessageLocatorRow(
     maxMessageLength: Int,
     onClick: () -> Unit,
 ) {
-    val (fillColor, previewTextColor) =
-        when (message.sender) {
-            "user" ->
-                MaterialTheme.colorScheme.primaryContainer to
-                    MaterialTheme.colorScheme.onPrimaryContainer
-            "summary" ->
-                MaterialTheme.colorScheme.tertiaryContainer to
-                    MaterialTheme.colorScheme.onTertiaryContainer
-            "system" ->
-                MaterialTheme.colorScheme.secondaryContainer to
-                    MaterialTheme.colorScheme.onSecondaryContainer
-            "think" ->
-                MaterialTheme.colorScheme.surfaceVariant to
-                    MaterialTheme.colorScheme.onSurfaceVariant
-            else ->
-                MaterialTheme.colorScheme.secondaryContainer to
-                    MaterialTheme.colorScheme.onSecondaryContainer
+    val isDarkSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val (fillColor, rawPreviewTextColor, fillAlpha) =
+        if (isDarkSurface) {
+            when (message.sender) {
+                "user" ->
+                    Triple(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer,
+                        0.9f,
+                    )
+                "summary" ->
+                    Triple(
+                        MaterialTheme.colorScheme.tertiaryContainer,
+                        MaterialTheme.colorScheme.onTertiaryContainer,
+                        0.9f,
+                    )
+                "system" ->
+                    Triple(
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer,
+                        0.9f,
+                    )
+                "think" ->
+                    Triple(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                        0.9f,
+                    )
+                else ->
+                    Triple(
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer,
+                        0.9f,
+                    )
+            }
+        } else {
+            when (message.sender) {
+                "user" ->
+                    Triple(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer,
+                        0.98f,
+                    )
+                "ai" ->
+                    Triple(
+                        MaterialTheme.colorScheme.tertiaryContainer,
+                        MaterialTheme.colorScheme.onTertiaryContainer,
+                        0.98f,
+                    )
+                "summary" ->
+                    Triple(
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer,
+                        0.92f,
+                    )
+                "system" ->
+                    Triple(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                        0.86f,
+                    )
+                "think" ->
+                    Triple(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                        0.78f,
+                    )
+                else ->
+                    Triple(
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer,
+                        0.9f,
+                    )
+            }
+        }
+    val previewTextColor =
+        if (isDarkSurface) {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = if (isCurrent) 0.96f else 0.88f)
+        } else {
+            rawPreviewTextColor
         }
     val containerColor =
         if (isCurrent) {
@@ -559,7 +623,7 @@ private fun ChatMessageLocatorRow(
                             .fillMaxHeight()
                             .fillMaxWidth(messageBarFraction(messageLength, maxMessageLength))
                             .clip(RoundedCornerShape(12.dp))
-                            .background(fillColor.copy(alpha = 0.9f)),
+                            .background(fillColor.copy(alpha = fillAlpha)),
                 )
                 Text(
                     text = previewText,

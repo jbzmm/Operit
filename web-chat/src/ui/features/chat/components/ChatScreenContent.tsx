@@ -17,7 +17,9 @@ export function ChatScreenContent({
   viewModel: ChatViewModel;
 }) {
   const headerRef = useRef<HTMLDivElement | null>(null);
+  const composerHostRef = useRef<HTMLDivElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(0);
   const [isFloatingMode, setIsFloatingMode] = useState(getIsFloatingMode());
   const overlayMode = Boolean(viewModel.theme?.header.overlay);
   const showInputProcessingStatus =
@@ -44,6 +46,31 @@ export function ChatScreenContent({
     setHeaderHeight(element.getBoundingClientRect().height);
     return () => observer.disconnect();
   }, [overlayMode, viewModel.activeCharacterName, viewModel.historyOpen, viewModel.selectedChatId]);
+
+  useEffect(() => {
+    const element = composerHostRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') {
+      setComposerHeight(element?.getBoundingClientRect().height ?? 0);
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      setComposerHeight(entry?.contentRect.height ?? 0);
+    });
+
+    observer.observe(element);
+    setComposerHeight(element.getBoundingClientRect().height);
+    return () => observer.disconnect();
+  }, [
+    viewModel.activeInputStyle,
+    viewModel.attachmentPanelOpen,
+    viewModel.error,
+    viewModel.inputProcessingStage,
+    viewModel.isPendingQueueExpanded,
+    viewModel.pendingQueueMessages.length,
+    viewModel.pendingUploads.length
+  ]);
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -165,7 +192,7 @@ export function ChatScreenContent({
           </div>
           <ChatArea
             autoScrollToBottom={viewModel.autoScrollToBottom}
-            bottomPadding={viewModel.activeInputStyle === 'agent' ? 212 : 168}
+            bottomPadding={composerHeight}
             chatHistory={viewModel.messages}
             chatStyle={viewModel.activeChatStyle}
             currentChatId={viewModel.selectedChatId}
@@ -191,6 +218,7 @@ export function ChatScreenContent({
           ]
             .filter(Boolean)
             .join(' ')}
+          ref={composerHostRef}
         >
           {composer}
           {viewModel.error ? <div className="chat-inline-error">{viewModel.error}</div> : null}

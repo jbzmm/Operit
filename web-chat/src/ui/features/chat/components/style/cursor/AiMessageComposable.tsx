@@ -1,4 +1,4 @@
-import { AttachmentChip } from '../../AttachmentChip';
+import { MessageAttachmentTag } from '../../attachments';
 import { CustomXmlRenderer } from '../../part/CustomXmlRenderer';
 import { assistantCompactMeta } from '../../../util/chatUtils';
 import type { WebChatMessage, WebThemeSnapshot } from '../../../util/chatTypes';
@@ -11,6 +11,8 @@ export function AiMessageComposable({
   theme: WebThemeSnapshot | null;
 }) {
   const detailText = assistantCompactMeta(message, theme);
+  const attachmentBackground = theme?.bubble.assistant_bubble_color ?? theme?.palette?.surface_color;
+  const attachmentText = theme?.bubble.assistant_text_color ?? theme?.palette?.on_surface_color;
 
   return (
     <article className="cursor-ai-message">
@@ -31,7 +33,12 @@ export function AiMessageComposable({
       {message.attachments.length ? (
         <div className="chat-message-attachments cursor-attachment-row">
           {message.attachments.map((attachment) => (
-            <AttachmentChip attachment={attachment} key={attachment.id} />
+            <MessageAttachmentTag
+              attachment={attachment}
+              backgroundColor={attachmentBackground}
+              key={attachment.id}
+              textColor={attachmentText}
+            />
           ))}
         </div>
       ) : null}

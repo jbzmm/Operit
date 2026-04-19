@@ -7,7 +7,6 @@ import android.util.Base64
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
 import com.ai.assistance.operit.core.chat.hooks.PromptTurnKind
-import com.ai.assistance.operit.core.chat.hooks.mergeAdjacentTurns
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
@@ -688,8 +687,14 @@ open class OpenAIProvider(
         return chatHistory
     }
 
-    protected open fun mergePromptTurnsForProvider(history: List<PromptTurn>): List<PromptTurn> {
-        return history.mergeAdjacentTurns()
+    protected open fun prepareHistoryForProvider(
+        chatHistory: List<PromptTurn>,
+        useToolCall: Boolean
+    ): List<PromptTurn> {
+        return StructuredToolCallBridge.compileHistoryForProvider(
+            buildEffectiveHistory(chatHistory),
+            useToolCall = useToolCall
+        )
     }
 
     /**
@@ -818,12 +823,12 @@ open class OpenAIProvider(
         preserveThinkInHistory: Boolean = false
     ): Pair<JSONArray, Int> {
         val messagesArray = JSONArray()
+        val providerReadyHistory = prepareHistoryForProvider(chatHistory, useToolCall)
 
         // 使用TokenCacheManager计算token数量（包含工具定义）
-        val comparableHistory = buildComparableHistory(chatHistory, preserveThinkInHistory)
+        val comparableHistory = buildComparableHistory(providerReadyHistory, preserveThinkInHistory)
         val tokenCount = tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
-
-        val effectiveHistory = mergePromptTurnsForProvider(buildEffectiveHistory(chatHistory))
+        val effectiveHistory = providerReadyHistory
 
         var queuedAssistantToolText: String? = null
         var queuedToolCalls = JSONArray()

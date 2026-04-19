@@ -3,7 +3,6 @@ package com.ai.assistance.operit.api.chat.llmprovider
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
 import com.ai.assistance.operit.core.chat.hooks.PromptTurnKind
-import com.ai.assistance.operit.core.chat.hooks.mergeAdjacentTurns
 import com.ai.assistance.operit.core.chat.hooks.toPromptTurns
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
@@ -503,10 +502,16 @@ class GeminiProvider(
         val contentsArray = JSONArray()
         var systemInstruction: JSONObject? = null
 
+        val providerReadyHistory =
+            StructuredToolCallBridge.compileHistoryForProvider(
+                chatHistory,
+                useToolCall = enableToolCall
+            )
+
         // 使用TokenCacheManager计算token数量
         val sanitizedHistoryForTokenCount =
             ChatUtils.stripGeminiThoughtSignatureMeta(
-                chatHistory.map { turn ->
+                providerReadyHistory.map { turn ->
                     val comparableRole =
                         when (turn.kind) {
                             PromptTurnKind.SYSTEM -> "system"
@@ -530,7 +535,7 @@ class GeminiProvider(
             toolsJson
         )
 
-        val effectiveHistory = chatHistory.mergeAdjacentTurns()
+        val effectiveHistory = providerReadyHistory
 
         // Find and process system message first
         val systemMessages = effectiveHistory.filter { it.kind == PromptTurnKind.SYSTEM }
