@@ -1,0 +1,94 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK & Build Tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393"
+
+      - name: Download native libs from Google Drive
+        run: |
+          pip install gdown
+          mkdir -p /tmp/deps
+          gdown --folder "https://drive.google.com/drive/folders/1g-Q_i7cf6Ua4KX9ZM6V282EEZvTVVfF7?usp=sharing" -O /tmp/deps --remaining-ok
+          echo "--- Downloaded ---"
+          ls -lh /tmp/deps/
+
+      - name: Place native libs
+        run: |
+          rm -f app/src/main/assets/models/.keep
+          rm -f app/src/main/assets/subpack/.keep
+          rm -f app/src/main/jniLibs/.keep
+
+          unzip -o /tmp/deps/models.zip -d app/src/main/assets/models/
+          unzip -o /tmp/deps/subpack.zip -d app/src/main/assets/subpack/
+          unzip -o /tmp/deps/jniLibs.zip -d app/src/main/jniLibs/
+          unzip -o /tmp/deps/libs.zip -d app/libs/
+
+          echo "--- Verify ---"
+          echo "models:"
+          ls app/src/main/assets/models/ | head -5
+          echo "subpack:"
+          ls app/src/main/assets/subpack/ | head -5
+          echo "jniLibs:"
+          ls app/src/main/jniLibs/ | head -5
+          echo "libs:"
+          ls app/libs/ | head -5
+
+      - name: Create local.properties
+        run: echo "GITHUB_CLIENT_ID=" > local.properties
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm & root deps
+        run: |
+          npm install -g pnpm
+          npm install
+
+      - name: Install web-chat deps
+        run: npm --prefix web-chat install
+
+      - name: Build web-chat
+        run: npm run build:webchat
+
+      - name: Sync example packages
+        run: python3 ./sync_example_packages.py
+
+      - name: Build Debug APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
