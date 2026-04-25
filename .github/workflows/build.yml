@@ -30,6 +30,14 @@ jobs:
           done
           sed -i 's|git@github.com:AAswordman/OperitNightlyRelease.git|https://github.com/AAswordman/OperitNightlyRelease.git|g' .gitmodules
           git submodule update --init --recursive
+          # bullet3 is missing from .gitmodules but required by mmd/CMakeLists.txt
+          if [ ! -f "mmd/third_party/bullet3/CMakeLists.txt" ]; then
+            echo "Cloning bullet3 (missing submodule)..."
+            git clone https://github.com/bulletphysics/bullet3.git mmd/third_party/bullet3
+            cd mmd/third_party/bullet3
+            git checkout 63c4d67e337017f9d8b298c900e9aabdb69296e7
+            cd -
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
