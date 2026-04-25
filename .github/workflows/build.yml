@@ -60,14 +60,17 @@ jobs:
 
       - name: Place native libs
         run: |
-          rm -f app/src/main/assets/models/.keep
-          rm -f app/src/main/assets/subpack/.keep
-          rm -f app/src/main/jniLibs/.keep
-
-          unzip -o /tmp/deps/models.zip -d app/src/main/assets/models/
-          unzip -o /tmp/deps/subpack.zip -d app/src/main/assets/subpack/
-          unzip -o /tmp/deps/jniLibs.zip -d app/src/main/jniLibs/
-          unzip -o /tmp/deps/libs.zip -d app/libs/
+          # All zip files contain full project-relative paths (app/src/main/...)
+          # so extract to project root; use || true to tolerate extra-bytes warnings
+          unzip -o /tmp/deps/models.zip -d . || true
+          unzip -o /tmp/deps/subpack.zip -d . || true
+          unzip -o /tmp/deps/jniLibs.zip -d . || true
+          unzip -o /tmp/deps/libs.zip -d . || true
+          echo "--- Verify ---"
+          ls -l app/src/main/assets/models/ || true
+          ls -l app/src/main/assets/subpack/ || true
+          ls -l app/src/main/jniLibs/ || true
+          ls -l app/libs/ || true
 
       - name: Create local.properties
         run: echo "GITHUB_CLIENT_ID=" > local.properties
