@@ -3,36 +3,33 @@ name: Build APK
 on:
   push:
     branches: [ main ]
-    paths:
-      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (no submodules)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: false
 
-      - name: Init submodules
+      - name: Fix broken submodules and init
         run: |
-          # Remove broken submodule references that have no URL in .gitmodules
-          git config -f .gitmodules --get-regexp path | while read key path; do
-            echo "Found submodule: $path"
-          done
-          
-          # Deinit any submodule not in .gitmodules
-          git ls-files --stage | grep 160000 | awk '{print $4}' | while read sm_path; do
-            url=$(git config -f .gitmodules --get "submodule.${sm_path}.url" 2>/dev/null)
+          # Remove submodule references that have no URL in .gitmodules
+          git ls-files --stage | grep 160000 | awk '{print $4}' | while IFS= read -r sm_path; do
+            url=$(git config -f .gitmodules --get "submodule.${sm_path}.url" 2>/dev/null || true)
             if [ -z "$url" ]; then
-              echo "Removing broken submodule: $sm_path"
+              echo "Removing broken submodule reference: $sm_path"
               git rm --cached "$sm_path" 2>/dev/null || true
-              rm -rf ".git/modules/$sm_path" 2>/dev/null || true
+              rm -rf ".git/modules/${sm_path}" 2>/dev/null || true
             fi
           done
-          
+
+          # Fix SSH URL for OperitNightlyRelease -> HTTPS
+          sed -i 's|git@github.com:AAswordman/OperitNightlyRelease.git|https://github.com/AAswordman/OperitNightlyRelease.git|g' .gitmodules
+
           # Now init valid submodules
           git submodule update --init --recursive
 
