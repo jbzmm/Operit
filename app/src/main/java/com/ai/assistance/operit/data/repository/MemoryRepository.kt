@@ -836,6 +836,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val previousDimension = memory.id.takeIf { it > 0L }
             ?.let { existingId -> memoryBox.get(existingId)?.embedding?.vector?.size }
         memory.folderPath = normalizeFolderPath(memory.folderPath)
+        memory.credibility = memory.credibility.coerceIn(0.0f, 1.0f)
+        memory.importance = memory.importance.coerceIn(0.0f, 1.0f)
         val textForEmbedding = generateTextForEmbedding(memory)
         if (textForEmbedding.isNotBlank()) {
             memory.embedding = generateEmbedding(textForEmbedding, cloudConfig)
@@ -2247,10 +2249,12 @@ class MemoryRepository(private val context: Context, profileId: String) {
     ): Memory? = withContext(Dispatchers.IO) {
         val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
         val previousDimension = memory.embedding?.vector?.size
+        val sanitizedCredibility = newCredibility.coerceIn(0.0f, 1.0f)
+        val sanitizedImportance = newImportance.coerceIn(0.0f, 1.0f)
         val titleChanged = memory.title != newTitle
         val contentChanged = memory.content != newContent
-        val credibilityChanged = memory.credibility != newCredibility
-        val importanceChanged = memory.importance != newImportance
+        val credibilityChanged = memory.credibility != sanitizedCredibility
+        val importanceChanged = memory.importance != sanitizedImportance
 
         val needsReEmbedding =
             contentChanged ||
@@ -2264,8 +2268,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
             content = newContent
             contentType = newContentType
             source = newSource
-            credibility = newCredibility
-            importance = newImportance
+            credibility = sanitizedCredibility
+            importance = sanitizedImportance
             folderPath = normalizeFolderPath(newFolderPath)
         }
 

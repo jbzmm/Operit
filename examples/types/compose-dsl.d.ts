@@ -323,6 +323,7 @@ export interface ComposeCommonProps {
   onLoad?: () => void | Promise<void>;
   modifier?: ComposeModifierValue;
   weight?: number;
+  weightFill?: boolean;
   width?: number;
   height?: number;
   padding?: number | ComposePadding;
@@ -363,6 +364,8 @@ export interface TextProps extends ComposeCommonProps {
   fontWeight?: string;
   fontSize?: number;
   maxLines?: number;
+  softWrap?: boolean;
+  overflow?: ComposeTextOverflow;
   weight?: number;
 }
 
@@ -381,6 +384,10 @@ export interface SwitchProps extends ComposeCommonProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   enabled?: boolean;
+  checkedThumbColor?: ComposeColor;
+  checkedTrackColor?: ComposeColor;
+  uncheckedThumbColor?: ComposeColor;
+  uncheckedTrackColor?: ComposeColor;
 }
 
 export interface CheckboxProps extends ComposeCommonProps {
@@ -393,6 +400,7 @@ export interface ButtonProps extends ComposeCommonProps {
   text?: string;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
+  contentPadding?: ComposePadding;
   shape?: ComposeShape;
 }
 

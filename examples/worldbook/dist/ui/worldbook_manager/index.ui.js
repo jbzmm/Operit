@@ -147,16 +147,32 @@ function Screen(ctx) {
         }
     }
     function renderTag(label, backgroundColor, textColor) {
-        return UI.Surface({
-            containerColor: backgroundColor,
-            shape: { cornerRadius: 8 },
-            padding: { horizontal: 6, vertical: 2 }
+        return UI.Box({
+            modifier: ctx.Modifier
+                .clip({ cornerRadius: 8 })
+                .background(backgroundColor)
         }, [
             UI.Text({
                 text: label,
                 style: "labelSmall",
                 color: textColor,
-                fontSize: 9
+                fontSize: 9,
+                maxLines: 1,
+                padding: { horizontal: 6, vertical: 2 }
+            })
+        ]);
+    }
+    function renderHeaderTag(label, backgroundColor, textColor) {
+        return UI.Surface({
+            shape: { cornerRadius: 8 },
+            containerColor: backgroundColor
+        }, [
+            UI.Text({
+                text: label,
+                style: "labelSmall",
+                color: textColor,
+                fontSize: 9,
+                padding: { horizontal: 6, vertical: 2 }
             })
         ]);
     }
@@ -193,41 +209,41 @@ function Screen(ctx) {
             ? entry.keywords.join("、")
             : "未设置关键词";
         const infoPills = [
-            renderTag(keywordText, colors.secondaryContainer, colors.onSecondaryContainer),
-            renderTag(entry.always_active ? "常驻注入" : "关键词触发", colors.surfaceVariant, colors.onSurfaceVariant),
-            renderTag(`优先级 ${entry.priority ?? 50}`, colors.surfaceVariant, colors.onSurfaceVariant),
-            renderTag(`扫描 ${entry.scan_depth ?? 5}`, colors.surfaceVariant, colors.onSurfaceVariant)
+            renderTag(keywordText, colors.secondaryContainer.copy({ alpha: 0.6 }), colors.onSecondaryContainer),
+            renderTag(entry.always_active ? "常驻注入" : "关键词触发", colors.secondaryContainer.copy({ alpha: 0.6 }), colors.onSecondaryContainer),
+            renderTag(`优先级 ${entry.priority ?? 50}`, colors.secondaryContainer.copy({ alpha: 0.6 }), colors.onSecondaryContainer),
+            renderTag(`扫描 ${entry.scan_depth ?? 5}`, colors.secondaryContainer.copy({ alpha: 0.6 }), colors.onSecondaryContainer)
         ];
         return UI.Card({
             key: entry.id,
             containerColor: colors.surface,
             elevation: 1,
-            fillMaxWidth: true
+            modifier: ctx.Modifier
+                .fillMaxWidth()
+                .clickable(() => doEdit(entry.id))
         }, [
             UI.Column({
                 padding: 12,
-                spacing: 8,
                 fillMaxWidth: true
             }, [
                 UI.Row({
                     fillMaxWidth: true,
                     verticalAlignment: "center"
                 }, [
-                    UI.Surface({
-                        containerColor: entry.enabled
-                            ? colors.primaryContainer
-                            : colors.surfaceVariant,
-                        shape: { cornerRadius: 6 },
+                    UI.Box({
                         width: 28,
                         height: 28,
-                        padding: 6
+                        contentAlignment: "center",
+                        modifier: ctx.Modifier
+                            .clip({ cornerRadius: 6 })
+                            .background(colors.primaryContainer)
                     }, [
                         UI.Icon({
-                            name: entry.enabled ? "autoAwesome" : "menuBook",
-                            tint: entry.enabled ? colors.onPrimaryContainer : colors.onSurfaceVariant,
+                            name: "extension",
+                            tint: colors.onPrimaryContainer,
                             size: 16
                         })
-                    ]),
+                    ].filter(Boolean)),
                     UI.Spacer({ width: 10 }),
                     UI.Column({
                         weight: 1
@@ -235,46 +251,48 @@ function Screen(ctx) {
                         UI.Row({
                             verticalAlignment: "center"
                         }, [
-                            UI.Box({
-                                weight: 1
-                            }, [
-                                UI.Text({
-                                    text: entry.name,
-                                    style: "bodyMedium",
-                                    fontWeight: "medium",
-                                    color: colors.onSurface,
-                                    maxLines: 1
-                                })
-                            ]),
+                            UI.Text({
+                                text: entry.name,
+                                style: "bodyMedium",
+                                fontWeight: "medium",
+                                maxLines: 1,
+                                overflow: "ellipsis",
+                                weight: 1,
+                                weightFill: false
+                            }),
                             entry.always_active
-                                ? UI.Row({
-                                    verticalAlignment: "center"
-                                }, [
-                                    UI.Spacer({ width: 6 }),
-                                    renderTag("常驻", colors.tertiaryContainer, colors.onTertiaryContainer)
-                                ])
+                                ? UI.Spacer({ width: 6 })
+                                : null,
+                            entry.always_active
+                                ? renderHeaderTag("常驻", colors.primary.copy({ alpha: 0.1 }), colors.primary)
                                 : null,
                             entry.is_regex
-                                ? UI.Row({
-                                    verticalAlignment: "center"
-                                }, [
-                                    UI.Spacer({ width: 6 }),
-                                    renderTag("正则", colors.secondaryContainer, colors.onSecondaryContainer)
-                                ])
+                                ? UI.Spacer({ width: 6 })
+                                : null,
+                            entry.is_regex
+                                ? renderHeaderTag("正则", colors.secondary.copy({ alpha: 0.1 }), colors.secondary)
                                 : null
                         ].filter(Boolean))
-                    ]),
+                    ].filter(Boolean)),
                     UI.Switch({
                         checked: entry.enabled,
-                        onCheckedChange: () => doToggle(entry.id),
+                        onCheckedChange: (_checked) => doToggle(entry.id),
+                        enabled: true,
+                        checkedThumbColor: colors.primary,
+                        checkedTrackColor: colors.primaryContainer,
+                        uncheckedThumbColor: colors.outline,
+                        uncheckedTrackColor: colors.surfaceVariant,
                         modifier: ctx.Modifier.scale(0.8)
                     })
                 ]),
-                UI.Surface({
-                    fillMaxWidth: true,
-                    containerColor: colors.surfaceVariant.copy({ alpha: 0.18 }),
-                    shape: { cornerRadius: 12 },
-                    padding: { horizontal: 8, vertical: 6 }
+                UI.Spacer({ height: 8 }),
+                UI.Box({
+                    modifier: ctx.Modifier
+                        .fillMaxWidth()
+                        .clip({ cornerRadius: 12 })
+                        .background(colors.surfaceVariant.copy({ alpha: 0.18 }))
+                        .clickable(() => doEdit(entry.id))
+                        .padding({ horizontal: 8, vertical: 6 })
                 }, [
                     UI.Row({
                         fillMaxWidth: true,
@@ -288,10 +306,11 @@ function Screen(ctx) {
                         UI.Icon({
                             name: "arrowForward",
                             size: 14,
-                            tint: colors.onSurfaceVariant
+                            tint: colors.onSurfaceVariant.copy({ alpha: 0.7 })
                         })
                     ])
                 ]),
+                UI.Spacer({ height: 8 }),
                 UI.Row({
                     fillMaxWidth: true,
                     spacing: 8
@@ -299,8 +318,8 @@ function Screen(ctx) {
                     UI.OutlinedButton({
                         onClick: () => doEdit(entry.id),
                         weight: 1,
-                        fillMaxWidth: true,
-                        height: 32
+                        height: 32,
+                        contentPadding: { horizontal: 12 }
                     }, [
                         UI.Text({
                             text: "编辑",
@@ -311,8 +330,8 @@ function Screen(ctx) {
                     UI.OutlinedButton({
                         onClick: () => doDelete(entry.id, entry.name),
                         weight: 1,
-                        fillMaxWidth: true,
-                        height: 32
+                        height: 32,
+                        contentPadding: { horizontal: 12 }
                     }, [
                         UI.Text({
                             text: "删除",

@@ -327,6 +327,8 @@ def map_param_to_ts(component: str, param: Param) -> Optional[Tuple[str, str, bo
         return ("strokeWidth", "number", False)
     if name == "progress":
         return ("progress", "number", False)
+    if "TextOverflow" in type_name:
+        return ("overflow", "ComposeTextOverflow", False)
     if name == "tint" or name == "color" or name == "contentColor":
         ts_prop = "tint" if component == "Icon" and name == "tint" else name
         return (ts_prop, "ComposeColor", False)
@@ -618,16 +620,17 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderColumnNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val spacing = props.dp("spacing")
                 Column(
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     horizontalAlignment = props.horizontalAlignment("horizontalAlignment"),
                     verticalArrangement = props.verticalArrangement("verticalArrangement", spacing)
                 ) {
-                    renderWeightedNodeChildren(node, onAction, nodePath)
+                    renderColumnScopeNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -640,13 +643,14 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderRowNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val spacing = props.dp("spacing")
                 val onClick = ToolPkgComposeDslParser.extractActionId(props["onClick"])
                 Row(
-                    modifier = applyCommonModifier(Modifier, props).let { modifier ->
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver).let { modifier ->
                         if (!onClick.isNullOrBlank()) {
                             modifier.clickable { onAction(onClick, null) }
                         } else {
@@ -656,7 +660,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                     horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
                     verticalAlignment = props.verticalAlignment("verticalAlignment")
                 ) {
-                    renderWeightedNodeChildren(node, onAction, nodePath)
+                    renderRowScopeNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -669,14 +673,15 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderBoxNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 Box(
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     contentAlignment = props.boxAlignment("contentAlignment")
                 ) {
-                    renderNodeChildren(node, onAction, nodePath)
+                    renderBoxScopeNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -689,12 +694,13 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderSpacerNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 Spacer(
                     modifier =
-                        Modifier
+                        applyScopedCommonModifier(Modifier, props, modifierResolver)
                             .width(props.dp("width"))
                             .height(props.dp("height"))
                 )
@@ -709,7 +715,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderLazyColumnNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val spacing = props.dp("spacing")
@@ -731,7 +738,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
 
                 LazyColumn(
                     state = listState,
-                    modifier = applyCommonModifier(Modifier.fillMaxSize(), props),
+                    modifier = applyScopedCommonModifier(Modifier.fillMaxSize(), props, modifierResolver),
                     horizontalAlignment = props.horizontalAlignment("horizontalAlignment"),
                     reverseLayout = reverseLayout,
                     verticalArrangement = props.verticalArrangement("verticalArrangement", spacing),
@@ -756,12 +763,13 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderLazyRowNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val spacing = props.dp("spacing")
                 androidx.compose.foundation.lazy.LazyRow(
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
                     verticalAlignment = props.verticalAlignment("verticalAlignment")
                 ) {
@@ -784,19 +792,33 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderTextNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val textStyle = props.textStyle("style")
                 val textColor = props.colorOrNull("color")
                 val fontWeight = props.fontWeightOrNull("fontWeight")
+                val fontSize = props.floatOrNull("fontSize")
+                val resolvedStyle =
+                    textStyle.let { style ->
+                        var nextStyle = style
+                        if (fontWeight != null) {
+                            nextStyle = nextStyle.copy(fontWeight = fontWeight)
+                        }
+                        if (fontSize != null) {
+                            nextStyle = nextStyle.copy(fontSize = fontSize.sp)
+                        }
+                        nextStyle
+                    }
                 Text(
                     text = props.string("text"),
-                    style = if (fontWeight != null) textStyle.copy(fontWeight = fontWeight) else textStyle,
+                    style = resolvedStyle,
                     color = textColor ?: Color.Unspecified,
                     maxLines = props.int("maxLines", Int.MAX_VALUE),
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = applyCommonModifier(Modifier, props)
+                    softWrap = props.bool("softWrap", true),
+                    overflow = props.textOverflow("overflow"),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
                 )
             }
             """
@@ -809,7 +831,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderTextFieldNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onValueChange"])
@@ -884,7 +907,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                                 innerTextField()
                             }
                         },
-                        modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+                        modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
                     )
                 } else {
                     OutlinedTextField(
@@ -904,7 +927,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         } else {
                             androidx.compose.ui.text.input.VisualTransformation.None
                         },
-                        modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+                        modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
                     )
                 }
             }
@@ -918,10 +941,31 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderSwitchNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
+                val checkedThumbColor = props.colorOrNull("checkedThumbColor")
+                val checkedTrackColor = props.colorOrNull("checkedTrackColor")
+                val uncheckedThumbColor = props.colorOrNull("uncheckedThumbColor")
+                val uncheckedTrackColor = props.colorOrNull("uncheckedTrackColor")
+                val switchColors =
+                    if (
+                        checkedThumbColor != null ||
+                            checkedTrackColor != null ||
+                            uncheckedThumbColor != null ||
+                            uncheckedTrackColor != null
+                    ) {
+                        androidx.compose.material3.SwitchDefaults.colors(
+                            checkedThumbColor = checkedThumbColor ?: MaterialTheme.colorScheme.primary,
+                            checkedTrackColor = checkedTrackColor ?: MaterialTheme.colorScheme.primaryContainer,
+                            uncheckedThumbColor = uncheckedThumbColor ?: MaterialTheme.colorScheme.outline,
+                            uncheckedTrackColor = uncheckedTrackColor ?: MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    } else {
+                        androidx.compose.material3.SwitchDefaults.colors()
+                    }
                 Switch(
                     checked = props.bool("checked", false),
                     onCheckedChange = { checked ->
@@ -930,7 +974,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props)
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+                    colors = switchColors
                 )
             }
             """
@@ -943,7 +988,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderCheckboxNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -955,7 +1001,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props)
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
                 )
             }
             """
@@ -968,11 +1014,13 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderButtonNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
                 val hasChildren = node.children.isNotEmpty()
+                val contentPadding = props.paddingValuesOrNull("contentPadding")
                 Button(
                     onClick = {
                         if (!actionId.isNullOrBlank()) {
@@ -980,11 +1028,12 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props),
-                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+                    contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
                 ) {
                     if (hasChildren) {
-                        renderNodeChildren(node, onAction, nodePath)
+                        renderRowScopeNodeChildren(node, onAction, nodePath)
                     } else {
                         Text(props.string("text", "Button"))
                     }
@@ -1000,10 +1049,12 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderFilledTonalButtonNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+                val contentPadding = props.paddingValuesOrNull("contentPadding")
                 androidx.compose.material3.FilledTonalButton(
                     onClick = {
                         if (!actionId.isNullOrBlank()) {
@@ -1011,10 +1062,11 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props),
-                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+                    contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
                 ) {
-                    renderNodeChildren(node, onAction, nodePath)
+                    renderRowScopeNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -1027,10 +1079,12 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderOutlinedButtonNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+                val contentPadding = props.paddingValuesOrNull("contentPadding")
                 androidx.compose.material3.OutlinedButton(
                     onClick = {
                         if (!actionId.isNullOrBlank()) {
@@ -1038,10 +1092,11 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props),
-                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+                    shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+                    contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
                 ) {
-                    renderNodeChildren(node, onAction, nodePath)
+                    renderRowScopeNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -1054,7 +1109,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderIconButtonNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -1066,7 +1122,7 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                         }
                     },
                     enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-                    modifier = applyCommonModifier(Modifier, props)
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
                 ) {
                     if (hasChildren) {
                         renderNodeChildren(node, onAction, nodePath)
@@ -1089,7 +1145,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderCardNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val containerColor = props.colorOrNull("containerColor")
@@ -1097,7 +1154,6 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                 val alpha = props.floatOrNull("alpha")
                 val contentColor = props.colorOrNull("contentColor")
                 val contentAlpha = props.floatOrNull("contentAlpha")
-                val spacing = props.dp("spacing")
                 val finalContainerColor = containerColor?.let { color ->
                     when {
                         containerAlpha != null -> color.copy(alpha = containerAlpha)
@@ -1123,17 +1179,12 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                     }
                 Card(
                     colors = cardColors,
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     shape = props.shapeOrNull() ?: CardDefaults.shape,
                     border = props.borderOrNull(),
                     elevation = CardDefaults.cardElevation(defaultElevation = props.dp("elevation", 1.dp))
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(spacing)
-                    ) {
-                        renderNodeChildren(node, onAction, nodePath)
-                    }
+                    renderNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -1146,25 +1197,20 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderSurfaceNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val containerColor = props.colorOrNull("containerColor")
                 val contentColor = props.colorOrNull("contentColor")
                 val alpha = props.floatOrNull("alpha") ?: 1f
-                val spacing = props.dp("spacing")
                 androidx.compose.material3.Surface(
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
                     color = containerColor?.copy(alpha = alpha) ?: Color.Transparent,
                     contentColor = contentColor ?: MaterialTheme.colorScheme.onSurface
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(spacing)
-                    ) {
-                        renderNodeChildren(node, onAction, nodePath)
-                    }
+                    renderNodeChildren(node, onAction, nodePath)
                 }
             }
             """
@@ -1177,7 +1223,8 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderIconNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val iconName = props.string("name", props.string("icon", "info"))
@@ -1188,9 +1235,9 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                     contentDescription = null,
                     tint = tint,
                     modifier = if (size != null) {
-                        applyCommonModifier(Modifier, props).width(size.dp).height(size.dp)
+                        applyScopedCommonModifier(Modifier, props, modifierResolver).width(size.dp).height(size.dp)
                     } else {
-                        applyCommonModifier(Modifier, props)
+                        applyScopedCommonModifier(Modifier, props, modifierResolver)
                     }
                 )
             }
@@ -1204,18 +1251,19 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderLinearProgressIndicatorNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val progress = props.floatOrNull("progress")
                 if (progress != null) {
                     LinearProgressIndicator(
                         progress = { progress.coerceIn(0f, 1f) },
-                        modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+                        modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
                     )
                 } else {
                     LinearProgressIndicator(
-                        modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+                        modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
                     )
                 }
             }
@@ -1229,13 +1277,14 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderCircularProgressIndicatorNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
                 val props = node.props
                 val strokeWidth = props.floatOrNull("strokeWidth")
                 val color = props.colorOrNull("color")
                 CircularProgressIndicator(
-                    modifier = applyCommonModifier(Modifier, props),
+                    modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
                     strokeWidth = if (strokeWidth != null) strokeWidth.dp else 4.dp,
                     color = color ?: MaterialTheme.colorScheme.primary
                 )
@@ -1250,9 +1299,10 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             internal fun renderSnackbarHostNode(
                 node: ToolPkgComposeDslNode,
                 onAction: (String, Any?) -> Unit,
-                nodePath: String
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
             ) {
-                Spacer(modifier = applyCommonModifier(Modifier, node.props))
+                Spacer(modifier = applyScopedCommonModifier(Modifier, node.props, modifierResolver))
             }
             """
         ).strip()
@@ -1265,7 +1315,7 @@ def _generic_default_value_expr(param: Param) -> Optional[str]:
     type_name = param.type
 
     if name == "modifier":
-        return "applyCommonModifier(Modifier, props)"
+        return "applyScopedCommonModifier(Modifier, props, modifierResolver)"
     if name == "imageVector":
         return 'iconFromName(props.string("name", props.string("icon", "info")))'
     if name == "shape":
@@ -1335,7 +1385,8 @@ def build_generic_renderer_function(spec: ComponentSpec, params: Sequence[Param]
     lines.append(f"internal fun {func_name}(")
     lines.append("    node: ToolPkgComposeDslNode,")
     lines.append("    onAction: (String, Any?) -> Unit,")
-    lines.append("    nodePath: String")
+    lines.append("    nodePath: String,")
+    lines.append("    modifierResolver: ComposeDslModifierResolver")
     lines.append(") {")
     lines.append("    val props = node.props")
 
@@ -1453,6 +1504,7 @@ def build_ts_generated_file(
     lines.append("  ComposeColor,")
     lines.append("  ComposeCommonProps,")
     lines.append("  ComposeNodeFactory,")
+    lines.append("  ComposePadding,")
     lines.append("  ComposeShape,")
     lines.append("  ComposeTextFieldStyle,")
     lines.append("  ComposeTextStyle,")
@@ -1487,8 +1539,17 @@ def build_ts_generated_file(
             emitted.setdefault("isPassword", ("boolean", False))
             emitted.setdefault("style", ("ComposeTextFieldStyle", False))
 
+        if component == "Switch":
+            emitted.setdefault("checkedThumbColor", ("ComposeColor", False))
+            emitted.setdefault("checkedTrackColor", ("ComposeColor", False))
+            emitted.setdefault("uncheckedThumbColor", ("ComposeColor", False))
+            emitted.setdefault("uncheckedTrackColor", ("ComposeColor", False))
+
         if component == "IconButton" or component.endswith("IconButton") or component == "IconToggleButton":
             emitted.setdefault("icon", ("string", False))
+
+        if component in {"Button", "FilledTonalButton", "OutlinedButton"}:
+            emitted.setdefault("contentPadding", ("ComposePadding", False))
 
         if component == "Button" or component.endswith("Button"):
             emitted.setdefault("shape", ("ComposeShape", False))
@@ -1554,7 +1615,7 @@ def build_kotlin_registry_file(components: Sequence[ComponentSpec], output_path:
     entries = [
         (
             f'    normalizeToken("{c.dsl_name}") to '
-            f'{{ node, onAction, nodePath -> render{c.dsl_name}Node(node, onAction, nodePath) }},'
+            f'{{ node, onAction, nodePath, modifierResolver -> render{c.dsl_name}Node(node, onAction, nodePath, modifierResolver) }},'
         )
         for c in components
     ]

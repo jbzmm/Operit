@@ -5,6 +5,7 @@ import type {
   ComposeColor,
   ComposeCommonProps,
   ComposeNodeFactory,
+  ComposePadding,
   ComposeShape,
   ComposeTextFieldStyle,
   ComposeTextStyle,
@@ -52,6 +53,7 @@ export interface ComposeGeneratedTextProps extends ComposeCommonProps {
   color?: ComposeColor;
   fontWeight?: string;
   maxLines?: number;
+  overflow?: ComposeTextOverflow;
   softWrap?: boolean;
   style?: ComposeTextStyle;
   text: string;
@@ -74,8 +76,12 @@ export interface ComposeGeneratedTextFieldProps extends ComposeCommonProps {
 
 export interface ComposeGeneratedSwitchProps extends ComposeCommonProps {
   checked: boolean;
+  checkedThumbColor?: ComposeColor;
+  checkedTrackColor?: ComposeColor;
   enabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
+  uncheckedThumbColor?: ComposeColor;
+  uncheckedTrackColor?: ComposeColor;
 }
 
 export interface ComposeGeneratedCheckboxProps extends ComposeCommonProps {
@@ -85,6 +91,7 @@ export interface ComposeGeneratedCheckboxProps extends ComposeCommonProps {
 }
 
 export interface ComposeGeneratedButtonProps extends ComposeCommonProps {
+  contentPadding?: ComposePadding;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -186,6 +193,7 @@ export interface ComposeGeneratedFilledIconToggleButtonProps extends ComposeComm
 }
 
 export interface ComposeGeneratedFilledTonalButtonProps extends ComposeCommonProps {
+  contentPadding?: ComposePadding;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -250,6 +258,7 @@ export interface ComposeGeneratedNavigationRailProps extends ComposeCommonProps 
 }
 
 export interface ComposeGeneratedOutlinedButtonProps extends ComposeCommonProps {
+  contentPadding?: ComposePadding;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -334,6 +343,7 @@ export interface ComposeGeneratedBoxWithConstraintsProps extends ComposeCommonPr
 
 export interface ComposeGeneratedBasicTextProps extends ComposeCommonProps {
   maxLines?: number;
+  overflow?: ComposeTextOverflow;
   softWrap?: boolean;
   style?: ComposeTextStyle;
   text: string;

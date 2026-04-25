@@ -41,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -485,29 +487,41 @@ fun RenderToolPkgComposeDslNode(
     modifier: Modifier = Modifier,
     onAction: (String, Any?) -> Unit = { _, _ -> }
 ) {
-    Box(modifier = modifier) {
-        renderComposeDslNode(
-            node = node,
-            onAction = onAction,
-            nodePath = "0"
-        )
+    CompositionLocalProvider(LocalComposeDslActionHandler provides onAction) {
+        Box(modifier = modifier) {
+            renderComposeDslNode(
+                node = node,
+                onAction = onAction,
+                nodePath = "0"
+            )
+        }
     }
 }
+
+internal val LocalComposeDslActionHandler = staticCompositionLocalOf<(String, Any?) -> Unit> {
+    { _, _ -> }
+}
+
+internal typealias ComposeDslModifierResolver =
+    @Composable (Modifier, Map<String, Any?>) -> Modifier
 
 @Composable
 internal fun renderComposeDslNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    }
 ) {
     val normalizedType = normalizeToken(node.type)
     if (normalizedType == "canvas") {
-        renderCanvasNode(node, onAction)
+        renderCanvasNode(node, onAction, modifierResolver)
         return
     }
     val renderer = composeDslGeneratedNodeRendererRegistry[normalizedType]
     if (renderer != null) {
-        renderer(node, onAction, nodePath)
+        renderer(node, onAction, nodePath, modifierResolver)
         return
     }
     Text(
@@ -517,7 +531,7 @@ internal fun renderComposeDslNode(
 }
 
 internal typealias ComposeDslNodeRenderer =
-    @Composable (ToolPkgComposeDslNode, (String, Any?) -> Unit, String) -> Unit
+    @Composable (ToolPkgComposeDslNode, (String, Any?) -> Unit, String, ComposeDslModifierResolver) -> Unit
 
 private data class CanvasCommand(
     val type: String,
@@ -602,7 +616,8 @@ private fun parseCanvasCommands(raw: Any?): List<CanvasCommand> {
 @Composable
 private fun renderCanvasNode(
     node: ToolPkgComposeDslNode,
-    onAction: (String, Any?) -> Unit
+    onAction: (String, Any?) -> Unit,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val commands = parseCanvasCommands(props["commands"])
@@ -630,7 +645,7 @@ private fun renderCanvasNode(
     }
 
     var modifier =
-        applyCommonModifier(Modifier, props)
+        applyScopedCommonModifier(Modifier, props, modifierResolver)
             .onSizeChanged { size ->
                 if (onSizeChangedActionId != null && size != lastSize) {
                     lastSize = size
@@ -946,7 +961,10 @@ private fun renderCanvasNode(
 
 
 @Composable
-internal fun applyCommonModifier(base: Modifier, props: Map<String, Any?>): Modifier {
+internal fun applyCommonModifier(
+    base: Modifier,
+    props: Map<String, Any?>
+): Modifier {
     var modifier = base
 
     val explicitWidth = props.floatOrNull("width")
@@ -1029,8 +1047,30 @@ private data class ComposeDslModifierOp(
     val args: List<Any?>
 )
 
+internal fun Map<String, Any?>.paddingValuesOrNull(key: String): PaddingValues? {
+    return when (val raw = this[key]) {
+        is Number -> PaddingValues(raw.toFloat().dp)
+        is Map<*, *> -> {
+            val horizontal = (raw["horizontal"] as? Number)?.toFloat()
+            val vertical = (raw["vertical"] as? Number)?.toFloat()
+            if (horizontal != null || vertical != null) {
+                PaddingValues(
+                    horizontal = (horizontal ?: 0f).dp,
+                    vertical = (vertical ?: 0f).dp
+                )
+            } else {
+                null
+            }
+        }
+        else -> null
+    }
+}
+
 @Composable
-private fun applyProxyModifierOps(base: Modifier, rawModifier: Any?): Modifier {
+private fun applyProxyModifierOps(
+    base: Modifier,
+    rawModifier: Any?
+): Modifier {
     val ops = extractModifierOps(rawModifier)
     if (ops.isEmpty()) {
         return base
@@ -1056,8 +1096,23 @@ private fun extractModifierOps(rawModifier: Any?): List<ComposeDslModifierOp> {
     }
 }
 
+internal fun Map<String, Any?>.scopeAlignToken(): String? {
+    stringOrNull("align")?.let { return it }
+    return extractModifierOps(this["modifier"])
+        .lastOrNull { op -> normalizeToken(op.name) == "align" }
+        ?.args
+        ?.firstOrNull()
+        ?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+}
+
 @Composable
-private fun applySingleModifierOp(modifier: Modifier, op: ComposeDslModifierOp): Modifier {
+private fun applySingleModifierOp(
+    modifier: Modifier,
+    op: ComposeDslModifierOp
+): Modifier {
+    val onAction = LocalComposeDslActionHandler.current
     val token = normalizeToken(op.name)
     return when (token) {
         "fillmaxsize" -> {
@@ -1128,6 +1183,14 @@ private fun applySingleModifierOp(modifier: Modifier, op: ComposeDslModifierOp):
         "clip" -> {
             val shape = shapeFromModifierArg(op.args.getOrNull(0)) ?: return modifier
             modifier.clip(shape)
+        }
+        "clickable" -> {
+            val actionId = ToolPkgComposeDslParser.extractActionId(op.args.getOrNull(0))
+            if (actionId.isNullOrBlank()) {
+                modifier
+            } else {
+                modifier.clickable { onAction(actionId, null) }
+            }
         }
         else -> modifier
     }
@@ -1270,6 +1333,14 @@ internal fun Map<String, Any?>.horizontalAlignment(key: String): Alignment.Horiz
     return (getter?.invoke(Alignment) as? Alignment.Horizontal) ?: Alignment.Start
 }
 
+internal fun horizontalAlignmentFromToken(raw: String?): Alignment.Horizontal {
+    val token = normalizeToken(raw.orEmpty())
+    val getter =
+        horizontalAlignmentGetterByToken[token]
+            ?: horizontalAlignmentGetterByToken["${token}horizontally"]
+    return (getter?.invoke(Alignment) as? Alignment.Horizontal) ?: Alignment.Start
+}
+
 internal fun Map<String, Any?>.verticalAlignment(key: String): Alignment.Vertical {
     val token = normalizeToken(string(key))
     val getter =
@@ -1279,8 +1350,32 @@ internal fun Map<String, Any?>.verticalAlignment(key: String): Alignment.Vertica
     return (getter?.invoke(Alignment) as? Alignment.Vertical) ?: Alignment.Top
 }
 
+internal fun verticalAlignmentFromToken(raw: String?): Alignment.Vertical {
+    val token = normalizeToken(raw.orEmpty())
+    val getter =
+        verticalAlignmentGetterByToken[token]
+            ?: verticalAlignmentGetterByToken["${token}vertically"]
+            ?: verticalAlignmentGetterByToken[if (token == "end") "bottom" else token]
+    return (getter?.invoke(Alignment) as? Alignment.Vertical) ?: Alignment.Top
+}
+
+internal fun Map<String, Any?>.textOverflow(key: String): TextOverflow {
+    return when (normalizeToken(string(key))) {
+        "ellipsis" -> TextOverflow.Ellipsis
+        else -> TextOverflow.Clip
+    }
+}
+
 internal fun Map<String, Any?>.boxAlignment(key: String): Alignment {
     val token = normalizeToken(string(key))
+    val getter =
+        boxAlignmentGetterByToken[token]
+            ?: boxAlignmentGetterByToken[if (token == "end") "bottomend" else token]
+    return (getter?.invoke(Alignment) as? Alignment) ?: Alignment.TopStart
+}
+
+internal fun boxAlignmentFromToken(raw: String?): Alignment {
+    val token = normalizeToken(raw.orEmpty())
     val getter =
         boxAlignmentGetterByToken[token]
             ?: boxAlignmentGetterByToken[if (token == "end") "bottomend" else token]

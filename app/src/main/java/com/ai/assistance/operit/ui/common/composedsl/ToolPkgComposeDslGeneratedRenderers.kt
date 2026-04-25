@@ -3,6 +3,7 @@ package com.ai.assistance.operit.ui.common.composedsl
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,46 +52,129 @@ import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
  * Do not edit manually. Regenerate via tools/compose_dsl/generate_compose_dsl_artifacts.py.
  */
 @Composable
+internal fun defaultComposeDslModifierResolver(
+    base: Modifier,
+    props: Map<String, Any?>
+): Modifier {
+    return applyCommonModifier(base, props)
+}
+
+@Composable
+internal fun RowScope.rowComposeDslModifierResolver(
+    base: Modifier,
+    props: Map<String, Any?>
+): Modifier {
+    var modifier = applyCommonModifier(base, props)
+    val weight = props.floatOrNull("weight")
+    if (weight != null) {
+        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    }
+    val alignToken = props.scopeAlignToken()
+    if (alignToken != null) {
+        modifier = modifier.align(verticalAlignmentFromToken(alignToken))
+    }
+    return modifier
+}
+
+@Composable
+internal fun ColumnScope.columnComposeDslModifierResolver(
+    base: Modifier,
+    props: Map<String, Any?>
+): Modifier {
+    var modifier = applyCommonModifier(base, props)
+    val weight = props.floatOrNull("weight")
+    if (weight != null) {
+        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    }
+    val alignToken = props.scopeAlignToken()
+    if (alignToken != null) {
+        modifier = modifier.align(horizontalAlignmentFromToken(alignToken))
+    }
+    return modifier
+}
+
+@Composable
+internal fun BoxScope.boxComposeDslModifierResolver(
+    base: Modifier,
+    props: Map<String, Any?>
+): Modifier {
+    var modifier = applyCommonModifier(base, props)
+    val alignToken = props.scopeAlignToken()
+    if (alignToken != null) {
+        modifier = modifier.align(boxAlignmentFromToken(alignToken))
+    }
+    return modifier
+}
+
+@Composable
+internal fun applyScopedCommonModifier(
+    base: Modifier,
+    props: Map<String, Any?>,
+    modifierResolver: ComposeDslModifierResolver
+): Modifier {
+    return modifierResolver(base, props)
+}
+
+@Composable
 internal fun renderNodeChildren(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver = { base, props ->
+        defaultComposeDslModifierResolver(base, props)
+    }
 ) {
     node.children.forEachIndexed { index, child ->
         val childPath = "$nodePath/$index"
         renderComposeDslNode(
             node = child,
             onAction = onAction,
-            nodePath = childPath
+            nodePath = childPath,
+            modifierResolver = modifierResolver
         )
     }
 }
 
 @Composable
-internal fun ColumnScope.renderWeightedNodeChildren(
+internal fun RowScope.renderRowScopeNodeChildren(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
     nodePath: String
 ) {
-    node.children.forEachIndexed { index, child ->
-        val childPath = "$nodePath/$index"
-        val childWeight = child.props.floatOrNull("weight")
-        if (childWeight != null) {
-            Box(modifier = Modifier.weight(childWeight)) {
-                renderComposeDslNode(
-                    node = child,
-                    onAction = onAction,
-                    nodePath = childPath
-                )
-            }
-        } else {
-            renderComposeDslNode(
-                node = child,
-                onAction = onAction,
-                nodePath = childPath
-            )
-        }
-    }
+    renderNodeChildren(
+        node = node,
+        onAction = onAction,
+        nodePath = nodePath,
+        modifierResolver = { base, props -> rowComposeDslModifierResolver(base, props) }
+    )
+}
+
+@Composable
+internal fun ColumnScope.renderColumnScopeNodeChildren(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String
+) {
+    renderNodeChildren(
+        node = node,
+        onAction = onAction,
+        nodePath = nodePath,
+        modifierResolver = { base, props -> columnComposeDslModifierResolver(base, props) }
+    )
+}
+
+@Composable
+internal fun BoxScope.renderBoxScopeNodeChildren(
+    node: ToolPkgComposeDslNode,
+    onAction: (String, Any?) -> Unit,
+    nodePath: String
+) {
+    renderNodeChildren(
+        node = node,
+        onAction = onAction,
+        nodePath = nodePath,
+        modifierResolver = { base, props -> boxComposeDslModifierResolver(base, props) }
+    )
 }
 
 private fun ToolPkgComposeDslNode.autoScrollSignature(): Int {
@@ -106,46 +190,20 @@ private fun ToolPkgComposeDslNode.autoScrollSignature(): Int {
 }
 
 @Composable
-internal fun RowScope.renderWeightedNodeChildren(
-    node: ToolPkgComposeDslNode,
-    onAction: (String, Any?) -> Unit,
-    nodePath: String
-) {
-    node.children.forEachIndexed { index, child ->
-        val childPath = "$nodePath/$index"
-        val childWeight = child.props.floatOrNull("weight")
-        if (childWeight != null) {
-            Box(modifier = Modifier.weight(childWeight)) {
-                renderComposeDslNode(
-                    node = child,
-                    onAction = onAction,
-                    nodePath = childPath
-                )
-            }
-        } else {
-            renderComposeDslNode(
-                node = child,
-                onAction = onAction,
-                nodePath = childPath
-            )
-        }
-    }
-}
-
-@Composable
 internal fun renderColumnNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
     Column(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         horizontalAlignment = props.horizontalAlignment("horizontalAlignment"),
         verticalArrangement = props.verticalArrangement("verticalArrangement", spacing)
     ) {
-        renderWeightedNodeChildren(node, onAction, nodePath)
+        renderColumnScopeNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -153,13 +211,14 @@ internal fun renderColumnNode(
 internal fun renderRowNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
     val onClick = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     Row(
-        modifier = applyCommonModifier(Modifier, props).let { modifier ->
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver).let { modifier ->
             if (!onClick.isNullOrBlank()) {
                 modifier.clickable { onAction(onClick, null) }
             } else {
@@ -169,7 +228,7 @@ internal fun renderRowNode(
         horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
         verticalAlignment = props.verticalAlignment("verticalAlignment")
     ) {
-        renderWeightedNodeChildren(node, onAction, nodePath)
+        renderRowScopeNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -177,14 +236,15 @@ internal fun renderRowNode(
 internal fun renderBoxNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     Box(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         contentAlignment = props.boxAlignment("contentAlignment")
     ) {
-        renderNodeChildren(node, onAction, nodePath)
+        renderBoxScopeNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -192,12 +252,13 @@ internal fun renderBoxNode(
 internal fun renderSpacerNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     Spacer(
         modifier =
-            Modifier
+            applyScopedCommonModifier(Modifier, props, modifierResolver)
                 .width(props.dp("width"))
                 .height(props.dp("height"))
     )
@@ -207,7 +268,8 @@ internal fun renderSpacerNode(
 internal fun renderLazyColumnNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
@@ -229,7 +291,7 @@ internal fun renderLazyColumnNode(
 
     LazyColumn(
         state = listState,
-        modifier = applyCommonModifier(Modifier.fillMaxSize(), props),
+        modifier = applyScopedCommonModifier(Modifier.fillMaxSize(), props, modifierResolver),
         horizontalAlignment = props.horizontalAlignment("horizontalAlignment"),
         reverseLayout = reverseLayout,
         verticalArrangement = props.verticalArrangement("verticalArrangement", spacing),
@@ -249,12 +311,13 @@ internal fun renderLazyColumnNode(
 internal fun renderLazyRowNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
     androidx.compose.foundation.lazy.LazyRow(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         horizontalArrangement = props.horizontalArrangement("horizontalArrangement", spacing),
         verticalAlignment = props.verticalAlignment("verticalAlignment")
     ) {
@@ -272,19 +335,33 @@ internal fun renderLazyRowNode(
 internal fun renderTextNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val textStyle = props.textStyle("style")
     val textColor = props.colorOrNull("color")
     val fontWeight = props.fontWeightOrNull("fontWeight")
+    val fontSize = props.floatOrNull("fontSize")
+    val resolvedStyle =
+        textStyle.let { style ->
+            var nextStyle = style
+            if (fontWeight != null) {
+                nextStyle = nextStyle.copy(fontWeight = fontWeight)
+            }
+            if (fontSize != null) {
+                nextStyle = nextStyle.copy(fontSize = fontSize.sp)
+            }
+            nextStyle
+        }
     Text(
         text = props.string("text"),
-        style = if (fontWeight != null) textStyle.copy(fontWeight = fontWeight) else textStyle,
+        style = resolvedStyle,
         color = textColor ?: Color.Unspecified,
         maxLines = props.int("maxLines", Int.MAX_VALUE),
-        overflow = TextOverflow.Ellipsis,
-        modifier = applyCommonModifier(Modifier, props)
+        softWrap = props.bool("softWrap", true),
+        overflow = props.textOverflow("overflow"),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
     )
 }
 
@@ -292,7 +369,8 @@ internal fun renderTextNode(
 internal fun renderTextFieldNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onValueChange"])
@@ -367,7 +445,7 @@ internal fun renderTextFieldNode(
                     innerTextField()
                 }
             },
-            modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
         )
     } else {
         OutlinedTextField(
@@ -387,7 +465,7 @@ internal fun renderTextFieldNode(
             } else {
                 androidx.compose.ui.text.input.VisualTransformation.None
             },
-            modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
         )
     }
 }
@@ -396,10 +474,31 @@ internal fun renderTextFieldNode(
 internal fun renderSwitchNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
+    val checkedThumbColor = props.colorOrNull("checkedThumbColor")
+    val checkedTrackColor = props.colorOrNull("checkedTrackColor")
+    val uncheckedThumbColor = props.colorOrNull("uncheckedThumbColor")
+    val uncheckedTrackColor = props.colorOrNull("uncheckedTrackColor")
+    val switchColors =
+        if (
+            checkedThumbColor != null ||
+                checkedTrackColor != null ||
+                uncheckedThumbColor != null ||
+                uncheckedTrackColor != null
+        ) {
+            androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = checkedThumbColor ?: MaterialTheme.colorScheme.primary,
+                checkedTrackColor = checkedTrackColor ?: MaterialTheme.colorScheme.primaryContainer,
+                uncheckedThumbColor = uncheckedThumbColor ?: MaterialTheme.colorScheme.outline,
+                uncheckedTrackColor = uncheckedTrackColor ?: MaterialTheme.colorScheme.surfaceVariant
+            )
+        } else {
+            androidx.compose.material3.SwitchDefaults.colors()
+        }
     Switch(
         checked = props.bool("checked", false),
         onCheckedChange = { checked ->
@@ -408,7 +507,8 @@ internal fun renderSwitchNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props)
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        colors = switchColors
     )
 }
 
@@ -416,7 +516,8 @@ internal fun renderSwitchNode(
 internal fun renderCheckboxNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -428,7 +529,7 @@ internal fun renderCheckboxNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props)
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
     )
 }
 
@@ -436,11 +537,13 @@ internal fun renderCheckboxNode(
 internal fun renderButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     val hasChildren = node.children.isNotEmpty()
+    val contentPadding = props.paddingValuesOrNull("contentPadding")
     Button(
         onClick = {
             if (!actionId.isNullOrBlank()) {
@@ -448,11 +551,12 @@ internal fun renderButtonNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props),
-        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
     ) {
         if (hasChildren) {
-            renderNodeChildren(node, onAction, nodePath)
+            renderRowScopeNodeChildren(node, onAction, nodePath)
         } else {
             Text(props.string("text", "Button"))
         }
@@ -463,7 +567,8 @@ internal fun renderButtonNode(
 internal fun renderIconButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -475,7 +580,7 @@ internal fun renderIconButtonNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props)
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
     ) {
         if (hasChildren) {
             renderNodeChildren(node, onAction, nodePath)
@@ -493,7 +598,8 @@ internal fun renderIconButtonNode(
 internal fun renderCardNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val containerColor = props.colorOrNull("containerColor")
@@ -501,7 +607,6 @@ internal fun renderCardNode(
     val alpha = props.floatOrNull("alpha")
     val contentColor = props.colorOrNull("contentColor")
     val contentAlpha = props.floatOrNull("contentAlpha")
-    val spacing = props.dp("spacing")
     val finalContainerColor = containerColor?.let { color ->
         when {
             containerAlpha != null -> color.copy(alpha = containerAlpha)
@@ -527,17 +632,12 @@ internal fun renderCardNode(
         }
     Card(
         colors = cardColors,
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: CardDefaults.shape,
         border = props.borderOrNull(),
         elevation = CardDefaults.cardElevation(defaultElevation = props.dp("elevation", 1.dp))
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing)
-        ) {
-            renderNodeChildren(node, onAction, nodePath)
-        }
+        renderNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -545,7 +645,8 @@ internal fun renderCardNode(
 internal fun renderMaterialThemeNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.MaterialTheme(
@@ -558,25 +659,20 @@ internal fun renderMaterialThemeNode(
 internal fun renderSurfaceNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val containerColor = props.colorOrNull("containerColor")
     val contentColor = props.colorOrNull("contentColor")
     val alpha = props.floatOrNull("alpha") ?: 1f
-    val spacing = props.dp("spacing")
     androidx.compose.material3.Surface(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         color = containerColor?.copy(alpha = alpha) ?: Color.Transparent,
         contentColor = contentColor ?: MaterialTheme.colorScheme.onSurface
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing)
-        ) {
-            renderNodeChildren(node, onAction, nodePath)
-        }
+        renderNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -584,7 +680,8 @@ internal fun renderSurfaceNode(
 internal fun renderIconNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val iconName = props.string("name", props.string("icon", "info"))
@@ -595,9 +692,9 @@ internal fun renderIconNode(
         contentDescription = null,
         tint = tint,
         modifier = if (size != null) {
-            applyCommonModifier(Modifier, props).width(size.dp).height(size.dp)
+            applyScopedCommonModifier(Modifier, props, modifierResolver).width(size.dp).height(size.dp)
         } else {
-            applyCommonModifier(Modifier, props)
+            applyScopedCommonModifier(Modifier, props, modifierResolver)
         }
     )
 }
@@ -606,18 +703,19 @@ internal fun renderIconNode(
 internal fun renderLinearProgressIndicatorNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val progress = props.floatOrNull("progress")
     if (progress != null) {
         LinearProgressIndicator(
             progress = { progress.coerceIn(0f, 1f) },
-            modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
         )
     } else {
         LinearProgressIndicator(
-            modifier = applyCommonModifier(Modifier.fillMaxWidth(), props)
+            modifier = applyScopedCommonModifier(Modifier.fillMaxWidth(), props, modifierResolver)
         )
     }
 }
@@ -626,13 +724,14 @@ internal fun renderLinearProgressIndicatorNode(
 internal fun renderCircularProgressIndicatorNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val strokeWidth = props.floatOrNull("strokeWidth")
     val color = props.colorOrNull("color")
     CircularProgressIndicator(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         strokeWidth = if (strokeWidth != null) strokeWidth.dp else 4.dp,
         color = color ?: MaterialTheme.colorScheme.primary
     )
@@ -642,20 +741,22 @@ internal fun renderCircularProgressIndicatorNode(
 internal fun renderSnackbarHostNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
-    Spacer(modifier = applyCommonModifier(Modifier, node.props))
+    Spacer(modifier = applyScopedCommonModifier(Modifier, node.props, modifierResolver))
 }
 
 @Composable
 internal fun renderBadgeNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.Badge(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
     ) {
@@ -667,11 +768,12 @@ internal fun renderBadgeNode(
 internal fun renderDismissibleDrawerSheetNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.DismissibleDrawerSheet(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
         drawerTonalElevation = props.dp("drawerTonalElevation")
@@ -684,11 +786,12 @@ internal fun renderDismissibleDrawerSheetNode(
 internal fun renderDividerNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.Divider(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         thickness = props.dp("thickness"),
         color = props.colorOrNull("color") ?: Color.Unspecified
     )
@@ -698,7 +801,8 @@ internal fun renderDividerNode(
 internal fun renderElevatedButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -708,7 +812,7 @@ internal fun renderElevatedButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -720,11 +824,12 @@ internal fun renderElevatedButtonNode(
 internal fun renderElevatedCardNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.ElevatedCard(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
         renderNodeChildren(node, onAction, nodePath)
@@ -735,7 +840,8 @@ internal fun renderElevatedCardNode(
 internal fun renderExtendedFloatingActionButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -745,7 +851,7 @@ internal fun renderExtendedFloatingActionButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
@@ -758,7 +864,8 @@ internal fun renderExtendedFloatingActionButtonNode(
 internal fun renderFilledIconButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -768,7 +875,7 @@ internal fun renderFilledIconButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -788,7 +895,8 @@ internal fun renderFilledIconButtonNode(
 internal fun renderFilledIconToggleButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onCheckedChangeActionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -799,7 +907,7 @@ internal fun renderFilledIconToggleButtonNode(
                 onAction(onCheckedChangeActionId, checked)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -811,10 +919,12 @@ internal fun renderFilledIconToggleButtonNode(
 internal fun renderFilledTonalButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    val contentPadding = props.paddingValuesOrNull("contentPadding")
     androidx.compose.material3.FilledTonalButton(
         onClick = {
             if (!actionId.isNullOrBlank()) {
@@ -822,10 +932,11 @@ internal fun renderFilledTonalButtonNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props),
-        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
     ) {
-        renderNodeChildren(node, onAction, nodePath)
+        renderRowScopeNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -833,7 +944,8 @@ internal fun renderFilledTonalButtonNode(
 internal fun renderFilledTonalIconButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -843,7 +955,7 @@ internal fun renderFilledTonalIconButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -863,7 +975,8 @@ internal fun renderFilledTonalIconButtonNode(
 internal fun renderFilledTonalIconToggleButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onCheckedChangeActionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -874,7 +987,7 @@ internal fun renderFilledTonalIconToggleButtonNode(
                 onAction(onCheckedChangeActionId, checked)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -886,7 +999,8 @@ internal fun renderFilledTonalIconToggleButtonNode(
 internal fun renderFloatingActionButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -896,7 +1010,7 @@ internal fun renderFloatingActionButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
@@ -909,11 +1023,12 @@ internal fun renderFloatingActionButtonNode(
 internal fun renderHorizontalDividerNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.HorizontalDivider(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         thickness = props.dp("thickness"),
         color = props.colorOrNull("color") ?: Color.Unspecified
     )
@@ -923,7 +1038,8 @@ internal fun renderHorizontalDividerNode(
 internal fun renderIconToggleButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onCheckedChangeActionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -934,7 +1050,7 @@ internal fun renderIconToggleButtonNode(
                 onAction(onCheckedChangeActionId, checked)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true)
     ) {
         if (node.children.isNotEmpty()) {
@@ -953,7 +1069,8 @@ internal fun renderIconToggleButtonNode(
 internal fun renderLargeFloatingActionButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -963,7 +1080,7 @@ internal fun renderLargeFloatingActionButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
@@ -976,11 +1093,12 @@ internal fun renderLargeFloatingActionButtonNode(
 internal fun renderModalDrawerSheetNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.ModalDrawerSheet(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
         drawerTonalElevation = props.dp("drawerTonalElevation")
@@ -993,12 +1111,13 @@ internal fun renderModalDrawerSheetNode(
 internal fun renderModalWideNavigationRailNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
     androidx.compose.material3.ModalWideNavigationRail(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         hideOnCollapse = props.bool("hideOnCollapse", false),
         expandedHeaderTopPadding = props.dp("expandedHeaderTopPadding"),
         arrangement = props.verticalArrangement("verticalArrangement", spacing)
@@ -1011,11 +1130,12 @@ internal fun renderModalWideNavigationRailNode(
 internal fun renderNavigationBarNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.NavigationBar(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified,
         tonalElevation = props.dp("tonalElevation")
@@ -1028,11 +1148,12 @@ internal fun renderNavigationBarNode(
 internal fun renderNavigationRailNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.NavigationRail(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
     ) {
@@ -1044,10 +1165,12 @@ internal fun renderNavigationRailNode(
 internal fun renderOutlinedButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val actionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    val contentPadding = props.paddingValuesOrNull("contentPadding")
     androidx.compose.material3.OutlinedButton(
         onClick = {
             if (!actionId.isNullOrBlank()) {
@@ -1055,10 +1178,11 @@ internal fun renderOutlinedButtonNode(
             }
         },
         enabled = !actionId.isNullOrBlank() && props.bool("enabled", true),
-        modifier = applyCommonModifier(Modifier, props),
-        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
+        shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+        contentPadding = contentPadding ?: androidx.compose.material3.ButtonDefaults.ContentPadding
     ) {
-        renderNodeChildren(node, onAction, nodePath)
+        renderRowScopeNodeChildren(node, onAction, nodePath)
     }
 }
 
@@ -1066,11 +1190,12 @@ internal fun renderOutlinedButtonNode(
 internal fun renderOutlinedCardNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.OutlinedCard(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
         renderNodeChildren(node, onAction, nodePath)
@@ -1081,7 +1206,8 @@ internal fun renderOutlinedCardNode(
 internal fun renderOutlinedIconButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -1091,7 +1217,7 @@ internal fun renderOutlinedIconButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -1111,7 +1237,8 @@ internal fun renderOutlinedIconButtonNode(
 internal fun renderOutlinedIconToggleButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onCheckedChangeActionId = ToolPkgComposeDslParser.extractActionId(props["onCheckedChange"])
@@ -1122,7 +1249,7 @@ internal fun renderOutlinedIconToggleButtonNode(
                 onAction(onCheckedChangeActionId, checked)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -1134,11 +1261,12 @@ internal fun renderOutlinedIconToggleButtonNode(
 internal fun renderPermanentDrawerSheetNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.PermanentDrawerSheet(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         drawerContainerColor = props.colorOrNull("drawerContainerColor") ?: Color.Unspecified,
         drawerContentColor = props.colorOrNull("drawerContentColor") ?: Color.Unspecified,
         drawerTonalElevation = props.dp("drawerTonalElevation")
@@ -1151,7 +1279,8 @@ internal fun renderPermanentDrawerSheetNode(
 internal fun renderProvideTextStyleNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.ProvideTextStyle(
@@ -1165,11 +1294,12 @@ internal fun renderProvideTextStyleNode(
 internal fun renderScaffoldNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.Scaffold(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
     ) {
@@ -1181,11 +1311,12 @@ internal fun renderScaffoldNode(
 internal fun renderShortNavigationBarNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.ShortNavigationBar(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
     ) {
@@ -1197,7 +1328,8 @@ internal fun renderShortNavigationBarNode(
 internal fun renderSmallFloatingActionButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -1207,7 +1339,7 @@ internal fun renderSmallFloatingActionButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
         contentColor = props.colorOrNull("contentColor") ?: Color.Unspecified
@@ -1220,11 +1352,12 @@ internal fun renderSmallFloatingActionButtonNode(
 internal fun renderSnackbarNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.Snackbar(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         actionOnNewLine = props.bool("actionOnNewLine", false),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         containerColor = props.colorOrNull("containerColor") ?: Color.Unspecified,
@@ -1240,7 +1373,8 @@ internal fun renderSnackbarNode(
 internal fun renderTabNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -1251,7 +1385,7 @@ internal fun renderTabNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         selectedContentColor = props.colorOrNull("selectedContentColor") ?: Color.Unspecified,
         unselectedContentColor = props.colorOrNull("unselectedContentColor") ?: Color.Unspecified
@@ -1264,7 +1398,8 @@ internal fun renderTabNode(
 internal fun renderTextButtonNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
@@ -1274,7 +1409,7 @@ internal fun renderTextButtonNode(
                 onAction(onClickActionId, null)
             }
         },
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
     ) {
@@ -1286,11 +1421,12 @@ internal fun renderTextButtonNode(
 internal fun renderVerticalDividerNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.VerticalDivider(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         thickness = props.dp("thickness"),
         color = props.colorOrNull("color") ?: Color.Unspecified
     )
@@ -1300,11 +1436,12 @@ internal fun renderVerticalDividerNode(
 internal fun renderVerticalDragHandleNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.material3.VerticalDragHandle(
-        modifier = applyCommonModifier(Modifier, props)
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
     )
 }
 
@@ -1312,12 +1449,13 @@ internal fun renderVerticalDragHandleNode(
 internal fun renderWideNavigationRailNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     val spacing = props.dp("spacing")
     androidx.compose.material3.WideNavigationRail(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         shape = props.shapeOrNull() ?: androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
         arrangement = props.verticalArrangement("verticalArrangement", spacing)
     ) {
@@ -1329,11 +1467,12 @@ internal fun renderWideNavigationRailNode(
 internal fun renderBoxWithConstraintsNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.foundation.layout.BoxWithConstraints(
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         propagateMinConstraints = props.bool("propagateMinConstraints", false)
     ) {
         renderNodeChildren(node, onAction, nodePath)
@@ -1344,12 +1483,13 @@ internal fun renderBoxWithConstraintsNode(
 internal fun renderBasicTextNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.foundation.text.BasicText(
         text = props.string("text"),
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         style = props.textStyle("style"),
         softWrap = props.bool("softWrap", false),
         maxLines = props.int("maxLines", 0)
@@ -1360,7 +1500,8 @@ internal fun renderBasicTextNode(
 internal fun renderDisableSelectionNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.foundation.text.selection.DisableSelection(
@@ -1373,13 +1514,14 @@ internal fun renderDisableSelectionNode(
 internal fun renderImageNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.foundation.Image(
         imageVector = iconFromName(props.string("name", props.string("icon", "info"))),
         contentDescription = props.stringOrNull("contentDescription"),
-        modifier = applyCommonModifier(Modifier, props),
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         alpha = (props.floatOrNull("alpha") ?: 0f)
     )
 }
@@ -1388,11 +1530,12 @@ internal fun renderImageNode(
 internal fun renderSelectionContainerNode(
     node: ToolPkgComposeDslNode,
     onAction: (String, Any?) -> Unit,
-    nodePath: String
+    nodePath: String,
+    modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
     androidx.compose.foundation.text.selection.SelectionContainer(
-        modifier = applyCommonModifier(Modifier, props)
+        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
     ) {
         renderNodeChildren(node, onAction, nodePath)
     }

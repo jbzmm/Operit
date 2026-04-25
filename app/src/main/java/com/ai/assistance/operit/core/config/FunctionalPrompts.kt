@@ -911,6 +911,7 @@ $existingFoldersPrompt
 - `update`: `[["Title", "New full content", "Reason", credibility_or_null, importance_or_null], ...]`.
 - `merge`: `[{"source_titles":["A","B"],"new_title":"...","new_content":"...","new_tags":["..."],"folder_path":"...","reason":"..."}, ...]`.
 - `links`: `[["Source", "Target", "RELATION_TYPE", "Description", weight], ...]` (type must be UPPER_SNAKE_CASE).
+- Numeric ranges: `credibility_or_null`, `importance_or_null`, and link `weight` must be JSON numbers between 0.0 and 1.0 inclusive, or JSON `null` where the schema allows null.
 - `user`: structured object; unknown fields should be `"<UNCHANGED>"`.
 - Use JSON `null` for missing optional values.
 
@@ -992,6 +993,7 @@ $existingFoldersPrompt
 - `update`: `[["标题","新完整内容","原因",可信度或null,重要性或null], ...]`。
 - `merge`: `[{"source_titles":["A","B"],"new_title":"...","new_content":"...","new_tags":["..."],"folder_path":"...","reason":"..."}, ...]`。
 - `links`: `[["源","目标","RELATION_TYPE","描述",权重], ...]`，关系类型用大写下划线。
+- 数值范围：可信度、重要性、链接权重必须是 0.0 到 1.0（含边界）的 JSON 数字；允许缺失的位置使用 JSON `null`。
 - `user`: 结构化对象，未变化字段填 `"<UNCHANGED>"`。
 - 可选值缺失时使用 JSON `null`。
 
