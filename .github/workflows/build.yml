@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  RELEASE_TAG: deps
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +20,6 @@ jobs:
 
       - name: Fix broken submodules and init
         run: |
-          # Remove submodule references that have no URL in .gitmodules
           git ls-files --stage | grep 160000 | awk '{print $4}' | while IFS= read -r sm_path; do
             url=$(git config -f .gitmodules --get "submodule.${sm_path}.url" 2>/dev/null || true)
             if [ -z "$url" ]; then
@@ -26,11 +28,7 @@ jobs:
               rm -rf ".git/modules/${sm_path}" 2>/dev/null || true
             fi
           done
-
-          # Fix SSH URL for OperitNightlyRelease -> HTTPS
           sed -i 's|git@github.com:AAswordman/OperitNightlyRelease.git|https://github.com/AAswordman/OperitNightlyRelease.git|g' .gitmodules
-
-          # Now init valid submodules
           git submodule update --init --recursive
 
       - name: Set up JDK 17
@@ -47,12 +45,38 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393"
 
-      - name: Download native libs from Google Drive
+      - name: Download deps from GitHub Release
+        run: |
+          mkdir -p /tmp/deps
+          REPO=${{ github.repository }}
+          for f in models.zip subpack.zip jniLibs.zip libs.zip; do
+            echo "Downloading $f from Release..."
+            STATUS=$(curl -sL -o "/tmp/deps/$f" -w "%{http_code}" \
+              "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$f")
+            if [ "$STATUS" = "200" ]; then
+              echo "OK: $f ($(du -h /tmp/deps/$f | cut -f1))"
+            else
+              echo "WARN: $f not in Release (HTTP $STATUS)"
+              rm -f "/tmp/deps/$f"
+            fi
+          done
+          echo "--- Downloaded ---"
+          ls -lh /tmp/deps/
+
+      - name: Fallback missing deps from Google Drive
         run: |
           pip install gdown
-          mkdir -p /tmp/deps
-          gdown --folder "https://drive.google.com/drive/folders/1g-Q_i7cf6Ua4KX9ZM6V282EEZvTVVfF7?usp=sharing" -O /tmp/deps --remaining-ok
-          echo "--- Downloaded ---"
+          MISSING=0
+          for f in models.zip subpack.zip jniLibs.zip libs.zip; do
+            if [ ! -s "/tmp/deps/$f" ]; then
+              MISSING=1
+              echo "$f missing, will download from Google Drive"
+            fi
+          done
+          if [ "$MISSING" = "1" ]; then
+            gdown --folder "https://drive.google.com/drive/folders/1g-Q_i7cf6Ua4KX9ZM6V282EEZvTVVfF7?usp=sharing" -O /tmp/deps --remaining-ok
+          fi
+          echo "--- Final deps ---"
           ls -lh /tmp/deps/
 
       - name: Place native libs
@@ -65,16 +89,6 @@ jobs:
           unzip -o /tmp/deps/subpack.zip -d app/src/main/assets/subpack/
           unzip -o /tmp/deps/jniLibs.zip -d app/src/main/jniLibs/
           unzip -o /tmp/deps/libs.zip -d app/libs/
-
-          echo "--- Verify ---"
-          echo "models:"
-          ls app/src/main/assets/models/ | head -5
-          echo "subpack:"
-          ls app/src/main/assets/subpack/ | head -5
-          echo "jniLibs:"
-          ls app/src/main/jniLibs/ | head -5
-          echo "libs:"
-          ls app/libs/ | head -5
 
       - name: Create local.properties
         run: echo "GITHUB_CLIENT_ID=" > local.properties
