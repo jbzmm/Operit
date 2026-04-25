@@ -49,35 +49,38 @@ jobs:
         run: |
           mkdir -p /tmp/deps
           REPO=${{ github.repository }}
-          for f in models.zip subpack.zip jniLibs.zip libs.zip; do
+          for f in subpack.zip jniLibs.zip libs.zip; do
             echo "Downloading $f from Release..."
-            STATUS=$(curl -sL -o "/tmp/deps/$f" -w "%{http_code}" \
-              "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$f")
-            if [ "$STATUS" = "200" ]; then
-              echo "OK: $f ($(du -h /tmp/deps/$f | cut -f1))"
+            curl -sL -o "/tmp/deps/$f" \
+              "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$f"
+          done
+          echo "--- Reassembling models.zip from parts ---"
+          for i in 00 01 02 03 04; do
+            part="models.zip.part${i}"
+            echo "Downloading $part..."
+            curl -sL -o "/tmp/deps/$part" \
+              "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$part"
+            if [ -f "/tmp/deps/$part" ]; then
+              cat "/tmp/deps/$part" >> /tmp/deps/models.zip
+              rm -f "/tmp/deps/$part"
             else
-              echo "WARN: $f not in Release (HTTP $STATUS)"
-              rm -f "/tmp/deps/$f"
+              echo "ERROR: $part not found!"
+              exit 1
             fi
           done
-          echo "--- Downloaded ---"
+          echo "--- All deps ---"
           ls -lh /tmp/deps/
 
-      - name: Fallback missing deps from Google Drive
+      - name: Verify deps
         run: |
-          pip install gdown
-          MISSING=0
           for f in models.zip subpack.zip jniLibs.zip libs.zip; do
             if [ ! -s "/tmp/deps/$f" ]; then
-              MISSING=1
-              echo "$f missing, will download from Google Drive"
+              echo "ERROR: $f is missing!"
+              exit 1
+            else
+              echo "OK: $f ($(du -h /tmp/deps/$f | cut -f1))"
             fi
           done
-          if [ "$MISSING" = "1" ]; then
-            gdown --folder "https://drive.google.com/drive/folders/1g-Q_i7cf6Ua4KX9ZM6V282EEZvTVVfF7?usp=sharing" -O /tmp/deps --remaining-ok
-          fi
-          echo "--- Final deps ---"
-          ls -lh /tmp/deps/
 
       - name: Place native libs
         run: |
