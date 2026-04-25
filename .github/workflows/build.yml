@@ -49,38 +49,14 @@ jobs:
         run: |
           mkdir -p /tmp/deps
           REPO=${{ github.repository }}
-          for f in subpack.zip jniLibs.zip libs.zip; do
+          for f in models.zip subpack.zip jniLibs.zip libs.zip; do
             echo "Downloading $f from Release..."
             curl -sL -o "/tmp/deps/$f" \
               "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$f"
-          done
-          echo "--- Reassembling models.zip from parts ---"
-          for i in 00 01 02 03 04; do
-            part="models.zip.part${i}"
-            echo "Downloading $part..."
-            curl -sL -o "/tmp/deps/$part" \
-              "https://github.com/${REPO}/releases/download/${{ env.RELEASE_TAG }}/$part"
-            if [ -f "/tmp/deps/$part" ]; then
-              cat "/tmp/deps/$part" >> /tmp/deps/models.zip
-              rm -f "/tmp/deps/$part"
-            else
-              echo "ERROR: $part not found!"
-              exit 1
-            fi
+            echo "$f $(du -h /tmp/deps/$f | cut -f1)"
           done
           echo "--- All deps ---"
           ls -lh /tmp/deps/
-
-      - name: Verify deps
-        run: |
-          for f in models.zip subpack.zip jniLibs.zip libs.zip; do
-            if [ ! -s "/tmp/deps/$f" ]; then
-              echo "ERROR: $f is missing!"
-              exit 1
-            else
-              echo "OK: $f ($(du -h /tmp/deps/$f | cut -f1))"
-            fi
-          done
 
       - name: Place native libs
         run: |
