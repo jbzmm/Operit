@@ -57,22 +57,24 @@ jobs:
         run: |
           mkdir -p /tmp/deps
           REPO=${{ github.repository }}
+          TOKEN=${{ secrets.GITHUB_TOKEN }}
+          # Get release ID by tag
+          RELEASE_ID=$(curl -sL -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/releases/tags/${{ env.RELEASE_TAG }}" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          echo "Release ID: $RELEASE_ID"
+          # List assets and download each
           for f in models.zip subpack.zip jniLibs.zip libs.zip; do
             echo "Downloading $f from Release..."
-            # Use gh api to get asset ID, then download with Auth
-            ASSET_ID=$(gh api -H "Accept: application/vnd.github+json" -X GET /repos/${REPO}/releases/tags/${{ env.RELEASE_TAG }}/assets --jq ".[] | select(.name==\"$f\") | .id")
+            ASSET_ID=$(curl -sL -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}/assets" | python3 -c "import sys,json; [print(a['id']) for a in json.load(sys.stdin) if a['name']=='$f']")
             if [ -z "$ASSET_ID" ]; then
               echo "ERROR: Asset ID not found for $f"
               exit 1
             fi
             echo "  Asset ID: $ASSET_ID"
-            gh api -H "Accept: application/octet-stream" -X GET /repos/${REPO}/releases/assets/${ASSET_ID} > "/tmp/deps/$f"
+            curl -sL -H "Authorization: token $TOKEN" -H "Accept: application/octet-stream" -o "/tmp/deps/$f" "https://api.github.com/repos/${REPO}/releases/assets/${ASSET_ID}"
             echo "$f $(du -h /tmp/deps/$f | cut -f1)"
           done
           echo "--- All deps ---"
           ls -lh /tmp/deps/
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Place native libs
         run: |
