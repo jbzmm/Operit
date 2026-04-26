@@ -1426,6 +1426,21 @@ sealed class Screen(
         }
     }
 
+    data object Life : Screen(navItem = NavItem.Life, titleRes = R.string.nav_life) {
+        @Composable
+        override fun Content(
+                navController: NavController,
+                navigateTo: ScreenNavigationHandler,
+                onGoBack: () -> Unit,
+                hasBackgroundImage: Boolean,
+                onLoading: (Boolean) -> Unit,
+                onError: (String) -> Unit,
+                onGestureConsumed: (Boolean) -> Unit
+        ) {
+            LifeScreenContent()
+        }
+    }
+
     // 获取屏幕标题
     @Composable
     open fun getTitle(): String = titleRes?.let { stringResource(it) } ?: ""

@@ -250,6 +250,12 @@ fun OperitApp(
             )
         ),
         NavGroup(
+            R.string.nav_group_daily,
+            listOf(
+                NavItem.Life,
+            )
+        ),
+        NavGroup(
             R.string.nav_group_system,
             listOfNotNull(
                 NavItem.Settings,

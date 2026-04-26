@@ -12,11 +12,20 @@ import com.star.operit.data.dao.MessageVariantDao
 import com.star.operit.data.model.ChatEntity
 import com.star.operit.data.model.MessageEntity
 import com.star.operit.data.model.MessageVariantEntity
+import com.star.operit.data.life.entity.*
+import com.star.operit.data.life.dao.*
 
-/** 应用数据库，包含聊天表和消息表 */
+/** 应用数据库，包含聊天表、消息表和生活模块表 */
 @Database(
-    entities = [ChatEntity::class, MessageEntity::class, MessageVariantEntity::class],
-    version = 16,
+    entities = [
+        ChatEntity::class, MessageEntity::class, MessageVariantEntity::class,
+        LifeEventEntity::class, HabitEntity::class, HabitRecordEntity::class,
+        ReminderEntity::class, JournalEntity::class, AnniversaryEntity::class,
+        GoalEntity::class, GoalLogEntity::class, MoodRecordEntity::class,
+        SleepRecordEntity::class, ExerciseRecordEntity::class,
+        LocationVisitEntity::class, ReceiptEntity::class, MenstrualCycleEntity::class
+    ],
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +37,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
 
     abstract fun messageVariantDao(): MessageVariantDao
+
+    // 生活模块 DAO
+    abstract fun lifeEventDao(): LifeEventDao
+    abstract fun habitDao(): HabitDao
+    abstract fun reminderDao(): ReminderDao
+    abstract fun journalDao(): JournalDao
+    abstract fun anniversaryDao(): AnniversaryDao
+    abstract fun goalDao(): GoalDao
+    abstract fun moodRecordDao(): MoodRecordDao
+    abstract fun sleepRecordDao(): SleepRecordDao
+    abstract fun exerciseRecordDao(): ExerciseRecordDao
+    abstract fun locationVisitDao(): LocationVisitDao
+    abstract fun receiptDao(): ReceiptDao
+    abstract fun menstrualCycleDao(): MenstrualCycleDao
 
     companion object {
         @Volatile
@@ -181,6 +204,114 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        // 生活模块：version 16 → 17
+        private val MIGRATION_16_17 =
+            object : Migration(16, 17) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `life_events` (
+                        `id` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `subcategoryId` TEXT,
+                        `title` TEXT NOT NULL, `description` TEXT, `startAt` INTEGER NOT NULL,
+                        `endAt` INTEGER, `amount` REAL, `personName` TEXT, `personRelation` TEXT,
+                        `location` TEXT, `mood` TEXT, `note` TEXT, `status` TEXT NOT NULL DEFAULT 'active',
+                        `tags` TEXT, `source` TEXT, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `habits` (
+                        `id` TEXT NOT NULL, `name` TEXT NOT NULL, `icon` TEXT NOT NULL,
+                        `frequency` TEXT NOT NULL DEFAULT 'daily', `targetCount` INTEGER NOT NULL DEFAULT 1,
+                        `color` TEXT NOT NULL DEFAULT '#4CAF50', `createdAt` INTEGER NOT NULL,
+                        `sortOrder` INTEGER NOT NULL DEFAULT 0, `isActive` INTEGER NOT NULL DEFAULT 1,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `habit_records` (
+                        `id` TEXT NOT NULL, `habitId` TEXT NOT NULL, `date` TEXT NOT NULL,
+                        `completedCount` INTEGER NOT NULL DEFAULT 1, `note` TEXT,
+                        PRIMARY KEY(`id`), FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`) ON DELETE CASCADE
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_records_habitId` ON `habit_records` (`habitId`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_records_date` ON `habit_records` (`date`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `reminders` (
+                        `id` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT,
+                        `type` TEXT NOT NULL DEFAULT 'time', `triggerAt` INTEGER,
+                        `locationLat` REAL, `locationLng` REAL, `locationRadius` REAL,
+                        `linkedEventId` TEXT, `repeatRule` TEXT,
+                        `isCompleted` INTEGER NOT NULL DEFAULT 0, `completedAt` INTEGER,
+                        `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `journals` (
+                        `id` TEXT NOT NULL, `date` TEXT NOT NULL, `title` TEXT,
+                        `content` TEXT NOT NULL DEFAULT '', `mood` TEXT, `weather` TEXT,
+                        `location` TEXT, `linkedEventIds` TEXT, `images` TEXT, `aiSummary` TEXT,
+                        `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `anniversaries` (
+                        `id` TEXT NOT NULL, `title` TEXT NOT NULL, `date` TEXT NOT NULL,
+                        `type` TEXT NOT NULL DEFAULT 'anniversary', `linkedPersonName` TEXT,
+                        `repeatYearly` INTEGER NOT NULL DEFAULT 1, `remindDaysBefore` INTEGER NOT NULL DEFAULT 1,
+                        `icon` TEXT NOT NULL DEFAULT '🎂', `note` TEXT,
+                        `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `goals` (
+                        `id` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT,
+                        `type` TEXT NOT NULL DEFAULT 'number', `targetValue` REAL NOT NULL DEFAULT 0,
+                        `currentValue` REAL NOT NULL DEFAULT 0, `unit` TEXT NOT NULL DEFAULT '',
+                        `startDate` TEXT NOT NULL, `endDate` TEXT,
+                        `linkedHabitId` TEXT, `linkedCategoryId` TEXT,
+                        `status` TEXT NOT NULL DEFAULT 'active', `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `goal_logs` (
+                        `id` TEXT NOT NULL, `goalId` TEXT NOT NULL, `value` REAL NOT NULL,
+                        `note` TEXT, `recordedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`), FOREIGN KEY(`goalId`) REFERENCES `goals`(`id`) ON DELETE CASCADE
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_goal_logs_goalId` ON `goal_logs` (`goalId`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `mood_records` (
+                        `id` TEXT NOT NULL, `date` TEXT NOT NULL, `time` TEXT,
+                        `mood` TEXT NOT NULL, `intensity` INTEGER NOT NULL DEFAULT 5,
+                        `note` TEXT, `linkedEventIds` TEXT, `factors` TEXT,
+                        `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_mood_records_date` ON `mood_records` (`date`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `sleep_records` (
+                        `id` TEXT NOT NULL, `date` TEXT NOT NULL, `bedTime` INTEGER NOT NULL,
+                        `wakeTime` INTEGER NOT NULL, `durationMinutes` INTEGER NOT NULL,
+                        `quality` INTEGER NOT NULL DEFAULT 3, `note` TEXT,
+                        `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_sleep_records_date` ON `sleep_records` (`date`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `exercise_records` (
+                        `id` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL,
+                        `durationMinutes` INTEGER NOT NULL, `calories` INTEGER,
+                        `distance` REAL, `note` TEXT, `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_exercise_records_date` ON `exercise_records` (`date`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `location_visits` (
+                        `id` TEXT NOT NULL, `name` TEXT NOT NULL,
+                        `lat` REAL NOT NULL, `lng` REAL NOT NULL, `address` TEXT,
+                        `category` TEXT, `visitCount` INTEGER NOT NULL DEFAULT 1,
+                        `firstVisitAt` INTEGER NOT NULL, `lastVisitAt` INTEGER NOT NULL,
+                        `totalDurationMinutes` INTEGER, PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_location_visits_name` ON `location_visits` (`name`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `receipts` (
+                        `id` TEXT NOT NULL, `date` TEXT NOT NULL, `imagePath` TEXT NOT NULL,
+                        `merchant` TEXT, `amount` REAL, `category` TEXT,
+                        `ocrText` TEXT, `linkedEventId` TEXT, `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_receipts_date` ON `receipts` (`date`)")
+                    db.execSQL("""CREATE TABLE IF NOT EXISTS `menstrual_cycles` (
+                        `id` TEXT NOT NULL, `startDate` TEXT NOT NULL, `endDate` TEXT,
+                        `cycleLength` INTEGER, `periodLength` INTEGER,
+                        `symptoms` TEXT, `note` TEXT, `createdAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_menstrual_cycles_startDate` ON `menstrual_cycles` (`startDate`)")
+                }
+            }
+
         // 定义从版本2到3的迁移
         private val MIGRATION_2_3 =
             object : Migration(2, 3) {
@@ -278,7 +409,7 @@ abstract class AppDatabase : RoomDatabase() {
                             AppDatabase::class.java,
                             "app_database"
                         )
-                            .addMigrations(
+.addMigrations(
                                 MIGRATION_1_2,
                                 MIGRATION_2_3,
                                 MIGRATION_3_4,
@@ -293,7 +424,9 @@ abstract class AppDatabase : RoomDatabase() {
                                 MIGRATION_12_13,
                                 MIGRATION_13_14,
                                 MIGRATION_14_15,
-                                MIGRATION_15_16
+                                MIGRATION_15_16,
+                                MIGRATION_16_17
+                            )
                             ) // 添加新的迁移
                             .build()
                     INSTANCE = instance

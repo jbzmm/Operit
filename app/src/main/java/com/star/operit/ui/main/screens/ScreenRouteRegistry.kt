@@ -156,6 +156,13 @@ object ScreenRouteRegistry {
                 order = 30
             ),
             hostEntryDefinition(
+                entryId = "main.life",
+                screen = Screen.Life,
+                surface = NavigationSurface.MAIN_SIDEBAR_TOOLS,
+                icon = NavItem.Life.icon,
+                order = 40
+            ),
+            hostEntryDefinition(
                 entryId = "main.settings",
                 screen = Screen.Settings,
                 surface = NavigationSurface.MAIN_SIDEBAR_SYSTEM,
