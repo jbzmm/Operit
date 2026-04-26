@@ -427,7 +427,6 @@ abstract class AppDatabase : RoomDatabase() {
                                 MIGRATION_15_16,
                                 MIGRATION_16_17
                             )
-                            ) // 添加新的迁移
                             .build()
                     INSTANCE = instance
                     instance
