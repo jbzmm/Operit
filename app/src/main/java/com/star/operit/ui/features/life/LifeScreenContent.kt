@@ -567,7 +567,7 @@ fun GoalTab(viewModel: LifeViewModel, padding: PaddingValues) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(goal.title, style = MaterialTheme.typography.titleSmall)
-                        val progress = if (goal.targetValue != 0.0) ((goal.currentValue / goal.targetValue) * 100).coerceIn(0, 100) else 0.0
+                        val progress = if (goal.targetValue != 0.0) ((goal.currentValue / goal.targetValue) * 100.0).coerceIn(0.0, 100.0) else 0.0
                         LinearProgressIndicator(
                             progress = { (progress / 100).toFloat() },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),

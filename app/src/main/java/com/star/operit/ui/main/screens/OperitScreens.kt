@@ -28,6 +28,7 @@ import com.star.operit.ui.features.about.screens.AboutScreen
 import com.star.operit.ui.features.assistant.screens.AssistantConfigScreen
 import com.star.operit.ui.features.chat.screens.AIChatScreen
 import com.star.operit.ui.features.demo.screens.ShizukuDemoScreen
+import com.star.operit.ui.features.life.LifeScreenContent
 import com.star.operit.ui.features.help.screens.HelpScreen
 import com.star.operit.ui.features.memory.screens.MemoryScreen
 import com.star.operit.ui.features.packages.screens.MarketHomeTab
