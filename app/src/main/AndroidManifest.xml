@@ -67,7 +67,7 @@
 
     <queries>
         <!-- 允许查询和绑定到无障碍服务提供者应用 -->
-        <package android:name="com.ai.assistance.operit.provider" />
+        <package android:name="com.star.operit.provider" />
     </queries>
 
     <application
@@ -160,7 +160,7 @@
         <!-- Workspace Documents Provider for SAF -->
         <provider
             android:name=".provider.WorkspaceDocumentsProvider"
-            android:authorities="com.ai.assistance.operit.documents.workspace"
+            android:authorities="com.star.operit.documents.workspace"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
@@ -171,7 +171,7 @@
 
         <provider
             android:name=".provider.MemoryDocumentsProvider"
-            android:authorities="com.ai.assistance.operit.documents.memory"
+            android:authorities="com.star.operit.documents.memory"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
@@ -351,7 +351,7 @@
             android:name=".core.tools.javascript.ScriptExecutionReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.EXECUTE_JS" />
+                <action android:name="com.star.operit.EXECUTE_JS" />
             </intent-filter>
         </receiver>
 
@@ -359,7 +359,7 @@
             android:name=".core.tools.packTool.ToolPkgDebugInstallReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.DEBUG_INSTALL_TOOLPKG" />
+                <action android:name="com.star.operit.DEBUG_INSTALL_TOOLPKG" />
             </intent-filter>
         </receiver>
 
@@ -367,7 +367,7 @@
             android:name=".core.tools.packTool.PackageDebugRefreshReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.DEBUG_REFRESH_PACKAGES" />
+                <action android:name="com.star.operit.DEBUG_REFRESH_PACKAGES" />
             </intent-filter>
         </receiver>
 
@@ -375,7 +375,7 @@
             android:name=".integrations.intent.ExternalChatReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.EXTERNAL_CHAT" />
+                <action android:name="com.star.operit.EXTERNAL_CHAT" />
             </intent-filter>
         </receiver>
 
@@ -403,7 +403,7 @@
             android:name=".core.tools.agent.ShowerBinderReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.action.SHOWER_BINDER_READY" />
+                <action android:name="com.star.operit.action.SHOWER_BINDER_READY" />
             </intent-filter>
         </receiver>
         
@@ -424,7 +424,7 @@
             android:exported="true"
             android:enabled="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.TRIGGER_WORKFLOW" />
+                <action android:name="com.star.operit.TRIGGER_WORKFLOW" />
                 <action android:name="com.twofortyfouram.locale.intent.action.FIRE_SETTING" />
             </intent-filter>
         </receiver>

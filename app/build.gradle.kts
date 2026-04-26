@@ -21,7 +21,7 @@ if (localPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.ai.assistance.operit"
+    namespace = "com.star.operit"
     compileSdk = 36
 
     signingConfigs {
@@ -52,7 +52,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ai.assistance.operit"
+        applicationId = "com.star.operit"
         minSdk = 26
         targetSdk = 34
         versionCode = 41

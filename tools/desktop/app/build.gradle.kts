@@ -9,13 +9,13 @@ plugins {
 }
 
 android {
-    namespace = "com.ai.assistance.operit.desktop"
+    namespace = "com.star.operit.desktop"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.ai.assistance.operit.desktop"
+        applicationId = "com.star.operit.desktop"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
