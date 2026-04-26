@@ -1689,7 +1689,7 @@ class CanvasCodeEditorView @JvmOverloads constructor(
 
     private fun loadEditorTypeface(): Typeface {
         return try {
-            resources.getFont(com.star.operit.terminal.R.font.jetbrains_mono_nerd_font_regular)
+            resources.getFont(com.ai.assistance.operit.terminal.R.font.jetbrains_mono_nerd_font_regular)
         } catch (_: Exception) {
             Typeface.MONOSPACE
         }

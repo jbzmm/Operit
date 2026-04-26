@@ -30,13 +30,13 @@ import com.star.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxSc
 import com.star.operit.ui.features.toolbox.screens.filemanager.FileManagerScreen
 import com.star.operit.ui.features.toolbox.screens.logcat.LogcatScreen
 import com.star.operit.ui.features.toolbox.screens.shellexecutor.ShellExecutorScreen
-import com.star.operit.terminal.main.TerminalScreen as TerminalViewScreen
+import com.ai.assistance.operit.terminal.main.TerminalScreen as TerminalViewScreen
 // import com.star.operit.ui.features.toolbox.screens.terminalconfig.TerminalAutoConfigScreen
 import com.star.operit.ui.features.toolbox.screens.uidebugger.UIDebuggerScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.star.operit.terminal.TerminalManager
-import com.star.operit.terminal.rememberTerminalEnv
+import com.ai.assistance.operit.terminal.TerminalManager
+import com.ai.assistance.operit.terminal.rememberTerminalEnv
 import com.star.operit.ui.main.LocalAppNavigationModel
 import com.star.operit.ui.main.navigation.NavigationEntrySpec
 import com.star.operit.ui.main.navigation.NavigationSurface

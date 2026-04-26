@@ -7,8 +7,8 @@ import com.star.operit.core.tools.*
 import com.star.operit.data.model.AITool
 import com.star.operit.data.model.ToolResult
 import com.star.operit.core.tools.system.Terminal
-import com.star.operit.terminal.provider.type.HiddenExecResult
-import com.star.operit.terminal.view.domain.ansi.TerminalChar
+import com.ai.assistance.operit.terminal.provider.type.HiddenExecResult
+import com.ai.assistance.operit.terminal.view.domain.ansi.TerminalChar
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
