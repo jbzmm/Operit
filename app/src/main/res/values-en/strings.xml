@@ -5399,8 +5399,6 @@
     <string name="toolreg_ffmpeg_execute_desc">Execute FFmpeg command: %1$s</string>
     <string name="toolreg_ffmpeg_info_desc">Get FFmpeg info</string>
     <string name="toolreg_ffmpeg_convert_desc">Convert video: %1$s → %2$s</string>
-<string name="toolreg_life_query_desc">Life module query: %1$s</string>
-
     <!-- AutoGLM One-Click Configuration -->
     <string name="autoglm_config_name">AutoGLM Configuration</string>
     <string name="autoglm_one_click_title">AutoGLM One-Click Config</string>

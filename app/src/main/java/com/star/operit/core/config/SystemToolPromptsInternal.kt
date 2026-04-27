@@ -540,42 +540,6 @@ object SystemToolPromptsInternal {
                     )
             ),
             SystemToolPromptCategory(
-                categoryName = "Life Tools",
-                tools =
-                    listOf(
-                        ToolPrompt(
-                            name = "life_query",
-                            description = "Query and manage life module data including habits, reminders, journals, mood, sleep, exercise, finance, anniversaries, goals, locations, and menstrual cycle. Use action parameter to specify the operation.",
-                            parametersStructured = listOf(
-                                ToolParameterSchema(name = "action", type = "string", description = "Required. The action to perform. Available: list_habits, check_habit, get_habit_stats, list_reminders, add_reminder, complete_reminder, list_journals, get_journal, add_journal, search_journals, list_mood_records, add_mood_record, get_mood_summary, list_sleep_records, get_sleep_stats, list_exercise_records, get_exercise_summary, list_finance_events, add_life_event, list_anniversaries, add_anniversary, list_goals, add_goal_log, list_locations, get_menstrual_status, life_overview", required = true),
-                                ToolParameterSchema(name = "habit_id", type = "string", description = "Habit ID for check_habit/get_habit_stats", required = false),
-                                ToolParameterSchema(name = "date", type = "string", description = "Date in yyyy-MM-dd format", required = false),
-                                ToolParameterSchema(name = "title", type = "string", description = "Title for add operations", required = false),
-                                ToolParameterSchema(name = "content", type = "string", description = "Content for journals", required = false),
-                                ToolParameterSchema(name = "mood", type = "string", description = "Mood value (e.g. happy, sad, anxious, calm)", required = false),
-                                ToolParameterSchema(name = "intensity", type = "integer", description = "Mood intensity 1-10", required = false),
-                                ToolParameterSchema(name = "start_date", type = "string", description = "Start date for date range queries (yyyy-MM-dd)", required = false),
-                                ToolParameterSchema(name = "end_date", type = "string", description = "End date for date range queries (yyyy-MM-dd)", required = false),
-                                ToolParameterSchema(name = "days", type = "integer", description = "Number of days for statistics", required = false),
-                                ToolParameterSchema(name = "limit", type = "integer", description = "Max results to return", required = false),
-                                ToolParameterSchema(name = "query", type = "string", description = "Search query for journals/locations", required = false),
-                                ToolParameterSchema(name = "reminder_id", type = "string", description = "Reminder ID for complete_reminder", required = false),
-                                ToolParameterSchema(name = "trigger_at", type = "string", description = "Trigger timestamp in milliseconds for reminders", required = false),
-                                ToolParameterSchema(name = "amount", type = "number", description = "Amount for finance events", required = false),
-                                ToolParameterSchema(name = "goal_id", type = "string", description = "Goal ID for add_goal_log", required = false),
-                                ToolParameterSchema(name = "value", type = "number", description = "Value for goal log entry", required = false),
-                                ToolParameterSchema(name = "note", type = "string", description = "Optional note", required = false),
-                                ToolParameterSchema(name = "show_all", type = "boolean", description = "Show completed items (for reminders)", required = false),
-                                ToolParameterSchema(name = "person_name", type = "string", description = "Person name for events/anniversaries", required = false),
-                                ToolParameterSchema(name = "category_id", type = "string", description = "Category ID for life events", required = false),
-                                ToolParameterSchema(name = "anniversary_type", type = "string", description = "Type: anniversary/birthday/holiday", required = false),
-                                ToolParameterSchema(name = "description", type = "string", description = "Description for events/reminders", required = false),
-                                ToolParameterSchema(name = "type", type = "string", description = "Type field (exercise type, reminder type, etc.)", required = false)
-                            )
-                        )
-                    )
-            ),
-            SystemToolPromptCategory(
                 categoryName = "Extended HTTP Tools",
                 tools =
                     listOf(
