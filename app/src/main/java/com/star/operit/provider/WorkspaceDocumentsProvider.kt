@@ -23,7 +23,9 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         private const val TAG = "WorkspaceDocumentsProvider"
         
         // Authority需要与AndroidManifest中的声明一致
-        private const val AUTHORITY = "com.star.operit.documents.workspace"
+        private fun getAuthority(context: android.content.Context): String {
+            return "${context.packageName}.documents.workspace"
+        }
         
         // Root ID
         private const val ROOT_ID = "workspace_root"

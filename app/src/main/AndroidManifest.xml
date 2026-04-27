@@ -160,7 +160,7 @@
         <!-- Workspace Documents Provider for SAF -->
         <provider
             android:name=".provider.WorkspaceDocumentsProvider"
-            android:authorities="com.star.operit.documents.workspace"
+            android:authorities="${applicationId}.documents.workspace"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
@@ -171,7 +171,7 @@
 
         <provider
             android:name=".provider.MemoryDocumentsProvider"
-            android:authorities="com.star.operit.documents.memory"
+            android:authorities="${applicationId}.documents.memory"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">

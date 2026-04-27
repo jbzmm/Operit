@@ -30,7 +30,9 @@ class MemoryDocumentsProvider : DocumentsProvider() {
 
     companion object {
         private const val TAG = "MemoryDocumentsProvider"
-        private const val AUTHORITY = "com.star.operit.documents.memory"
+        private fun getAuthority(context: android.content.Context): String {
+            return "${context.packageName}.documents.memory"
+        }
         private const val ROOT_ID = "memory_root"
 
         private const val DOC_ID_ROOT = "root"
