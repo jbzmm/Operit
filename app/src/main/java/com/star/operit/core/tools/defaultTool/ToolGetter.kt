@@ -207,4 +207,13 @@ object ToolGetter {
     fun getSoftwareSettingsModifyTools(context: Context): StandardSoftwareSettingsModifyTools {
         return StandardSoftwareSettingsModifyTools(context)
     }
+
+    /**
+     * 获取生活模块工具执行器
+     * @param context 应用上下文
+     * @return 生活模块工具执行器实现（只有标准版本）
+     */
+    fun getLifeToolsExecutor(context: Context): LifeToolsExecutor {
+        return LifeToolsExecutor(context)
+    }
 }

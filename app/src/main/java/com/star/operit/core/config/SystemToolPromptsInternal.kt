@@ -540,6 +540,42 @@ object SystemToolPromptsInternal {
                     )
             ),
             SystemToolPromptCategory(
+                categoryName = "Life Tools",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "life_query",
+                            description = "Query and manage life module data including habits, reminders, journals, mood, sleep, exercise, finance, anniversaries, goals, locations, and menstrual cycle. Use action parameter to specify the operation.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "action", type = "string", description = "Required. The action to perform. Available: list_habits, check_habit, get_habit_stats, list_reminders, add_reminder, complete_reminder, list_journals, get_journal, add_journal, search_journals, list_mood_records, add_mood_record, get_mood_summary, list_sleep_records, get_sleep_stats, list_exercise_records, get_exercise_summary, list_finance_events, add_life_event, list_anniversaries, add_anniversary, list_goals, add_goal_log, list_locations, get_menstrual_status, life_overview", required = true),
+                                ToolParameterSchema(name = "habit_id", type = "string", description = "Habit ID for check_habit/get_habit_stats", required = false),
+                                ToolParameterSchema(name = "date", type = "string", description = "Date in yyyy-MM-dd format", required = false),
+                                ToolParameterSchema(name = "title", type = "string", description = "Title for add operations", required = false),
+                                ToolParameterSchema(name = "content", type = "string", description = "Content for journals", required = false),
+                                ToolParameterSchema(name = "mood", type = "string", description = "Mood value (e.g. happy, sad, anxious, calm)", required = false),
+                                ToolParameterSchema(name = "intensity", type = "integer", description = "Mood intensity 1-10", required = false),
+                                ToolParameterSchema(name = "start_date", type = "string", description = "Start date for date range queries (yyyy-MM-dd)", required = false),
+                                ToolParameterSchema(name = "end_date", type = "string", description = "End date for date range queries (yyyy-MM-dd)", required = false),
+                                ToolParameterSchema(name = "days", type = "integer", description = "Number of days for statistics", required = false),
+                                ToolParameterSchema(name = "limit", type = "integer", description = "Max results to return", required = false),
+                                ToolParameterSchema(name = "query", type = "string", description = "Search query for journals/locations", required = false),
+                                ToolParameterSchema(name = "reminder_id", type = "string", description = "Reminder ID for complete_reminder", required = false),
+                                ToolParameterSchema(name = "trigger_at", type = "string", description = "Trigger timestamp in milliseconds for reminders", required = false),
+                                ToolParameterSchema(name = "amount", type = "number", description = "Amount for finance events", required = false),
+                                ToolParameterSchema(name = "goal_id", type = "string", description = "Goal ID for add_goal_log", required = false),
+                                ToolParameterSchema(name = "value", type = "number", description = "Value for goal log entry", required = false),
+                                ToolParameterSchema(name = "note", type = "string", description = "Optional note", required = false),
+                                ToolParameterSchema(name = "show_all", type = "boolean", description = "Show completed items (for reminders)", required = false),
+                                ToolParameterSchema(name = "person_name", type = "string", description = "Person name for events/anniversaries", required = false),
+                                ToolParameterSchema(name = "category_id", type = "string", description = "Category ID for life events", required = false),
+                                ToolParameterSchema(name = "anniversary_type", type = "string", description = "Type: anniversary/birthday/holiday", required = false),
+                                ToolParameterSchema(name = "description", type = "string", description = "Description for events/reminders", required = false),
+                                ToolParameterSchema(name = "type", type = "string", description = "Type field (exercise type, reminder type, etc.)", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
                 categoryName = "Extended HTTP Tools",
                 tools =
                     listOf(
@@ -3136,6 +3172,42 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "identity", type = "string", description = "可选, 描述身份/角色的字符串", required = false),
                                 ToolParameterSchema(name = "occupation", type = "string", description = "可选, 字符串", required = false),
                                 ToolParameterSchema(name = "ai_style", type = "string", description = "可选, 描述首选AI交互风格的字符串. 必须提供至少一个参数", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "生活工具",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "life_query",
+                            description = "查询和管理生活模块数据，包括习惯打卡、待办提醒、日记、情绪、睡眠、运动、记账、纪念日、目标、足迹和生理周期。使用 action 参数指定具体操作。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "action", type = "string", description = "必需。要执行的操作。可选: list_habits, check_habit, get_habit_stats, list_reminders, add_reminder, complete_reminder, list_journals, get_journal, add_journal, search_journals, list_mood_records, add_mood_record, get_mood_summary, list_sleep_records, get_sleep_stats, list_exercise_records, get_exercise_summary, list_finance_events, add_life_event, list_anniversaries, add_anniversary, list_goals, add_goal_log, list_locations, get_menstrual_status, life_overview", required = true),
+                                ToolParameterSchema(name = "habit_id", type = "string", description = "习惯ID，用于 check_habit/get_habit_stats", required = false),
+                                ToolParameterSchema(name = "date", type = "string", description = "日期，格式 yyyy-MM-dd", required = false),
+                                ToolParameterSchema(name = "title", type = "string", description = "标题，用于添加操作", required = false),
+                                ToolParameterSchema(name = "content", type = "string", description = "日记内容", required = false),
+                                ToolParameterSchema(name = "mood", type = "string", description = "情绪值（如 happy, sad, anxious, calm）", required = false),
+                                ToolParameterSchema(name = "intensity", type = "integer", description = "情绪强度 1-10", required = false),
+                                ToolParameterSchema(name = "start_date", type = "string", description = "日期范围查询的起始日期 (yyyy-MM-dd)", required = false),
+                                ToolParameterSchema(name = "end_date", type = "string", description = "日期范围查询的结束日期 (yyyy-MM-dd)", required = false),
+                                ToolParameterSchema(name = "days", type = "integer", description = "统计天数", required = false),
+                                ToolParameterSchema(name = "limit", type = "integer", description = "返回结果数量上限", required = false),
+                                ToolParameterSchema(name = "query", type = "string", description = "日记/足迹的搜索关键词", required = false),
+                                ToolParameterSchema(name = "reminder_id", type = "string", description = "待办ID，用于 complete_reminder", required = false),
+                                ToolParameterSchema(name = "trigger_at", type = "string", description = "提醒触发时间戳（毫秒）", required = false),
+                                ToolParameterSchema(name = "amount", type = "number", description = "记账金额", required = false),
+                                ToolParameterSchema(name = "goal_id", type = "string", description = "目标ID，用于 add_goal_log", required = false),
+                                ToolParameterSchema(name = "value", type = "number", description = "目标进度值", required = false),
+                                ToolParameterSchema(name = "note", type = "string", description = "可选备注", required = false),
+                                ToolParameterSchema(name = "show_all", type = "boolean", description = "是否显示已完成项（用于待办）", required = false),
+                                ToolParameterSchema(name = "person_name", type = "string", description = "人物名称（用于事件/纪念日）", required = false),
+                                ToolParameterSchema(name = "category_id", type = "string", description = "生活事件的分类ID", required = false),
+                                ToolParameterSchema(name = "anniversary_type", type = "string", description = "纪念日类型: anniversary/birthday/holiday", required = false),
+                                ToolParameterSchema(name = "description", type = "string", description = "事件/待办的描述", required = false),
+                                ToolParameterSchema(name = "type", type = "string", description = "类型字段（运动类型、提醒类型等）", required = false)
                             )
                         )
                     )

@@ -2046,4 +2046,17 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 ffmpegConvertTool.invoke(tool)
             }
     )
+
+    // 生活模块查询工具
+    handler.registerTool(
+            name = "life_query",
+            descriptionGenerator = { tool ->
+                val action = tool.parameters.find { it.name == "action" }?.value ?: ""
+                s(R.string.toolreg_life_query_desc, action)
+            },
+            executor = { tool ->
+                val lifeTool = ToolGetter.getLifeToolsExecutor(context)
+                lifeTool.invoke(tool)
+            }
+    )
 }

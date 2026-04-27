@@ -5163,6 +5163,7 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="toolreg_ffmpeg_execute_desc">Laksanakan arahan FFmpeg: %1$s</string>
     <string name="toolreg_ffmpeg_info_desc">Dapatkan maklumat FFmpeg</string>
     <string name="toolreg_ffmpeg_convert_desc">Tukar video: %1$s → %2$s</string>
+<string name="toolreg_life_query_desc">Pertanyaan modul kehidupan: %1$s</string>
     <string name="screen_ocr_capture_failed">Tangkapan skrin gagal</string>
     <string name="screen_ocr_load_failed">Tidak dapat memuatkan tangkapan skrin</string>
     <string name="screen_ocr_selection_too_small">Kawasan pilihan terlalu kecil</string>
